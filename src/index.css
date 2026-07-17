@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  button {
+    border: none;
+    outline: none;
+    background: none;
+  }
+  button:focus {
+    outline: none;
+  }
+}
