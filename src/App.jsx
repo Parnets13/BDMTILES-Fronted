@@ -8,6 +8,16 @@ import AppLayout from './components/layout/AppLayout.jsx';
 import Login from './pages/auth/Login.jsx';
 import UserManagement from './pages/system/UserManagement.jsx';
 import CategorySetup from './pages/masters/CategorySetup.jsx';
+import ProductMaster from './pages/masters/ProductMaster.jsx';
+import DealerMaster from './pages/masters/DealerMaster.jsx';
+import DealerTypePage from './pages/masters/DealerTypePage.jsx';
+import DealerCategoryPage from './pages/masters/DealerCategoryPage.jsx';
+import RegionPage from './pages/masters/RegionPage.jsx';
+import RoutePage from './pages/masters/RoutePage.jsx';
+import SupplierMaster from './pages/masters/SupplierMaster.jsx';
+import WarehousePage from './pages/masters/WarehousePage.jsx';
+import ExpenseCategoryPage from './pages/masters/ExpenseCategoryPage.jsx';
+import SalesOrderDashboard from './pages/sales/SalesOrderDashboard.jsx';
 
 // Placeholder page component for modules not yet built
 const PlaceholderPage = ({ title }) => (
@@ -72,7 +82,7 @@ const App = () => {
           path="/masters/products"
           element={
             <ProtectedRoute requiredPermission="product.master">
-              <PlaceholderPage title="Product Master" />
+              <ProductMaster />
             </ProtectedRoute>
           }
         />
@@ -104,7 +114,7 @@ const App = () => {
           path="/masters/dealer-type"
           element={
             <ProtectedRoute requiredPermission="dealer.type">
-              <PlaceholderPage title="Dealer Type" />
+              <DealerTypePage />
             </ProtectedRoute>
           }
         />
@@ -112,7 +122,7 @@ const App = () => {
           path="/masters/dealer-category"
           element={
             <ProtectedRoute requiredPermission="dealer.category">
-              <PlaceholderPage title="Dealer Category" />
+              <DealerCategoryPage />
             </ProtectedRoute>
           }
         />
@@ -120,7 +130,7 @@ const App = () => {
           path="/masters/expense-category"
           element={
             <ProtectedRoute requiredPermission="expense.category">
-              <PlaceholderPage title="Expense Category" />
+              <ExpenseCategoryPage />
             </ProtectedRoute>
           }
         />
@@ -128,7 +138,7 @@ const App = () => {
           path="/masters/regions"
           element={
             <ProtectedRoute requiredPermission="region.master">
-              <PlaceholderPage title="Region Master" />
+              <RegionPage />
             </ProtectedRoute>
           }
         />
@@ -136,7 +146,7 @@ const App = () => {
           path="/masters/routes"
           element={
             <ProtectedRoute requiredPermission="route.master">
-              <PlaceholderPage title="Route Master" />
+              <RoutePage />
             </ProtectedRoute>
           }
         />
@@ -144,7 +154,7 @@ const App = () => {
           path="/masters/warehouse-master"
           element={
             <ProtectedRoute requiredPermission="warehouse.master">
-              <PlaceholderPage title="Warehouse Master" />
+              <WarehousePage />
             </ProtectedRoute>
           }
         />
@@ -152,7 +162,7 @@ const App = () => {
           path="/masters/dealers"
           element={
             <ProtectedRoute requiredPermission="dealer.master">
-              <PlaceholderPage title="Dealer Master" />
+              <DealerMaster />
             </ProtectedRoute>
           }
         />
@@ -160,7 +170,7 @@ const App = () => {
           path="/masters/suppliers"
           element={
             <ProtectedRoute requiredPermission="supplier.master">
-              <PlaceholderPage title="Supplier Master" />
+              <SupplierMaster />
             </ProtectedRoute>
           }
         />
@@ -170,7 +180,7 @@ const App = () => {
           path="/sales-purchase/sales-order-dashboard"
           element={
             <ProtectedRoute requiredPermission="sales.order.dashboard">
-              <PlaceholderPage title="Sales Order Dashboard" />
+              <SalesOrderDashboard />
             </ProtectedRoute>
           }
         />

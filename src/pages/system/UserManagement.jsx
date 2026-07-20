@@ -346,7 +346,8 @@ const UserManagement = () => {
         onOk={handleSaveUser}
         okText={selectedUser ? 'Update' : 'Create'}
         confirmLoading={loading}
-        width={520}
+        width="90%"
+        style={{ top: 20, maxWidth: 800 }}
         destroyOnClose
       >
         <Form form={form} layout="vertical" className="mt-4">
