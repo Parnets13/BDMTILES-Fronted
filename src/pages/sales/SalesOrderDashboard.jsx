@@ -4,6 +4,7 @@ import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined
 import { ShoppingCart, TrendingUp } from 'lucide-react';
 import salesService from '../../services/salesService.js';
 import CreateSalesOrder from './CreateSalesOrder.jsx';
+import SalesOrderView from './SalesOrderView.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', confirmed: 'blue', approved: 'cyan', processing: 'orange',
@@ -21,6 +22,7 @@ const SalesOrderDashboard = () => {
 
   // Create order overlay
   const [showCreateOrder, setShowCreateOrder] = useState(false);
+  const [viewOrderId, setViewOrderId] = useState(null);
 
   useEffect(() => {
     salesService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
@@ -70,7 +72,7 @@ const SalesOrderDashboard = () => {
     )},
     { title: 'Actions', width: 100, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewOrderId(r._id)} /></Tooltip>
         {r.status === 'draft' && (
           <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => handleDelete(r._id)} /></Tooltip>
         )}
@@ -122,6 +124,15 @@ const SalesOrderDashboard = () => {
         <CreateSalesOrder
           onClose={() => setShowCreateOrder(false)}
           onSuccess={() => { fetchOrders(); salesService.getStats().then(r => { if (r.success) setStats(r.data); }); }}
+        />
+      )}
+
+      {/* View Order Detail */}
+      {viewOrderId && (
+        <SalesOrderView
+          orderId={viewOrderId}
+          onClose={() => setViewOrderId(null)}
+          onStatusChange={() => { fetchOrders(); salesService.getStats().then(r => { if (r.success) setStats(r.data); }); }}
         />
       )}
     </div>
