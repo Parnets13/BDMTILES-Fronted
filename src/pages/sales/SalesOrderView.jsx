@@ -92,7 +92,7 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
 
   if (loading) return (
     <div className="fixed inset-0 z-50 bg-white flex items-center justify-center">
-      <Spin size="large" tip="Loading order..." />
+      <Spin size="large" tip="Loading order..." ><span /></Spin>
     </div>
   );
 

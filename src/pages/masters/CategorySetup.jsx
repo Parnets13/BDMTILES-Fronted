@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Modal, Form, Tag, Space, message, Popconfirm, Tooltip, Breadcrumb } from 'antd';
+import { Table, Button, Input, Select, Modal, Form, Tag, Space, message, Popconfirm, Tooltip, Breadcrumb } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RightOutlined, HomeOutlined, ReloadOutlined } from '@ant-design/icons';
 import { ArrowLeft } from 'lucide-react';
 import categoryService from '../../services/categoryService.js';
@@ -272,14 +272,17 @@ const CategorySetup = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditingItem(null); }}
         okText={editingItem ? 'Update' : 'Create'}
         confirmLoading={loading}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
             <Input placeholder={`Enter ${level.slice(0, -1)} name`} />
           </Form.Item>
           <Form.Item name="description" label="Description">
-            <Input.TextArea rows={3} placeholder="Optional description" />
+            <Input.TextArea rows={2} placeholder="Optional description" />
+          </Form.Item>
+          <Form.Item name="status" label="Status" initialValue="active">
+            <Select options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
           </Form.Item>
         </Form>
       </Modal>

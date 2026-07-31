@@ -242,7 +242,7 @@ const CashBankBook = () => {
       {/* Entries Table */}
       <div className="bg-white rounded-lg border border-gray-200">
         {loading ? (
-          <div className="py-16 text-center"><Spin size="large" tip="Loading entries..." /></div>
+          <div className="py-16 text-center"><Spin size="large" tip="Loading entries..." ><span /></Spin></div>
         ) : (
           <Table
             columns={columns}

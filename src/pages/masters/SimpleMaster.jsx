@@ -108,7 +108,7 @@ const SimpleMaster = ({ title, subtitle, service }) => {
 
       <Modal title={editingItem ? `Edit ${title}` : `Add ${title}`} open={modalOpen}
         onOk={handleSave} onCancel={() => { setModalOpen(false); form.resetFields(); setEditingItem(null); }}
-        okText={editingItem ? 'Update' : 'Create'} confirmLoading={loading} destroyOnClose>
+        okText={editingItem ? 'Update' : 'Create'} confirmLoading={loading} destroyOnHidden>
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
             <Input placeholder={`Enter ${title.toLowerCase()} name`} />

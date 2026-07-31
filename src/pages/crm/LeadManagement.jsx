@@ -257,7 +257,7 @@ const LeadManagement = () => {
 
       {/* Create Lead Modal */}
       <Modal title="New Lead" open={showCreate} onCancel={() => setShowCreate(false)}
-        onOk={handleCreate} confirmLoading={createLoading} okText="Create Lead" width={640} destroyOnClose>
+        onOk={handleCreate} confirmLoading={createLoading} okText="Create Lead" width={640} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 block mb-1">Name *</label>

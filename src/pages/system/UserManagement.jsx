@@ -4,6 +4,47 @@ import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, KeyOutlined
 import userService from '../../services/userService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
+// Default permissions per role — mirrors backend ROLE_DEFAULT_PERMISSIONS
+const ROLE_DEFAULT_PERMISSIONS = {
+  super_admin: ['*'],
+  admin: ['*'],
+  sub_admin: ['dashboard.view', 'users.manage'],
+  owner: ['dashboard.view'],
+  sales_manager: [
+    'dashboard.view', 'product.master', 'dealer.master', 'sales.order.dashboard',
+    'sales.order.create', 'sales.order.approve', 'dealer.discounts',
+    'invoice', 'payment', 'reports.sales', 'reports.profit',
+    'sales.executive.app', 'dealer.order.requests', 'support.chat',
+  ],
+  purchase_manager: [
+    'dashboard.view', 'product.master', 'supplier.master', 'category.setup',
+    'po.management', 'grn.entry', 'invoice', 'payment',
+    'stock.view', 'reports.purchase', 'reports.inventory',
+  ],
+  warehouse_manager: [
+    'dashboard.view', 'stock.view', 'stock.transfer', 'stock.adjustment',
+    'picking.management', 'sorting.management', 'dispatch.management',
+    'warehouse.master', 'reports.inventory',
+  ],
+  finance_manager: [
+    'dashboard.view', 'finance.management', 'dealer.ledger', 'supplier.ledger',
+    'cheque.management', 'reconciliation', 'expense.management', 'expense.approve',
+    'reports.finance', 'reports.gst', 'reports.profit', 'tally.sync',
+  ],
+  hr_manager: [
+    'dashboard.view', 'hrms.management', 'attendance.master', 'leave.management',
+    'salary.management', 'employee.registration', 'reports.hr',
+  ],
+  sales_executive: [
+    'dashboard.view', 'product.master', 'dealer.master',
+    'sales.order.create', 'sales.executive.app',
+  ],
+  delivery_executive: ['delivery.executive.app'],
+  picking_staff: ['picking.management'],
+  sorting_staff: ['sorting.management'],
+  dealer: ['dealer.order.requests', 'support.chat'],
+};
+
 const ROLE_OPTIONS = [
   { value: 'super_admin', label: 'Super Admin' },
   { value: 'admin', label: 'Admin' },
@@ -135,6 +176,12 @@ const UserManagement = () => {
       if (selectedUser && !values.password) {
         delete values.password;
       }
+
+      // For new users, attach default permissions from role selection
+      if (!selectedUser && values.defaultPermissions?.length) {
+        values.permissions = values.defaultPermissions;
+      }
+      delete values.defaultPermissions;
 
       let res;
       if (selectedUser) {
@@ -348,7 +395,7 @@ const UserManagement = () => {
         confirmLoading={loading}
         width="90%"
         style={{ top: 20, maxWidth: 800 }}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" className="mt-4">
           <div className="grid grid-cols-2 gap-4">
@@ -369,7 +416,17 @@ const UserManagement = () => {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Select a role' }]}>
-              <Select options={ROLE_OPTIONS} placeholder="Select role" />
+              <Select
+                options={ROLE_OPTIONS}
+                placeholder="Select role"
+                onChange={(role) => {
+                  // Only auto-fill permissions on NEW user creation
+                  if (!selectedUser) {
+                    const defaults = ROLE_DEFAULT_PERMISSIONS[role] || ['dashboard.view'];
+                    form.setFieldValue('defaultPermissions', defaults);
+                  }
+                }}
+              />
             </Form.Item>
             <Form.Item name="status" label="Status" initialValue="Active">
               <Select options={[{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }]} />
@@ -382,6 +439,8 @@ const UserManagement = () => {
           >
             <Input.Password placeholder={selectedUser ? 'Leave blank to keep current' : 'Enter password'} />
           </Form.Item>
+          {/* Hidden field — carries default permissions to handleSaveUser */}
+          <Form.Item name="defaultPermissions" hidden><Input /></Form.Item>
         </Form>
       </Modal>
 

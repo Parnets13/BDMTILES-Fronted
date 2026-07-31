@@ -119,7 +119,7 @@ const DealerSchemeSetup = () => {
 
       {/* Create Modal */}
       <Modal title="New Dealer Scheme" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={800} footer={null} destroyOnClose>
+        width={800} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 block mb-1">Scheme Name *</label>

@@ -325,7 +325,7 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
 
   return (
     <Modal title="New Quotation" open={open} onCancel={handleClose}
-      width={1000} footer={null} destroyOnClose>
+      width={1000} footer={null} destroyOnHidden>
       <div className="space-y-4 mt-4">
         {/* Customer / Dealer */}
         <div className="grid grid-cols-3 gap-4">

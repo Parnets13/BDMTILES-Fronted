@@ -165,7 +165,7 @@ const SupplierInvoicePage = () => {
 
       {/* Create Invoice Modal */}
       <Modal title="Add Supplier Invoice" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={780} footer={null} destroyOnClose>
+        width={780} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <div>

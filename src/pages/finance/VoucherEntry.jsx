@@ -229,7 +229,7 @@ const VoucherEntry = () => {
 
       {/* Create Voucher Modal */}
       <Modal title="New Voucher Entry" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={900} footer={null} destroyOnClose>
+        width={900} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div className="grid grid-cols-4 gap-3">
             <div>
@@ -469,7 +469,7 @@ const BankAccountMaster = ({ bankAccounts, onRefresh }) => {
 
       <Modal title={editRecord ? 'Edit Bank Account' : 'Add Bank Account'}
         open={showAdd} onCancel={() => { setShowAdd(false); setEditRecord(null); setForm(emptyForm); }}
-        onOk={handleSave} confirmLoading={saveLoading} destroyOnClose width={580}>
+        onOk={handleSave} confirmLoading={saveLoading} destroyOnHidden width={580}>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 block mb-1">Account Name *</label>

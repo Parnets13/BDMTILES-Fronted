@@ -155,7 +155,7 @@ const SupplierSchemeEntry = () => {
 
       {/* Create Modal */}
       <Modal title="New Supplier Scheme" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={780} footer={null} destroyOnClose>
+        width={780} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <div><label className="text-xs text-gray-500 block mb-1">Supplier *</label>

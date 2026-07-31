@@ -26,6 +26,7 @@ import DealerInvoicePage from './pages/sales/DealerInvoicePage.jsx';
 import PurchaseOrderPage from './pages/purchase/PurchaseOrderPage.jsx';
 import GRNEntryPage from './pages/purchase/GRNEntryPage.jsx';
 import DebitNotePage from './pages/purchase/DebitNotePage.jsx';
+import PurchaseRequisition from './pages/purchase/PurchaseRequisition.jsx';
 import SupplierPaymentsPage from './pages/purchase/SupplierPaymentsPage.jsx';
 import SupplierInvoicePage from './pages/purchase/SupplierInvoicePage.jsx';
 import StockPage from './pages/inventory/StockPage.jsx';
@@ -33,6 +34,7 @@ import StockAdjustmentPage from './pages/inventory/StockAdjustmentPage.jsx';
 import StockTransferPage from './pages/inventory/StockTransferPage.jsx';
 import PurchaseReturnPage from './pages/purchase/PurchaseReturnPage.jsx';
 import QuotationManager from './pages/sales/QuotationManager.jsx';
+import DealerDiscounts from './pages/sales/DealerDiscounts.jsx';
 
 // Finance Pages
 import DealerLedger from './pages/finance/DealerLedger.jsx';
@@ -66,7 +68,38 @@ import HRReports from './pages/reports/HRReports.jsx';
 import ActivityLogs from './pages/reports/ActivityLogs.jsx';
 import TallyDashboard from './pages/tally/TallyDashboard.jsx';
 import SupplierSchemeEntry from './pages/schemes/SupplierSchemeEntry.jsx';
+import SupplierSchemeAnalysis from './pages/schemes/SupplierSchemeAnalysis.jsx';
+import SupplierClaimManagement from './pages/schemes/SupplierClaimManagement.jsx';
+import SchemeReconciliation from './pages/schemes/SchemeReconciliation.jsx';
 import DealerSchemeSetup from './pages/schemes/DealerSchemeSetup.jsx';
+import DealerPointsTracker from './pages/schemes/DealerPointsTracker.jsx';
+
+// Finance extra pages
+import BankAccountMaster from './pages/finance/BankAccountMaster.jsx';
+import AccountMaster from './pages/finance/AccountMaster.jsx';
+import Reconciliation from './pages/finance/Reconciliation.jsx';
+
+// Masters extra
+import VehicleMaster from './pages/masters/VehicleMaster.jsx';
+
+// CRM extra
+import FollowUpManager from './pages/crm/FollowUpManager.jsx';
+
+// Complaints extra
+import ComplaintResolution from './pages/complaints/ComplaintResolution.jsx';
+import ReturnRequest from './pages/complaints/ReturnRequest.jsx';
+
+// Inventory extra
+import StockAlerts from './pages/inventory/StockAlerts.jsx';
+import PhysicalAudit from './pages/inventory/PhysicalAudit.jsx';
+
+// Finance extra (credit monitor)
+import CreditDaysMonitor from './pages/finance/CreditDaysMonitor.jsx';
+
+// Dispatch extra
+import DeliveryAssignment from './pages/dispatch/DeliveryAssignment.jsx';
+import DeliveryMonitoring from './pages/dispatch/DeliveryMonitoring.jsx';
+import DeliveryHistory from './pages/dispatch/DeliveryHistory.jsx';
 
 // HRMS Pages
 import EmployeeRegistration from './pages/hrms/EmployeeRegistration.jsx';
@@ -75,6 +108,35 @@ import LeaveManagement from './pages/hrms/LeaveManagement.jsx';
 import SalaryProcessing from './pages/hrms/SalaryProcessing.jsx';
 import LoansAdvances from './pages/hrms/LoansAdvances.jsx';
 import HRMSSettings from './pages/hrms/HRMSSettings.jsx';
+import OvertimeCalculation from './pages/hrms/OvertimeCalculation.jsx';
+import DailyWageWorkers from './pages/hrms/DailyWageWorkers.jsx';
+import ExpenseManagement from './pages/finance/ExpenseManagement.jsx';
+
+// Dealer App
+import DealerOrderRequests from './pages/dealer-app/DealerOrderRequests.jsx';
+
+// Assets
+import AssetMaster from './pages/assets/AssetMaster.jsx';
+import AssetAssignment from './pages/assets/AssetAssignment.jsx';
+import AssetMaintenance from './pages/assets/AssetMaintenance.jsx';
+
+// SE App Admin Views
+import SEAttendanceViewer from './pages/se-app/SEAttendanceViewer.jsx';
+import SEDealerVisits from './pages/se-app/SEDealerVisits.jsx';
+import SEDealerAssignment from './pages/se-app/SEDealerAssignment.jsx';
+import SERoutePlan from './pages/se-app/SERoutePlan.jsx';
+import SEDealerInsights from './pages/se-app/SEDealerInsights.jsx';
+import SECollections from './pages/se-app/SECollections.jsx';
+import SETargetManagement from './pages/se-app/SETargetManagement.jsx';
+import SEExpenseViewer from './pages/se-app/SEExpenseViewer.jsx';
+
+// DE App Admin Views
+import DEAssignment from './pages/de-app/DEAssignment.jsx';
+import DEMonitoring from './pages/de-app/DEMonitoring.jsx';
+import DEMyDeliveries from './pages/de-app/DEMyDeliveries.jsx';
+import DERoutePlan from './pages/de-app/DERoutePlan.jsx';
+import DECollections from './pages/de-app/DECollections.jsx';
+import DEHistory from './pages/de-app/DEHistory.jsx';
 
 // Placeholder page component for modules not yet built
 const PlaceholderPage = ({ title }) => (
@@ -93,7 +155,7 @@ const App = () => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
-        <Spin size="large" tip="Loading BDMTILES..." />
+        <Spin size="large" tip="Loading BDMTILES..." ><span /></Spin>
       </div>
     );
   }
@@ -238,8 +300,8 @@ const App = () => {
         <Route
           path="/sales-purchase/dealer-discounts"
           element={
-            <ProtectedRoute requiredPermission="dealer.specific.discounts">
-              <PlaceholderPage title="Dealer Discounts" />
+            <ProtectedRoute requiredPermission="dealer.discounts">
+              <DealerDiscounts />
             </ProtectedRoute>
           }
         />
@@ -320,7 +382,7 @@ const App = () => {
         <Route
           path="/inventory/stock"
           element={
-            <ProtectedRoute requiredPermission="stock">
+            <ProtectedRoute requiredPermission="stock.view">
               <StockPage />
             </ProtectedRoute>
           }
@@ -354,7 +416,7 @@ const App = () => {
         <Route
           path="/hrms/geo-attendance"
           element={
-            <ProtectedRoute requiredPermission="geo.attendance.monitoring">
+            <ProtectedRoute requiredPermission="attendance.master">
               <AttendanceDashboard />
             </ProtectedRoute>
           }
@@ -386,7 +448,7 @@ const App = () => {
         <Route
           path="/hrms/salary-processing"
           element={
-            <ProtectedRoute requiredPermission="salary.processing">
+            <ProtectedRoute requiredPermission="salary.management">
               <SalaryProcessing />
             </ProtectedRoute>
           }
@@ -394,7 +456,7 @@ const App = () => {
         <Route
           path="/hrms/generate-salary-slip"
           element={
-            <ProtectedRoute requiredPermission="generate.salary.slip">
+            <ProtectedRoute requiredPermission="salary.management">
               <SalaryProcessing />
             </ProtectedRoute>
           }
@@ -402,7 +464,7 @@ const App = () => {
         <Route
           path="/hrms/loans-advances"
           element={
-            <ProtectedRoute requiredPermission="salary.processing">
+            <ProtectedRoute requiredPermission="salary.management">
               <LoansAdvances />
             </ProtectedRoute>
           }
@@ -423,96 +485,34 @@ const App = () => {
           element={<ProtectedRoute requiredPermission="finance.management"><CashBankBook /></ProtectedRoute>} />
         <Route path="/finance/payment-allocation"
           element={<ProtectedRoute requiredPermission="finance.management"><PaymentAllocation /></ProtectedRoute>} />
+        <Route path="/finance/auto-reconciliation"
+          element={<ProtectedRoute requiredPermission="reconciliation"><Reconciliation /></ProtectedRoute>} />
         <Route
-          path="/finance/auto-reconciliation"
+          path="/finance/bank-account-master"
           element={
-            <ProtectedRoute requiredPermission="auto.reconciliation">
-              <PlaceholderPage title="Auto Reconciliation" />
+            <ProtectedRoute requiredPermission="finance.management">
+              <BankAccountMaster />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/finance/account-master"
+          element={
+            <ProtectedRoute requiredPermission="finance.management">
+              <AccountMaster />
             </ProtectedRoute>
           }
         />
 
-        {/* Reports & Logs */}
-        <Route
-          path="/reports/profit-analysis/bill-wise-profit"
-          element={
-            <ProtectedRoute requiredPermission="bill.wise.profit">
-              <PlaceholderPage title="Bill-wise Profit" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/profit-analysis/category-margin"
-          element={
-            <ProtectedRoute requiredPermission="category.product.gross.margin">
-              <PlaceholderPage title="Category Margin" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/profit-analysis/deviation-report"
-          element={
-            <ProtectedRoute requiredPermission="sale.vs.purchase.price.deviation">
-              <PlaceholderPage title="Deviation Report" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/activity-logs"
-          element={
-            <ProtectedRoute requiredPermission="activity.logs">
-              <PlaceholderPage title="Activity Logs" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/download-logs"
-          element={
-            <ProtectedRoute requiredPermission="download.logs">
-              <PlaceholderPage title="Download Logs" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/dealer-performance"
-          element={
-            <ProtectedRoute requiredPermission="dealer.performance">
-              <PlaceholderPage title="Dealer Performance" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/balance-sheet"
-          element={
-            <ProtectedRoute requiredPermission="balance.sheet">
-              <PlaceholderPage title="Balance Sheet" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/trial-balance"
-          element={
-            <ProtectedRoute requiredPermission="balance.sheet">
-              <PlaceholderPage title="Trial Balance" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/reports/profit-loss"
-          element={
-            <ProtectedRoute requiredPermission="balance.sheet">
-              <PlaceholderPage title="Profit & Loss" />
-            </ProtectedRoute>
-          }
-        />
         {/* Supplier Incentive Schemes */}
         <Route path="/supplier-incentive/scheme-entry" element={<ProtectedRoute requiredPermission="scheme.entry"><SupplierSchemeEntry /></ProtectedRoute>} />
-        <Route path="/supplier-incentive/scheme-analysis" element={<ProtectedRoute requiredPermission="scheme.analysis"><SupplierSchemeEntry /></ProtectedRoute>} />
-        <Route path="/supplier-incentive/claim-submission" element={<ProtectedRoute requiredPermission="claim.submission"><SupplierSchemeEntry /></ProtectedRoute>} />
-        <Route path="/supplier-incentive/reconciliation" element={<ProtectedRoute requiredPermission="incentive.reconciliation"><SupplierSchemeEntry /></ProtectedRoute>} />
+        <Route path="/supplier-incentive/scheme-analysis" element={<ProtectedRoute requiredPermission="scheme.analysis"><SupplierSchemeAnalysis /></ProtectedRoute>} />
+        <Route path="/supplier-incentive/claim-submission" element={<ProtectedRoute requiredPermission="claim.submission"><SupplierClaimManagement /></ProtectedRoute>} />
+        <Route path="/supplier-incentive/reconciliation" element={<ProtectedRoute requiredPermission="incentive.reconciliation"><SchemeReconciliation /></ProtectedRoute>} />
 
         {/* Dealer Schemes */}
         <Route path="/dealer-app/scheme-setup" element={<ProtectedRoute requiredPermission="scheme.analysis"><DealerSchemeSetup /></ProtectedRoute>} />
+        <Route path="/dealer-app/points-tracker" element={<ProtectedRoute requiredPermission="scheme.analysis"><DealerPointsTracker /></ProtectedRoute>} />
 
         {/* Dealer App */}
         <Route
@@ -527,146 +527,34 @@ const App = () => {
           path="/dealer-app/order-requests"
           element={
             <ProtectedRoute requiredPermission="dealer.order.requests">
-              <PlaceholderPage title="Dealer Order Requests" />
+              <DealerOrderRequests />
             </ProtectedRoute>
           }
         />
 
         {/* Sales Executive App */}
-        <Route
-          path="/se-app/attendance"
-          element={
-            <ProtectedRoute requiredPermission="se.attendance.view">
-              <PlaceholderPage title="SE Attendance" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/dealer-visits"
-          element={
-            <ProtectedRoute requiredPermission="se.attendance.view">
-              <PlaceholderPage title="Dealer Visits" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/dealer-assignment"
-          element={
-            <ProtectedRoute requiredPermission="se.attendance.view">
-              <PlaceholderPage title="Dealer Assignment" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/route-plan"
-          element={
-            <ProtectedRoute requiredPermission="se.route.plan">
-              <PlaceholderPage title="Route Plan" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/dealer-insights"
-          element={
-            <ProtectedRoute requiredPermission="se.dealer.insights">
-              <PlaceholderPage title="Dealer Insights" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/collections"
-          element={
-            <ProtectedRoute requiredPermission="se.collections.view">
-              <PlaceholderPage title="SE Collections" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/targets"
-          element={
-            <ProtectedRoute requiredPermission="se.targets.view">
-              <PlaceholderPage title="Target Management" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/expenses"
-          element={
-            <ProtectedRoute requiredPermission="sales.executive.app">
-              <PlaceholderPage title="SE Expenses" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/se-app/live-tracking"
-          element={
-            <ProtectedRoute requiredPermission="sales.executive.app">
-              <PlaceholderPage title="SE Live Tracking" />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEAttendanceViewer /></ProtectedRoute>} />
+        <Route path="/se-app/dealer-visits" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerVisits /></ProtectedRoute>} />
+        <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerAssignment /></ProtectedRoute>} />
+        <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="se.route.plan"><SERoutePlan /></ProtectedRoute>} />
+        <Route path="/se-app/dealer-insights" element={<ProtectedRoute requiredPermission="se.dealer.insights"><SEDealerInsights /></ProtectedRoute>} />
+        <Route path="/se-app/collections" element={<ProtectedRoute requiredPermission="se.collections.view"><SECollections /></ProtectedRoute>} />
+        <Route path="/se-app/targets" element={<ProtectedRoute requiredPermission="se.targets.view"><SETargetManagement /></ProtectedRoute>} />
+        <Route path="/se-app/expenses" element={<ProtectedRoute requiredPermission="sales.executive.app"><SEExpenseViewer /></ProtectedRoute>} />
+        <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="sales.executive.app"><PlaceholderPage title="SE Live Tracking — Phase 2 (Socket.io)" /></ProtectedRoute>} />
 
         {/* Delivery Executive App */}
-        <Route
-          path="/de-app/assignment"
-          element={
-            <ProtectedRoute requiredPermission="de.assignment.manage">
-              <PlaceholderPage title="Delivery Assignment" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/monitoring"
-          element={
-            <ProtectedRoute requiredPermission="de.monitoring.view">
-              <PlaceholderPage title="Delivery Monitoring" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/my-deliveries"
-          element={
-            <ProtectedRoute requiredPermission="de.deliveries.view">
-              <PlaceholderPage title="My Deliveries" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/live-tracking"
-          element={
-            <ProtectedRoute requiredPermission="de.tracking.view">
-              <PlaceholderPage title="DE Live Tracking" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/route-plan"
-          element={
-            <ProtectedRoute requiredPermission="de.route.view">
-              <PlaceholderPage title="DE Route Plan" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/collections"
-          element={
-            <ProtectedRoute requiredPermission="de.collections.view">
-              <PlaceholderPage title="DE Collections" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/de-app/history"
-          element={
-            <ProtectedRoute requiredPermission="de.history.view">
-              <PlaceholderPage title="Delivery History" />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/de-app/assignment" element={<ProtectedRoute requiredPermission="de.assignment.manage"><DEAssignment /></ProtectedRoute>} />
+        <Route path="/de-app/monitoring" element={<ProtectedRoute requiredPermission="de.monitoring.view"><DEMonitoring /></ProtectedRoute>} />
+        <Route path="/de-app/my-deliveries" element={<ProtectedRoute requiredPermission="de.deliveries.view"><DEMyDeliveries /></ProtectedRoute>} />
+        <Route path="/de-app/live-tracking" element={<ProtectedRoute requiredPermission="de.tracking.view"><PlaceholderPage title="DE Live Tracking — Phase 2 (Socket.io)" /></ProtectedRoute>} />
+        <Route path="/de-app/route-plan" element={<ProtectedRoute requiredPermission="de.route.view"><DERoutePlan /></ProtectedRoute>} />
+        <Route path="/de-app/collections" element={<ProtectedRoute requiredPermission="de.collections.view"><DECollections /></ProtectedRoute>} />
+        <Route path="/de-app/history" element={<ProtectedRoute requiredPermission="de.history.view"><DEHistory /></ProtectedRoute>} />
 
         {/* Inventory — additional */}
-        <Route path="/inventory/physical-audit" element={<ProtectedRoute requiredPermission="stock.adjustment"><PlaceholderPage title="Physical Stock Audit" /></ProtectedRoute>} />
-        <Route path="/inventory/stock-alerts" element={<ProtectedRoute requiredPermission="stock"><PlaceholderPage title="Stock Alerts" /></ProtectedRoute>} />
+        <Route path="/inventory/physical-audit" element={<ProtectedRoute requiredPermission="stock.adjustment"><PhysicalAudit /></ProtectedRoute>} />
+        <Route path="/inventory/stock-alerts" element={<ProtectedRoute requiredPermission="stock.view"><StockAlerts /></ProtectedRoute>} />
 
         {/* Warehouse Operations */}
         <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><PickingList /></ProtectedRoute>} />
@@ -675,40 +563,40 @@ const App = () => {
         <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="warehouse.manager"><DispatchPlanning /></ProtectedRoute>} />
 
         {/* Dispatch & Delivery */}
-        <Route path="/dispatch/delivery-assignment" element={<ProtectedRoute requiredPermission="dispatch.management"><DispatchPlanning /></ProtectedRoute>} />
-        <Route path="/dispatch/delivery-monitoring" element={<ProtectedRoute requiredPermission="dispatch.management"><DispatchPlanning /></ProtectedRoute>} />
-        <Route path="/dispatch/delivery-history" element={<ProtectedRoute requiredPermission="dispatch.management"><PlaceholderPage title="Delivery History" /></ProtectedRoute>} />
+        <Route path="/dispatch/delivery-assignment" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryAssignment /></ProtectedRoute>} />
+        <Route path="/dispatch/delivery-monitoring" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryMonitoring /></ProtectedRoute>} />
+        <Route path="/dispatch/delivery-history" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryHistory /></ProtectedRoute>} />
         <Route path="/dispatch/live-tracking" element={<ProtectedRoute requiredPermission="dispatch.management"><PlaceholderPage title="Live Tracking" /></ProtectedRoute>} />
         <Route path="/dispatch/route-optimization" element={<ProtectedRoute requiredPermission="dispatch.management"><PlaceholderPage title="Route Optimization" /></ProtectedRoute>} />
 
         {/* CRM */}
         <Route path="/crm/lead-management" element={<ProtectedRoute requiredPermission="lead.management"><LeadManagement /></ProtectedRoute>} />
-        <Route path="/crm/followup-manager" element={<ProtectedRoute requiredPermission="lead.management"><LeadManagement /></ProtectedRoute>} />
+        <Route path="/crm/followup-manager" element={<ProtectedRoute requiredPermission="lead.management"><FollowUpManager /></ProtectedRoute>} />
         <Route path="/crm/customer-360" element={<ProtectedRoute requiredPermission="lead.management"><Customer360 /></ProtectedRoute>} />
 
         {/* Complaints & Returns */}
         <Route path="/complaints/dashboard" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintDashboard /></ProtectedRoute>} />
-        <Route path="/complaints/return-request" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintDashboard /></ProtectedRoute>} />
-        <Route path="/complaints/resolution" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintDashboard /></ProtectedRoute>} />
+        <Route path="/complaints/return-request" element={<ProtectedRoute requiredPermission="complaint.management"><ReturnRequest /></ProtectedRoute>} />
+        <Route path="/complaints/resolution" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintResolution /></ProtectedRoute>} />
 
         {/* Assets */}
-        <Route path="/assets/master" element={<ProtectedRoute requiredPermission="asset.management"><PlaceholderPage title="Asset Master" /></ProtectedRoute>} />
-        <Route path="/assets/assignment" element={<ProtectedRoute requiredPermission="asset.management"><PlaceholderPage title="Asset Assignment" /></ProtectedRoute>} />
-        <Route path="/assets/maintenance" element={<ProtectedRoute requiredPermission="asset.management"><PlaceholderPage title="Asset Maintenance" /></ProtectedRoute>} />
+        <Route path="/assets/master" element={<ProtectedRoute requiredPermission="asset.management"><AssetMaster /></ProtectedRoute>} />
+        <Route path="/assets/assignment" element={<ProtectedRoute requiredPermission="asset.management"><AssetAssignment /></ProtectedRoute>} />
+        <Route path="/assets/maintenance" element={<ProtectedRoute requiredPermission="asset.management"><AssetMaintenance /></ProtectedRoute>} />
 
         {/* HRMS — additional */}
-        <Route path="/hrms/overtime-calculation" element={<ProtectedRoute requiredPermission="attendance.master"><PlaceholderPage title="Overtime Calculation" /></ProtectedRoute>} />
-        <Route path="/hrms/daily-wage-workers" element={<ProtectedRoute requiredPermission="attendance.master"><PlaceholderPage title="Daily Wage Workers" /></ProtectedRoute>} />
-        <Route path="/hrms/settings" element={<ProtectedRoute requiredPermission="hrms.settings"><HRMSSettings /></ProtectedRoute>} />
+        <Route path="/hrms/overtime-calculation" element={<ProtectedRoute requiredPermission="attendance.master"><OvertimeCalculation /></ProtectedRoute>} />
+        <Route path="/hrms/daily-wage-workers" element={<ProtectedRoute requiredPermission="attendance.master"><DailyWageWorkers /></ProtectedRoute>} />
+        <Route path="/hrms/settings" element={<ProtectedRoute requiredPermission="hrms.management"><HRMSSettings /></ProtectedRoute>} />
 
         {/* Finance — additional */}
-        <Route path="/finance/credit-days-monitor" element={<ProtectedRoute requiredPermission="finance.management"><PlaceholderPage title="Credit Days Monitor" /></ProtectedRoute>} />
-        <Route path="/finance/expense-management" element={<ProtectedRoute requiredPermission="finance.management"><PlaceholderPage title="Expense Management" /></ProtectedRoute>} />
+        <Route path="/finance/credit-days-monitor" element={<ProtectedRoute requiredPermission="finance.management"><CreditDaysMonitor /></ProtectedRoute>} />
+        <Route path="/finance/expense-management" element={<ProtectedRoute requiredPermission="finance.management"><ExpenseManagement /></ProtectedRoute>} />
 
         {/* Sales & Purchase — additional */}
         <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="sales.order.create"><QuotationManager /></ProtectedRoute>} />
-        <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredPermission="po.management"><PlaceholderPage title="Purchase Requisition" /></ProtectedRoute>} />
-        <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><PlaceholderPage title="Vehicle Master" /></ProtectedRoute>} />
+        <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredPermission="po.management"><PurchaseRequisition /></ProtectedRoute>} />
+        <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
 
         {/* Reports — additional */}
         <Route path="/reports/sales-reports" element={<ProtectedRoute requiredPermission="reports.management"><SalesReports /></ProtectedRoute>} />

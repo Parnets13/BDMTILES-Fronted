@@ -8,7 +8,7 @@ const ProtectedRoute = ({ children, requiredPermission, requiredRole }) => {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <Spin size="large" tip="Loading..." />
+        <Spin size="large" tip="Loading..." ><span /></Spin>
       </div>
     );
   }

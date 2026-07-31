@@ -214,7 +214,7 @@ const DealerPaymentsPage = () => {
 
       {/* Create Payment Modal */}
       <Modal title="Record Dealer Payment" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={900} footer={null} destroyOnClose>
+        width={900} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Dealer Search */}
           <div>

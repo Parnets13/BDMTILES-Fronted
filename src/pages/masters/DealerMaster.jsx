@@ -182,7 +182,10 @@ const DealerMaster = () => {
                   <Col span={6}><Form.Item name="mobile" label="Mobile" rules={[{required:true}]}><Input placeholder="Mobile number" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="alternateMobile" label="Alt Mobile"><Input placeholder="Alternate" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="email" label="Email"><Input placeholder="Email" /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="gstin" label="GSTIN"><Input placeholder="GSTIN" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="gstin" label="GSTIN"
+                    rules={[{ pattern: /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}[Z]{1}[A-Z0-9]{1}$/, message: 'Invalid GSTIN (e.g. 29ABCDE1234F1Z5)' }]}>
+                    <Input placeholder="29ABCDE1234F1Z5" maxLength={15} style={{ textTransform: 'uppercase' }} onChange={e => e.target.value = e.target.value.toUpperCase()} />
+                  </Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
                   <Col span={6}><Form.Item name="pan" label="PAN"><Input placeholder="PAN" /></Form.Item></Col>

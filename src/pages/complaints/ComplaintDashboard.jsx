@@ -222,7 +222,7 @@ const ComplaintDashboard = () => {
 
       {/* Create Complaint Modal */}
       <Modal title="New Complaint" open={showCreate} onCancel={() => setShowCreate(false)}
-        onOk={handleCreate} confirmLoading={createLoading} okText="Register Complaint" width={580} destroyOnClose>
+        onOk={handleCreate} confirmLoading={createLoading} okText="Register Complaint" width={580} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <div>
             <label className="text-xs text-gray-500 block mb-1">Dealer</label>

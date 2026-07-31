@@ -224,7 +224,7 @@ const DebitNotePage = () => {
 
       {/* Create Modal */}
       <Modal title="New Debit Note (Purchase Return)" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={1050} footer={null} destroyOnClose>
+        width={1050} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Supplier */}
           <div className="grid grid-cols-2 gap-4">

@@ -159,7 +159,7 @@ const SupplierLedger = () => {
         </Row>
 
         <div className="bg-white rounded-lg border border-gray-200">
-          {loadingEntries ? <div className="py-16 text-center"><Spin tip="Loading..." /></div> : (
+          {loadingEntries ? <div className="py-16 text-center"><Spin tip="Loading..." ><span /></Spin></div> : (
             <Table columns={entryColumns} dataSource={entries} rowKey="_id" size="small" scroll={{ x: 900 }}
               pagination={{ pageSize: 50, showTotal: t => `${t} entries` }}
               summary={() => (

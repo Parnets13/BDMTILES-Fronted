@@ -122,7 +122,7 @@ const SupplierPaymentsPage = () => {
 
       {/* Create Payment Modal */}
       <Modal title="Record Supplier Payment" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={650} footer={null} destroyOnClose>
+        width={650} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div>
             <label className="text-sm font-semibold text-gray-700 block mb-1">Supplier *</label>

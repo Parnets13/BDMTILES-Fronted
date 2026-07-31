@@ -333,7 +333,7 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
 
   return (
     <Modal title="New Purchase Return / Debit Note" open={open} onCancel={handleClose}
-      width={900} footer={null} destroyOnClose>
+      width={900} footer={null} destroyOnHidden>
       <div className="space-y-4 mt-4">
         {/* Header */}
         <div className="grid grid-cols-2 gap-4">

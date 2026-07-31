@@ -189,7 +189,7 @@ const ChequeManagement = () => {
 
       {/* Create Cheque Modal */}
       <Modal title="Add Cheque" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        onOk={handleCreate} confirmLoading={createLoading} okText="Save Cheque" width={600} destroyOnClose>
+        onOk={handleCreate} confirmLoading={createLoading} okText="Save Cheque" width={600} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-2 gap-3">
             <div>

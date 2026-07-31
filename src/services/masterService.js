@@ -51,6 +51,12 @@ const masterService = {
   createExpenseCategory: (data) => api.post('/masters/expense-categories', data),
   updateExpenseCategory: (id, data) => api.put(`/masters/expense-categories/${id}`, data),
   deleteExpenseCategory: (id) => api.delete(`/masters/expense-categories/${id}`),
+
+  // Vehicles
+  getVehicles: (params) => api.get('/masters/vehicles', { params }),
+  createVehicle: (data) => api.post('/masters/vehicles', data),
+  updateVehicle: (id, data) => api.put(`/masters/vehicles/${id}`, data),
+  deleteVehicle: (id) => api.delete(`/masters/vehicles/${id}`),
 };
 
 export default masterService;

@@ -260,7 +260,7 @@ const DealerProductPricingPage = () => {
 
       {/* Add Override Modal */}
       <Modal title="Add Pricing Override" open={showAdd} onCancel={() => { setShowAdd(false); resetAddForm(); }}
-        footer={null} width={680} destroyOnClose>
+        footer={null} width={680} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Product Search */}
           <div>

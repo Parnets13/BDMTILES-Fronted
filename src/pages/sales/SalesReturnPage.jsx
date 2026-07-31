@@ -247,7 +247,7 @@ const SalesReturnPage = () => {
 
       {/* Create Return Modal */}
       <Modal title="New Sales Return" open={showCreate} onCancel={() => { setShowCreate(false); resetCreateForm(); }}
-        width={1100} footer={null} destroyOnClose>
+        width={1100} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Dealer Search */}
           <div>
