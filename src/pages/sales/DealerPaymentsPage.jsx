@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Checkbox } from 'antd';
-import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
-import { Wallet, TrendingUp } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, ExclamationCircleOutlined, WalletOutlined, RiseOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = { pending: 'orange', confirmed: 'green', bounced: 'red', cancelled: 'default' };
 const MODE_COLORS = { cash: 'green', cheque: 'blue', upi: 'purple', neft: 'cyan', rtgs: 'geekblue', card: 'magenta', adjustment: 'default' };
@@ -179,12 +179,15 @@ const DealerPaymentsPage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Dealer Payments</h1><p className="text-sm text-gray-500 mt-0.5">Record and track dealer payment receipts</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Record Payment</Button>
+        <Space>
+          <ModuleRecycleBin module="payment" title="Deleted Payments" onRestore={fetchPayments} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Record Payment</Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Today's Receipts" value={`₹${(stats.todayReceipts || 0).toLocaleString()}`} prefix={<TrendingUp size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Today's Receipts" value={`₹${(stats.todayReceipts || 0).toLocaleString()}`} prefix={<RiseOutlined />} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Today Count" value={stats.todayCount || 0} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="This Month" value={`₹${(stats.monthReceipts || 0).toLocaleString()}`} valueStyle={{ color: '#52c41a' }} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="Total Receipts" value={`₹${(stats.totalReceipts || 0).toLocaleString()}`} /></Card></Col>

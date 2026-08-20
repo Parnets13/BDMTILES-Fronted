@@ -1,15 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Row, Col, Card, Statistic, Button, Skeleton, message } from 'antd';
-import { ReloadOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
+import { ReloadOutlined, ArrowUpOutlined, ArrowDownOutlined, RiseOutlined, ShoppingCartOutlined, ClockCircleOutlined, DollarOutlined, ShopOutlined, HomeOutlined, FileTextOutlined, TeamOutlined, BarChartOutlined, CheckSquareOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer
 } from 'recharts';
-import {
-  TrendingUp, ShoppingCart, Clock, DollarSign,
-  Package, Warehouse, FileText, Users, BarChart2, CheckSquare
-} from 'lucide-react';
 import reportService from '../../services/reportService.js';
 
 const BRAND = '#FF5F03';
@@ -34,20 +30,20 @@ const OwnerDashboard = () => {
   const growthColor = data?.monthGrowth > 0 ? '#52c41a' : data?.monthGrowth < 0 ? '#f5222d' : '#666';
 
   const quickActions = [
-    { label: 'New Sales Order', icon: <ShoppingCart size={18} />, path: '/sales-purchase/sales-order-dashboard', color: BRAND },
-    { label: 'New Quotation', icon: <FileText size={18} />, path: '/sales-purchase/quotation-manager', color: '#1890ff' },
-    { label: 'Add Payment', icon: <DollarSign size={18} />, path: '/sales-purchase/dealer-payments', color: '#52c41a' },
-    { label: 'Dealer Ledger', icon: <Users size={18} />, path: '/finance/dealer-ledger', color: '#722ed1' },
-    { label: 'Stock Check', icon: <Package size={18} />, path: '/inventory/stock', color: '#fa8c16' },
-    { label: 'Reports', icon: <BarChart2 size={18} />, path: '/reports/sales-reports', color: '#13c2c2' },
+    { label: 'New Sales Order', icon: <ShoppingCartOutlined style={{fontSize: 18}} />, path: '/sales-purchase/sales-order-dashboard', color: BRAND },
+    { label: 'New Quotation', icon: <FileTextOutlined style={{fontSize: 18}} />, path: '/sales-purchase/quotation-manager', color: '#1890ff' },
+    { label: 'Add Payment', icon: <DollarOutlined style={{fontSize: 18}} />, path: '/sales-purchase/dealer-payments', color: '#52c41a' },
+    { label: 'Dealer Ledger', icon: <TeamOutlined style={{fontSize: 18}} />, path: '/finance/dealer-ledger', color: '#722ed1' },
+    { label: 'Stock Check', icon: <ShopOutlined style={{fontSize: 18}} />, path: '/inventory/stock', color: '#fa8c16' },
+    { label: 'Reports', icon: <BarChartOutlined style={{fontSize: 18}} />, path: '/reports/sales-reports', color: '#13c2c2' },
   ];
 
   const recentActivity = [
-    { icon: <ShoppingCart size={13} className="text-orange-500" />, text: 'Sales module active — orders being processed' },
-    { icon: <Package size={13} className="text-blue-500" />, text: 'Stock levels updated after last GRN' },
-    { icon: <DollarSign size={13} className="text-green-500" />, text: 'Payments module ready for dealer receipts' },
-    { icon: <CheckSquare size={13} className="text-purple-500" />, text: 'Approval workflow is active' },
-    { icon: <TrendingUp size={13} className="text-teal-500" />, text: 'Reports generated for current month' },
+    { icon: <ShoppingCartOutlined className="text-orange-500" />, text: 'Sales module active — orders being processed' },
+    { icon: <ShopOutlined className="text-blue-500" />, text: 'Stock levels updated after last GRN' },
+    { icon: <DollarOutlined className="text-green-500" />, text: 'Payments module ready for dealer receipts' },
+    { icon: <CheckSquareOutlined className="text-purple-500" />, text: 'Approval workflow is active' },
+    { icon: <RiseOutlined className="text-teal-500" />, text: 'Reports generated for current month' },
   ];
 
   return (
@@ -115,7 +111,7 @@ const OwnerDashboard = () => {
               <Card size="small" style={{ borderLeft: '4px solid #52c41a' }}>
                 <Statistic title="Total Stock Qty" value={data?.totalStock || 0}
                   suffix="units" valueStyle={{ color: '#52c41a' }}
-                  prefix={<Package size={16} />} />
+                  prefix={<ShopOutlined />} />
               </Card>
             </Col>
             <Col span={8}>

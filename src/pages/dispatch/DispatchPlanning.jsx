@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Checkbox
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Truck, Package, CheckCircle, Clock } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, CarOutlined, ShopOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const STATUS_COLORS = {
@@ -126,7 +125,7 @@ const DispatchPlanning = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Truck size={24} className="text-blue-600" /> Dispatch Planning
+            <CarOutlined className="text-blue-600 text-xl" /> Dispatch Planning
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Plan and manage delivery dispatches</p>
         </div>

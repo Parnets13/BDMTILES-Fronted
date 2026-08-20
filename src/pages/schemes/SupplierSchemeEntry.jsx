@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, InputNumber, Divider
 } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, SendOutlined, CheckOutlined } from '@ant-design/icons';
-import { Gift } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, SendOutlined, CheckOutlined, GiftOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 import masterService from '../../services/masterService.js';
 

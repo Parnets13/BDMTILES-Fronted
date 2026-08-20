@@ -5,9 +5,8 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
-  CheckOutlined, CloseOutlined, EyeOutlined, DeleteOutlined
+  CheckOutlined, CloseOutlined, EyeOutlined, DeleteOutlined, ShoppingOutlined
 } from '@ant-design/icons';
-import { ShoppingBag } from 'lucide-react';
 import api from '../../config/api.js';
 import productService from '../../services/productService.js';
 import masterService from '../../services/masterService.js';
@@ -211,7 +210,7 @@ const PurchaseRequisition = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ShoppingBag size={22} className="text-blue-500" />
+            <ShoppingOutlined className="text-blue-500 text-xl" />
             Purchase Requisition
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">

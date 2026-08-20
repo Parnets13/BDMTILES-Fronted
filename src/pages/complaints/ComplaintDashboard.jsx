@@ -3,10 +3,10 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Checkbox
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { AlertTriangle, CheckCircle } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const CATEGORY_COLORS = {
   damaged_goods: 'red', wrong_product: 'orange', quality_issue: 'volcano',
@@ -181,13 +181,16 @@ const ComplaintDashboard = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <AlertTriangle size={24} className="text-orange-600" /> Complaint Management
+            <WarningOutlined className="text-orange-600 text-xl" /> Complaint Management
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Track and resolve customer complaints</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
-          New Complaint
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="complaint" title="Deleted Complaints" onRestore={fetchComplaints} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
+            New Complaint
+          </Button>
+        </Space>
       </div>
 
       <Row gutter={[12, 12]} className="mb-4">
@@ -308,7 +311,7 @@ const ComplaintDashboard = () => {
                     </Checkbox>
                   </div>
                 </div>
-                <Button type="primary" size="small" loading={resolveLoading} icon={<CheckCircle size={14} />} onClick={handleResolve}>
+                <Button type="primary" size="small" loading={resolveLoading} icon={<CheckCircleOutlined />} onClick={handleResolve}>
                   Submit Resolution
                 </Button>
               </div>

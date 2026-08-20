@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, Divider } from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { ShoppingBag } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ShoppingOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 
 const STATUS_COLORS = {
@@ -98,7 +97,7 @@ const DealerOrderRequests = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ShoppingBag size={22} className="text-blue-600" /> Dealer Order Requests
+            <ShoppingOutlined className="text-blue-600 text-xl" /> Dealer Order Requests
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Review and approve orders from dealers and the Dealer App</p>
         </div>

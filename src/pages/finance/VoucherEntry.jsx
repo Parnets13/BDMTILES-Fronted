@@ -5,9 +5,8 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
-  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, BankOutlined
+  CheckCircleOutlined, CloseCircleOutlined, EyeOutlined, BankOutlined, FileTextOutlined
 } from '@ant-design/icons';
-import { FileText, Building2 } from 'lucide-react';
 import financeService from '../../services/financeService.js';
 
 const VOUCHER_TYPE_COLORS = {
@@ -168,7 +167,7 @@ const VoucherEntry = () => {
   const tabItems = [
     {
       key: 'vouchers',
-      label: <span className="flex items-center gap-1"><FileText size={14} /> Vouchers</span>,
+      label: <span className="flex items-center gap-1"><FileTextOutlined /> Vouchers</span>,
       children: (
         <div>
           <Row gutter={12} className="mb-4">
@@ -206,7 +205,7 @@ const VoucherEntry = () => {
     },
     {
       key: 'bank-accounts',
-      label: <span className="flex items-center gap-1"><Building2 size={14} /> Bank Accounts</span>,
+      label: <span className="flex items-center gap-1"><BankOutlined /> Bank Accounts</span>,
       children: <BankAccountMaster bankAccounts={bankAccounts} onRefresh={() => financeService.getBankAccounts().then(r => { if (r.success) setBankAccounts(r.data); })} />,
     },
   ];

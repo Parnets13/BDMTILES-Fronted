@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Modal, Form, Tag, Space, message, Popconfirm, Tooltip, Breadcrumb } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RightOutlined, HomeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { ArrowLeft } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RightOutlined, HomeOutlined, ReloadOutlined, ArrowLeftOutlined } from '@ant-design/icons';
 import categoryService from '../../services/categoryService.js';
 
 const CategorySetup = () => {
@@ -213,7 +212,7 @@ const CategorySetup = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
         <div className="flex items-center gap-3">
           {level !== 'brands' && (
-            <Button icon={<ArrowLeft size={16} />} onClick={goBack} className="flex items-center" />
+            <Button icon={<ArrowLeftOutlined />} onClick={goBack} className="flex items-center" />
           )}
           <div>
             <h1 className="text-2xl font-bold text-gray-800">{getTitle()}</h1>

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Button, Input, Tabs, Divider, message, Statistic } from 'antd';
-import { SearchOutlined, PrinterOutlined, ArrowUpOutlined, ArrowDownOutlined } from '@ant-design/icons';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { SearchOutlined, PrinterOutlined, ArrowUpOutlined, ArrowDownOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 
 const KV = ({ label, value, color }) => (
@@ -88,8 +87,8 @@ const FinanceStatements = () => {
                 <span className="font-bold text-base">Net Cash Flow</span>
                 <div className="flex items-center gap-2">
                   {(cf.netCashFlow||0) >= 0
-                    ? <TrendingUp size={18} className="text-green-600" />
-                    : <TrendingDown size={18} className="text-red-600" />}
+                    ? <RiseOutlined className="text-green-600 text-lg" />
+                    : <FallOutlined className="text-red-600 text-lg" />}
                   <span className={`font-bold text-base ${(cf.netCashFlow||0)>=0?'text-green-600':'text-red-600'}`}>
                     ₹{(cf.netCashFlow||0).toLocaleString()}
                   </span>

@@ -3,10 +3,10 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Alert
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Users, TrendingUp, AlertTriangle, Phone } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, TeamOutlined, PhoneOutlined, WarningOutlined, RiseOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = {
   new: 'blue', contacted: 'cyan', qualified: 'green', proposal_sent: 'orange',
@@ -138,7 +138,7 @@ const LeadManagement = () => {
       render: (_, r) => (
         <div>
           <div className="font-medium text-sm">{r.name}</div>
-          <div className="text-xs text-gray-400 flex items-center gap-1"><Phone size={10} />{r.phone}</div>
+          <div className="text-xs text-gray-400 flex items-center gap-1"><PhoneOutlined style={{fontSize: 10}} />{r.phone}</div>
         </div>
       )},
     { title: 'Business', dataIndex: 'businessName', width: 140,
@@ -198,19 +198,22 @@ const LeadManagement = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Users size={24} className="text-blue-600" /> Lead Management
+            <TeamOutlined className="text-blue-600 text-xl" /> Lead Management
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Track and manage sales leads and follow-ups</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
-          New Lead
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="lead" title="Deleted Leads" onRestore={fetchLeads} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
+            New Lead
+          </Button>
+        </Space>
       </div>
 
       {(stats.overdueFollowups > 0) && (
         <Alert type="warning" showIcon className="mb-4"
           message={`${stats.overdueFollowups} leads have overdue follow-ups`}
-          icon={<AlertTriangle size={16} />} />
+          icon={<WarningOutlined />} />
       )}
 
       <Row gutter={[12, 12]} className="mb-4">

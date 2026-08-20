@@ -1,36 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, InputNumber, Tooltip, Row, Col, Card, Statistic } from 'antd';
-import { SearchOutlined, ReloadOutlined, SaveOutlined, EditOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
-import { Tag as TagIcon } from 'lucide-react';
+import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic } from 'antd';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, TagOutlined, DownloadOutlined } from '@ant-design/icons';
 import productService from '../../services/productService.js';
-import categoryService from '../../services/categoryService.js';
-
-const PRICE_TIERS = [
-  { key: 'mrp', label: 'MRP', color: '#f5222d' },
-  { key: 'dealerRate', label: 'Dealer Rate', color: '#1890ff' },
-  { key: 'wholesaleRate', label: 'Wholesale', color: '#722ed1' },
-  { key: 'retailRate', label: 'Retail', color: '#fa8c16' },
-  { key: 'projectRate', label: 'Project', color: '#13c2c2' },
-  { key: 'minimumSellingRate', label: 'Min Selling', color: '#52c41a' },
-  { key: 'purchaseRate', label: 'Purchase Rate', color: '#666' },
-];
 
 const PriceListPage = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState({});
-  const [editingKey, setEditingKey] = useState(null);
-  const [editingValues, setEditingValues] = useState({});
   const [pagination, setPagination] = useState({ current: 1, pageSize: 50, total: 0 });
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState(undefined);
   const [categoryFilter, setCategoryFilter] = useState(undefined);
-  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [] });
+  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
 
   useEffect(() => {
-    productService.getFilterOptions().then(r => {
-      if (r.success) setFilterOptions(r.data);
-    }).catch(() => {});
+    productService.getFilterOptions().then(r => { if (r.success) setFilterOptions(r.data); }).catch(() => {});
   }, []);
 
   const fetchProducts = useCallback(async () => {
@@ -42,7 +25,7 @@ const PriceListPage = () => {
       const res = await productService.getProducts(params);
       if (res.success) {
         setProducts(res.data);
-        setPagination(p => ({ ...p, total: res.pagination?.totalItems || res.data.length }));
+        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
@@ -50,139 +33,129 @@ const PriceListPage = () => {
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const startEdit = (record) => {
-    setEditingKey(record._id);
-    setEditingValues({
-      mrp: record.mrp || 0,
-      dealerRate: record.dealerRate || 0,
-      wholesaleRate: record.wholesaleRate || 0,
-      retailRate: record.retailRate || 0,
-      projectRate: record.projectRate || 0,
-      minimumSellingRate: record.minimumSellingRate || 0,
-      purchaseRate: record.purchaseRate || 0,
-    });
-  };
+  const handlePrint = () => {
+    const rows = products.map((p, i) => `
+      <tr>
+        <td>${i + 1}</td>
+        <td><strong>${p.itemName}</strong><br/><span style="font-size:9px;color:#888">${p.productCode} | ${p.tileSize || ''} | ${p.finish || ''}</span></td>
+        <td>${p.brand?.name || ''}</td>
+        <td>${p.unit || 'Box'}</td>
+        <td>₹${(p.basicPrice || 0).toLocaleString()}</td>
+        <td>₹${((p.basicPrice || 0) + (p.excessPrice || 0)).toLocaleString()}</td>
+        <td><strong>₹${(p.mrp || 0).toLocaleString()}</strong></td>
+        <td>₹${(p.dealerRate || 0).toLocaleString()}</td>
+        <td>₹${(p.wholesaleRate || 0).toLocaleString()}</td>
+        <td>₹${(p.retailRate || 0).toLocaleString()}</td>
+        <td>₹${(p.distributorRate || 0).toLocaleString()}</td>
+        <td>₹${(p.builderRate || 0).toLocaleString()}</td>
+        <td>₹${(p.minimumSellingRate || 0).toLocaleString()}</td>
+      </tr>`).join('');
 
-  const cancelEdit = () => { setEditingKey(null); setEditingValues({}); };
-
-  const saveEdit = async (id) => {
-    setSaving(s => ({ ...s, [id]: true }));
-    try {
-      const res = await productService.updateProduct(id, editingValues);
-      if (res.success) {
-        message.success('Prices updated');
-        setProducts(prev => prev.map(p => p._id === id ? { ...p, ...editingValues } : p));
-        setEditingKey(null);
-        setEditingValues({});
-      }
-    } catch (err) { message.error(err.message); }
-    finally { setSaving(s => ({ ...s, [id]: false })); }
+    const w = window.open('', '_blank');
+    w.document.write(`<html><head><title>BDM Tiles - Price List</title>
+    <style>
+      body{font-family:Arial,sans-serif;padding:16px;font-size:11px;color:#333}
+      h2{margin-bottom:4px;color:#FF5F03}
+      .meta{color:#888;font-size:10px;margin-bottom:12px}
+      table{width:100%;border-collapse:collapse}
+      th{background:#f8f8f8;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:2px solid #ddd;color:#555}
+      td{padding:5px 8px;border-bottom:1px solid #f0f0f0;font-size:10px}
+      tr:nth-child(even){background:#fafafa}
+      .footer{margin-top:12px;text-align:center;font-size:9px;color:#aaa}
+      @media print{body{padding:0}}
+    </style></head><body>
+    <h2>BDM TILES — Rate Card</h2>
+    <div class="meta">Generated: ${new Date().toLocaleDateString('en-IN')} | ${brandFilter ? 'Brand: ' + filterOptions.brands.find(b=>b._id===brandFilter)?.name : 'All Brands'} | Products: ${products.length}</div>
+    <table>
+      <thead><tr><th>#</th><th>Product</th><th>Brand</th><th>Unit</th><th>Basic</th><th>Max Purchase</th><th>MRP</th><th>Dealer</th><th>Wholesale</th><th>Retail</th><th>Distributor</th><th>Builder</th><th>Min Sell</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="footer">Confidential — BDM GRANIMARMO PRIVATE LIMITED | Prices subject to change without notice</div>
+    </body></html>`);
+    w.document.close();
+    setTimeout(() => { w.print(); w.close(); }, 400);
   };
 
   const columns = [
-    {
-      title: 'Product', key: 'product', width: 220, fixed: 'left',
+    { title: '#', key: 'idx', width: 40, fixed: 'left',
+      render: (_, __, i) => <span className="text-xs text-gray-400">{(pagination.current - 1) * pagination.pageSize + i + 1}</span> },
+    { title: 'Product', key: 'product', width: 220, fixed: 'left',
       render: (_, r) => (
         <div>
-          <div className="text-sm font-medium">{r.itemName}</div>
-          <div className="text-xs text-gray-400">{r.productCode} · {r.tileSize} · {r.finish}</div>
-          <div className="text-xs text-gray-400">{r.brand?.name} · {r.category?.name}</div>
+          <div className="text-sm font-medium truncate max-w-[200px]">{r.itemName}</div>
+          <div className="text-[10px] text-gray-400">{r.productCode} · {r.brand?.name} · {r.tileSize} · {r.finish}</div>
         </div>
-      ),
-    },
-    {
-      title: 'Unit', dataIndex: 'unit', width: 60,
-      render: v => <span className="text-xs">{v}</span>
-    },
-    ...PRICE_TIERS.map(tier => ({
-      title: <span style={{ color: tier.color }} className="text-xs font-semibold">{tier.label}</span>,
-      dataIndex: tier.key,
-      width: 110,
-      render: (val, record) => {
-        if (editingKey === record._id) {
-          return (
-            <InputNumber
-              size="small" min={0} value={editingValues[tier.key]}
-              onChange={v => setEditingValues(prev => ({ ...prev, [tier.key]: v || 0 }))}
-              prefix="₹" className="w-full" style={{ fontSize: 11 }}
-            />
-          );
-        }
-        return (
-          <span className="text-sm font-medium" style={{ color: tier.color }}>
-            ₹{(val || 0).toLocaleString()}
-          </span>
-        );
-      },
-    })),
-    {
-      title: 'Actions', width: 90, fixed: 'right',
+      )},
+    { title: 'Unit', dataIndex: 'unit', width: 50, render: v => <span className="text-xs">{v || 'Box'}</span> },
+    { title: <span className="text-[10px] text-orange-600 font-semibold">Basic</span>, dataIndex: 'basicPrice', width: 80,
+      render: v => v ? <span className="text-xs text-orange-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-orange-500 font-semibold">Max Purchase</span>, key: 'maxPurch', width: 90,
       render: (_, r) => {
-        if (editingKey === r._id) {
-          return (
-            <Space size="small">
-              <Tooltip title="Save">
-                <Button type="primary" size="small" icon={<CheckOutlined />} onClick={() => saveEdit(r._id)} loading={saving[r._id]} />
-              </Tooltip>
-              <Tooltip title="Cancel">
-                <Button size="small" icon={<CloseOutlined />} onClick={cancelEdit} />
-              </Tooltip>
-            </Space>
-          );
-        }
-        return (
-          <Tooltip title="Edit Prices">
-            <Button type="text" size="small" icon={<EditOutlined />} onClick={() => startEdit(r)} />
-          </Tooltip>
-        );
-      },
-    },
+        const max = (r.basicPrice || 0) + (r.excessPrice || 0);
+        return max > 0 ? <span className="text-xs text-orange-500 font-medium">₹{max.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span>;
+      }},
+    { title: <span className="text-[10px] font-bold">MRP</span>, dataIndex: 'mrp', width: 80,
+      render: v => v ? <span className="text-xs font-bold">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-[#FF5F03] font-semibold">Dealer</span>, dataIndex: 'dealerRate', width: 80,
+      render: v => v ? <span className="text-xs text-[#FF5F03] font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-blue-600 font-semibold">Wholesale</span>, dataIndex: 'wholesaleRate', width: 85,
+      render: v => v ? <span className="text-xs text-blue-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-green-600 font-semibold">Retail</span>, dataIndex: 'retailRate', width: 75,
+      render: v => v ? <span className="text-xs text-green-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-purple-600 font-semibold">Distributor</span>, dataIndex: 'distributorRate', width: 85,
+      render: v => v ? <span className="text-xs text-purple-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-teal-600 font-semibold">Builder</span>, dataIndex: 'builderRate', width: 75,
+      render: v => v ? <span className="text-xs text-teal-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: <span className="text-[10px] text-red-600 font-semibold">Min Sell</span>, dataIndex: 'minimumSellingRate', width: 80,
+      render: v => v ? <span className="text-xs text-red-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
+    { title: 'Margin', key: 'margin', width: 65,
+      render: (_, r) => {
+        if (!r.dealerRate || !r.basicPrice) return <span className="text-gray-300 text-xs">—</span>;
+        const m = ((r.dealerRate - r.basicPrice) / r.basicPrice * 100).toFixed(0);
+        return <Tag color={m >= 20 ? 'green' : m >= 10 ? 'orange' : 'red'} className="text-[10px]">{m}%</Tag>;
+      }},
   ];
-
-  // Stats
-  const avgMRP = products.length ? Math.round(products.reduce((s, p) => s + (p.mrp || 0), 0) / products.length) : 0;
-  const avgMargin = products.filter(p => p.mrp && p.purchaseRate).length
-    ? Math.round(products.filter(p => p.mrp && p.purchaseRate).reduce((s, p) => s + ((p.mrp - p.purchaseRate) / p.mrp * 100), 0) / products.filter(p => p.mrp && p.purchaseRate).length)
-    : 0;
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Price List</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage MRP and all selling rates for every product</p>
+          <p className="text-sm text-gray-500 mt-0.5">Master rate card — view all customer rates at a glance. For editing use "Dealer Product Pricing" page.</p>
         </div>
+        <Space>
+          <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Rate Card</Button>
+          <Button icon={<ReloadOutlined />} onClick={fetchProducts}>Refresh</Button>
+        </Space>
       </div>
 
-      <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Total Products" value={pagination.total} prefix={<TagIcon size={14} />} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="Avg MRP" value={`₹${avgMRP.toLocaleString()}`} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="Avg Margin" value={`${avgMargin}%`} valueStyle={{ color: '#52c41a' }} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="Brands" value={filterOptions.brands?.length || 0} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="This Page" value={products.length} /></Card></Col>
+      <Row gutter={12} className="mb-4">
+        <Col span={4}><Card size="small"><Statistic title="Products" value={pagination.total} prefix={<TagOutlined />} valueStyle={{fontSize:16}} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Brands" value={filterOptions.brands?.length || 0} valueStyle={{fontSize:16}} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Categories" value={filterOptions.categories?.length || 0} valueStyle={{fontSize:16}} /></Card></Col>
+        <Col span={12}>
+          <Card size="small" className="border-blue-100">
+            <div className="text-[10px] text-gray-400 mb-1">Rate Tiers Shown</div>
+            <div className="flex flex-wrap gap-1">
+              {['Basic','Max Purchase','MRP','Dealer','Wholesale','Retail','Distributor','Builder','Min Sell'].map(t => (
+                <Tag key={t} className="text-[9px] m-0">{t}</Tag>
+              ))}
+            </div>
+          </Card>
+        </Col>
       </Row>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-center">
-          <Input
-            placeholder="Search product name, code..."
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }}
-            className="w-64" allowClear
-          />
-          <Select
-            placeholder="Filter by Brand"
-            options={(filterOptions.brands || []).map(b => ({ value: b._id, label: b.name }))}
-            value={brandFilter} onChange={v => setBrandFilter(v)} allowClear className="w-44"
-          />
-          <Select
-            placeholder="Filter by Category"
-            options={(filterOptions.categories || []).map(c => ({ value: c._id, label: c.name }))}
-            value={categoryFilter} onChange={v => setCategoryFilter(v)} allowClear className="w-44"
-          />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setBrandFilter(undefined); setCategoryFilter(undefined); }}>Reset</Button>
-          <span className="ml-auto text-xs text-gray-400">Click ✏️ on any row to edit prices inline</span>
+          <Input placeholder="Search product name, code..." prefix={<SearchOutlined className="text-gray-400" />}
+            value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }}
+            className="w-56" allowClear />
+          <Select placeholder="Brand" allowClear value={brandFilter} onChange={v => setBrandFilter(v)}
+            options={(filterOptions.brands||[]).map(b => ({value:b._id, label:b.name}))} className="w-40" showSearch optionFilterProp="label" />
+          <Select placeholder="Category" allowClear value={categoryFilter} onChange={v => setCategoryFilter(v)}
+            options={(filterOptions.categories||[]).map(c => ({value:c._id, label:c.name}))} className="w-40" showSearch optionFilterProp="label" />
+          <Button onClick={() => { setSearch(''); setBrandFilter(undefined); setCategoryFilter(undefined); }}>Clear</Button>
+          <span className="ml-auto text-xs text-gray-400">Read-only view. Edit from "Dealer Product Pricing" page.</span>
         </div>
       </div>
 
@@ -193,14 +166,13 @@ const PriceListPage = () => {
           rowKey="_id"
           loading={loading}
           size="small"
-          scroll={{ x: 1200 }}
-          rowClassName={r => editingKey === r._id ? 'bg-yellow-50' : ''}
+          scroll={{ x: 1300 }}
           pagination={{
             ...pagination,
             showSizeChanger: true,
-            pageSizeOptions: ['20', '50', '100'],
-            showTotal: (t, r) => `${r[0]}-${r[1]} of ${t} products`,
-            onChange: (page, pageSize) => setPagination(p => ({ ...p, current: page, pageSize })),
+            pageSizeOptions: ['20','50','100'],
+            showTotal: (t, r) => <span className="text-xs text-gray-500">{r[0]}–{r[1]} of {t}</span>,
+            onChange: (page, pageSize) => setPagination(p => ({...p, current: page, pageSize})),
           }}
         />
       </div>

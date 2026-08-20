@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, InputNumber
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, SaveOutlined, PrinterOutlined } from '@ant-design/icons';
-import { Clock } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, SaveOutlined, PrinterOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import hrmsService from '../../services/hrmsService.js';
 
 const MONTHS = [
@@ -262,7 +261,7 @@ const OvertimeCalculation = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Clock size={22} className="text-orange-500" />
+            <ClockCircleOutlined className="text-orange-500 text-xl" />
             Overtime Calculation
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">

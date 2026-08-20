@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, InputNumber, Tabs
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckOutlined, SendOutlined } from '@ant-design/icons';
-import { TrendingUp } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckOutlined, SendOutlined, RiseOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 import masterService from '../../services/masterService.js';
 

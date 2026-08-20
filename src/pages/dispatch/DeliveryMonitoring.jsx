@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Progress, Badge
 } from 'antd';
-import { ReloadOutlined, EyeOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import { MapPin, Truck, Clock } from 'lucide-react';
+import { ReloadOutlined, EyeOutlined, CheckCircleOutlined, EnvironmentOutlined, CarOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const STATUS_COLORS = {
@@ -68,7 +67,7 @@ const DeliveryMonitoring = () => {
       render: (_, r) => (
         <div>
           <div className="font-medium flex items-center gap-1">
-            <Truck size={13} className="text-gray-400" /> {r.driverName || '—'}
+            <CarOutlined className="text-gray-400" /> {r.driverName || '—'}
           </div>
           <div className="text-xs text-gray-400">{r.vehicle || 'No vehicle'} · {r.driverPhone || ''}</div>
         </div>
@@ -139,7 +138,7 @@ const DeliveryMonitoring = () => {
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="flex gap-3 flex-wrap">
           <Input placeholder="Search by dispatch no. or driver…"
-            prefix={<MapPin size={14} className="text-gray-400" />}
+            prefix={<EnvironmentOutlined className="text-gray-400" />}
             value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
           <Select value={statusFilter} onChange={setStatusFilter} className="w-52"
             options={[

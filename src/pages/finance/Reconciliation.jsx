@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Alert, DatePicker
 } from 'antd';
-import { SearchOutlined, CheckCircleOutlined, ReloadOutlined, BankOutlined } from '@ant-design/icons';
-import { RefreshCw } from 'lucide-react';
+import { SearchOutlined, CheckCircleOutlined, ReloadOutlined, BankOutlined, SyncOutlined } from '@ant-design/icons';
 import financeService from '../../services/financeService.js';
 import dayjs from 'dayjs';
 

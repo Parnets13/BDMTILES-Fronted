@@ -3,8 +3,7 @@ import {
   Table, Button, Select, Input, InputNumber, message,
   Row, Col, Card, Statistic, Tag, Divider, Modal, Space
 } from 'antd';
-import { SearchOutlined, CheckCircleOutlined, DollarOutlined } from '@ant-design/icons';
-import { ArrowRightLeft } from 'lucide-react';
+import { SearchOutlined, CheckCircleOutlined, DollarOutlined, SwapOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import financeService from '../../services/financeService.js';
@@ -171,7 +170,7 @@ const PaymentAllocation = () => {
       <Card size="small" className="mb-5 border-blue-100">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <ArrowRightLeft size={18} className="text-blue-500" />
+            <SwapOutlined className="text-blue-500 text-lg" />
             <span className="font-semibold text-gray-700">Select Dealer:</span>
           </div>
           <Select
@@ -269,7 +268,7 @@ const PaymentAllocation = () => {
 
       {!selectedDealer && (
         <div className="flex flex-col items-center justify-center py-24 text-gray-300">
-          <ArrowRightLeft size={56} />
+          <SwapOutlined className="text-5xl" />
           <p className="mt-4 text-lg text-gray-400">Select a dealer above to begin allocation</p>
         </div>
       )}

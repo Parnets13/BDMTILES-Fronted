@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Switch, Divider
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, PrinterOutlined, CheckOutlined } from '@ant-design/icons';
-import { ArrowUpDown, Layers } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, CheckOutlined, SwapOutlined, AppstoreOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const PRIORITY_COLORS = { normal: 'default', urgent: 'red', vip: 'gold' };
@@ -115,7 +114,7 @@ const SortingList = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ArrowUpDown size={24} className="text-purple-600" /> Sorting List
+            <SwapOutlined className="text-purple-600 text-xl" /> Sorting List
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Sort picked goods by delivery route before loading</p>
         </div>
@@ -150,7 +149,7 @@ const SortingList = () => {
             <div key={routeName} className="bg-white rounded-lg border border-gray-200">
               <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50 rounded-t-lg">
                 <div className="flex items-center gap-2">
-                  <Layers size={16} className="text-purple-600" />
+                  <AppstoreOutlined className="text-purple-600" />
                   <span className="font-semibold text-gray-700">Route: {routeName}</span>
                   <Tag color="blue">{routeOrders.length} orders</Tag>
                 </div>

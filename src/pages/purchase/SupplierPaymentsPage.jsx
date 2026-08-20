@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Tooltip } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Wallet } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, WalletOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 

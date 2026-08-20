@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, Card, Statistic, InputNumber, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { ClipboardCheck } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadOutlined, AuditOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
@@ -87,7 +86,7 @@ const GRNEntryPage = () => {
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={8}><Card size="small"><Statistic title="Total GRNs" value={stats.total || 0} prefix={<ClipboardCheck size={14} />} /></Card></Col>
+        <Col span={8}><Card size="small"><Statistic title="Total GRNs" value={stats.total || 0} prefix={<AuditOutlined />} /></Card></Col>
         <Col span={8}><Card size="small"><Statistic title="Pending" value={stats.pending || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
         <Col span={8}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
       </Row>
@@ -304,7 +303,7 @@ const CreateGRN = ({ onClose, onSuccess }) => {
               </div>
             ) : (
               <div className="text-center py-10 text-gray-400 border-2 border-dashed rounded-lg">
-                <ClipboardCheck size={36} className="mx-auto mb-2 opacity-40" />
+                <AuditOutlined className="mx-auto mb-2 opacity-40 text-4xl" />
                 <p>Select a Purchase Order above to load items</p>
               </div>
             )}

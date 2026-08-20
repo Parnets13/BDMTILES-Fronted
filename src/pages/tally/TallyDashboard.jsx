@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Card, Row, Col, Statistic, Input, Button, Alert, Tag, Divider, message } from 'antd';
-import { SyncOutlined, DisconnectOutlined, CheckCircleOutlined, WarningOutlined } from '@ant-design/icons';
-import { Link2Off, RefreshCw, Settings } from 'lucide-react';
+import { SyncOutlined, DisconnectOutlined, CheckCircleOutlined, WarningOutlined, SettingOutlined } from '@ant-design/icons';
 
 const TallyDashboard = () => {
   const [config, setConfig] = useState({ company: '', host: 'localhost', port: '9000' });
@@ -20,7 +19,7 @@ const TallyDashboard = () => {
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center">
-            <RefreshCw size={20} className="text-white" />
+            <SyncOutlined className="text-white text-xl" />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Tally Integration</h1>
@@ -49,7 +48,7 @@ const TallyDashboard = () => {
 
       <Row gutter={16}>
         <Col span={10}>
-          <Card title={<span className="flex items-center gap-2"><Settings size={16} /> Connection Config</span>} size="small">
+          <Card title={<span className="flex items-center gap-2"><SettingOutlined /> Connection Config</span>} size="small">
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Tally Company Name</label>
@@ -82,7 +81,7 @@ const TallyDashboard = () => {
         <Col span={14}>
           <Card title="Sync Status" size="small">
             <div className="py-12 text-center">
-              <Link2Off size={48} className="mx-auto mb-4 text-gray-300" />
+              <DisconnectOutlined className="mx-auto mb-4 text-gray-300 text-5xl" />
               <p className="text-gray-500 font-medium">Tally is not connected</p>
               <p className="text-sm text-gray-400 mt-2">No pending items. Connect Tally Prime to start syncing.</p>
             </div>

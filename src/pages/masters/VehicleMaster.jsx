@@ -1,261 +1,183 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Divider, Popconfirm,
+  Modal, Form, DatePicker, Row, Col, Card, Statistic
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Truck } from 'lucide-react';
-import masterService from '../../services/masterService.js';
+import {
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
+  ReloadOutlined, CarOutlined
+} from '@ant-design/icons';
+import api from '../../config/api.js';
+import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
 
-const VEHICLE_TYPES = ['truck', 'mini_truck', 'tempo', 'van', 'auto', 'bike', 'other'];
-const VEHICLE_TYPE_LABELS = {
-  truck: 'Truck', mini_truck: 'Mini Truck', tempo: 'Tempo',
-  van: 'Van', auto: 'Auto', bike: 'Bike', other: 'Other',
-};
-const TYPE_COLORS = {
-  truck: 'blue', mini_truck: 'cyan', tempo: 'green', van: 'purple',
-  auto: 'orange', bike: 'geekblue', other: 'default',
+const vehicleService = {
+  getAll: (params) => api.get('/masters/vehicles', { params }),
+  create: (data) => api.post('/masters/vehicles', data),
+  update: (id, data) => api.put(`/masters/vehicles/${id}`, data),
+  remove: (id) => api.delete(`/masters/vehicles/${id}`),
 };
 
-const empty = () => ({
-  vehicleNumber: '', vehicleType: 'truck', make: '', model: '', year: '',
-  capacity: '', capacityUnit: 'tons', ownerName: '', driverName: '',
-  driverPhone: '', insuranceExpiry: '', fitnessExpiry: '',
-  isActive: true, remarks: '',
-});
+const VEHICLE_TYPES = ['Truck', 'Mini Truck', 'Tempo', 'Pickup', 'Van', 'Container', 'Trailer', 'Three Wheeler', 'Two Wheeler', 'Other'];
+const OWNERSHIP_TYPES = ['Own', 'Hired', 'Contracted'];
 
 const VehicleMaster = () => {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [showModal, setShowModal] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [form, setForm] = useState(empty());
   const [search, setSearch] = useState('');
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [showForm, setShowForm] = useState(false);
+  const [editRecord, setEditRecord] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
+  const [form] = Form.useForm();
 
-  const load = useCallback(async (page = 1, pageSize = 20) => {
+  const fetchVehicles = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await masterService.getVehicles({ page, limit: pageSize, search });
-      if (res.success) {
-        setVehicles(res.data || []);
-        if (res.pagination) setPagination(p => ({ ...p, current: res.pagination.currentPage, total: res.pagination.totalItems, pageSize }));
-      }
-    } catch { setVehicles([]); }
+      const res = await vehicleService.getAll({ search, limit: 100 });
+      if (res.success) setVehicles(res.data || []);
+    } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
   }, [search]);
 
-  useEffect(() => { load(1, pagination.pageSize); }, [load]);
+  useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
 
-  const openCreate = () => { setEditing(null); setForm(empty()); setShowModal(true); };
-  const openEdit = (v) => { setEditing(v); setForm({ ...v }); setShowModal(true); };
-  const closeModal = () => { setShowModal(false); setEditing(null); setForm(empty()); };
-
-  const handleSave = async () => {
-    if (!form.vehicleNumber.trim()) { message.error('Vehicle number is required'); return; }
-    setSaveLoading(true);
+  const handleSubmit = async () => {
     try {
+      const values = await form.validateFields();
+      setFormLoading(true);
       let res;
-      if (editing) {
-        res = await masterService.updateVehicle(editing._id, form);
+      if (editRecord) {
+        res = await vehicleService.update(editRecord._id, values);
       } else {
-        res = await masterService.createVehicle(form);
+        res = await vehicleService.create(values);
       }
       if (res.success) {
-        message.success(editing ? 'Vehicle updated' : 'Vehicle added');
-        closeModal();
-        load();
+        message.success(editRecord ? 'Vehicle updated' : 'Vehicle added');
+        setShowForm(false); setEditRecord(null); form.resetFields();
+        fetchVehicles();
       }
-    } catch (err) { message.error(err.message || 'Save failed'); }
-    finally { setSaveLoading(false); }
+    } catch (err) { if (!err.errorFields) message.error(err.message); }
+    finally { setFormLoading(false); }
   };
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const handleEdit = (record) => {
+    setEditRecord(record);
+    form.setFieldsValue(record);
+    setShowForm(true);
+  };
 
-  const expiringSoon = vehicles.filter(v => {
-    if (!v.insuranceExpiry) return false;
-    const days = (new Date(v.insuranceExpiry) - new Date()) / (1000 * 60 * 60 * 24);
-    return days > 0 && days <= 30;
-  }).length;
+  const handleDelete = async (id) => {
+    try {
+      const res = await vehicleService.remove(id);
+      if (res.success) { message.success('Vehicle deleted'); fetchVehicles(); }
+    } catch (err) { message.error(err.message); }
+  };
 
   const columns = [
-    { title: '#', render: (_, __, i) => i + 1, width: 45 },
-    {
-      title: 'Vehicle No.', dataIndex: 'vehicleNumber',
-      render: (v, r) => (
-        <div>
-          <div className="font-semibold font-mono text-gray-800">{v}</div>
-          <div className="text-xs text-gray-400">{r.make} {r.model} {r.year ? `(${r.year})` : ''}</div>
-        </div>
-      ),
-    },
-    {
-      title: 'Type', dataIndex: 'vehicleType',
-      render: v => <Tag color={TYPE_COLORS[v] || 'default'}>{VEHICLE_TYPE_LABELS[v] || v}</Tag>,
-    },
-    {
-      title: 'Capacity', key: 'cap',
-      render: (_, r) => r.capacity ? `${r.capacity} ${r.capacityUnit || 'tons'}` : '—',
-    },
-    {
-      title: 'Driver', key: 'driver',
-      render: (_, r) => r.driverName ? (
-        <div>
-          <div className="text-sm">{r.driverName}</div>
-          <div className="text-xs text-gray-400">{r.driverPhone}</div>
-        </div>
-      ) : <span className="text-gray-400">—</span>,
-    },
-    {
-      title: 'Insurance Expiry', dataIndex: 'insuranceExpiry',
+    { title: 'Vehicle No.', dataIndex: 'vehicleNumber', width: 130,
+      render: v => <span className="font-mono text-sm font-semibold text-blue-600">{v}</span> },
+    { title: 'Type', dataIndex: 'vehicleType', width: 110,
+      render: v => <Tag>{v || '—'}</Tag> },
+    { title: 'Ownership', dataIndex: 'ownershipType', width: 100,
+      render: v => <Tag color={v === 'Own' ? 'green' : v === 'Hired' ? 'orange' : 'blue'}>{v || '—'}</Tag> },
+    { title: 'Driver', dataIndex: 'driverName', width: 130 },
+    { title: 'Driver Phone', dataIndex: 'driverMobile', width: 120,
+      render: v => <span className="text-xs">{v || '—'}</span> },
+    { title: 'Capacity', dataIndex: 'capacity', width: 90,
+      render: v => v ? `${v} Ton` : '—' },
+    { title: 'Route', dataIndex: 'assignedRoute', width: 120, render: v => v || '—' },
+    { title: 'Insurance Exp', dataIndex: 'insuranceExpiry', width: 110,
       render: v => {
         if (!v) return '—';
-        const days = Math.round((new Date(v) - new Date()) / (1000 * 60 * 60 * 24));
-        const color = days < 0 ? 'red' : days <= 30 ? 'orange' : 'green';
-        return <Tag color={color}>{new Date(v).toLocaleDateString('en-IN')}</Tag>;
-      },
-    },
-    {
-      title: 'Status', dataIndex: 'isActive',
-      render: v => <Tag color={v !== false ? 'green' : 'default'}>{v !== false ? 'Active' : 'Inactive'}</Tag>,
-    },
-    {
-      title: 'Actions', width: 110,
+        const d = new Date(v);
+        const isExpired = d < new Date();
+        return <span className={`text-xs ${isExpired ? 'text-red-600 font-semibold' : ''}`}>{d.toLocaleDateString('en-IN')}{isExpired ? ' ⚠' : ''}</span>;
+      }},
+    { title: 'Fitness Exp', dataIndex: 'fitnessExpiry', width: 110,
+      render: v => {
+        if (!v) return '—';
+        const d = new Date(v);
+        const isExpired = d < new Date();
+        return <span className={`text-xs ${isExpired ? 'text-red-600 font-semibold' : ''}`}>{d.toLocaleDateString('en-IN')}{isExpired ? ' ⚠' : ''}</span>;
+      }},
+    { title: 'Status', dataIndex: 'status', width: 80,
+      render: v => <Tag color={v === 'active' ? 'green' : 'default'}>{v || 'active'}</Tag> },
+    { title: 'Actions', width: 90,
       render: (_, r) => (
-        <Space>
-          <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(r)}>Edit</Button>
-          <Popconfirm title={`Delete "${r.vehicleNumber}"?`} okText="Delete" okButtonProps={{ danger: true }}
-            onConfirm={async () => {
-              try {
-                const res = await masterService.deleteVehicle(r._id);
-                if (res.success) { message.success('Vehicle deleted'); load(1, pagination.pageSize); }
-              } catch (err) { message.error(err.message || 'Delete failed'); }
-            }}>
-            <Button size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+        <Space size="small">
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)} />
+          <DoubleConfirmDelete
+            title="Delete Vehicle"
+            recordName={r.vehicleNumber}
+            onConfirm={() => handleDelete(r._id)}
+            trigger={<Button type="text" size="small" danger icon={<DeleteOutlined />} />}
+          />
         </Space>
-      ),
-    },
+      )},
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Vehicle Master</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Manage trucks, tempos and delivery vehicles</p>
+          <p className="text-sm text-gray-500 mt-0.5">Manage vehicles for dispatch — number, driver, capacity, documents</p>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}
-            style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-            Add Vehicle
-          </Button>
-        </Space>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditRecord(null); form.resetFields(); setShowForm(true); }}>
+          Add Vehicle
+        </Button>
       </div>
 
-      <Row gutter={16} className="mb-5">
-        {[
-          ['Total Vehicles', vehicles.length, '#FF5F03'],
-          ['Active', vehicles.filter(v => v.isActive !== false).length, '#52c41a'],
-          ['Insurance Expiring (30d)', expiringSoon, expiringSoon > 0 ? '#fa8c16' : '#1890ff'],
-        ].map(([t, v, c]) => (
-          <Col span={8} key={t}><Card size="small" style={{ borderLeft: `4px solid ${c}` }}>
-            <Statistic title={t} value={v} valueStyle={{ color: c }} />
-          </Card></Col>
-        ))}
+      <Row gutter={16} className="mb-4">
+        <Col span={6}><Card size="small"><Statistic title="Total Vehicles" value={vehicles.length} prefix={<CarOutlined />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Own" value={vehicles.filter(v => v.ownershipType === 'Own').length} valueStyle={{color:'#52c41a'}} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Hired" value={vehicles.filter(v => v.ownershipType === 'Hired').length} valueStyle={{color:'#fa8c16'}} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Expired Docs" value={vehicles.filter(v => (v.insuranceExpiry && new Date(v.insuranceExpiry) < new Date()) || (v.fitnessExpiry && new Date(v.fitnessExpiry) < new Date())).length} valueStyle={{color:'#f5222d'}} /></Card></Col>
       </Row>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <Input placeholder="Search by vehicle number, driver, or make…"
-          prefix={<SearchOutlined />} value={search}
-          onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <Table
-          columns={columns} dataSource={vehicles} rowKey="_id"
-          loading={loading} size="small"
-          pagination={{ current: pagination.current, pageSize: pagination.pageSize, total: pagination.total, showSizeChanger: true, showTotal: t => `${t} vehicles` }}
-          onChange={p => load(p.current, p.pageSize)}
-          locale={{ emptyText: 'No vehicles added yet. Click "Add Vehicle" to start.' }}
-        />
-      </div>
-
-      <Modal
-        title={<span className="font-bold">{editing ? 'Edit Vehicle' : 'Add Vehicle'}</span>}
-        open={showModal} onCancel={closeModal} onOk={handleSave}
-        okText={editing ? 'Update' : 'Add'}
-        confirmLoading={saveLoading}
-        okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        width={580} destroyOnHidden
-      >
-        <Divider />
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Vehicle Number *</label>
-            <Input value={form.vehicleNumber}
-              onChange={e => set('vehicleNumber', e.target.value.toUpperCase())} placeholder="KA01AB1234" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Vehicle Type</label>
-            <Select value={form.vehicleType} onChange={v => set('vehicleType', v)} className="w-full"
-              options={VEHICLE_TYPES.map(t => ({ value: t, label: VEHICLE_TYPE_LABELS[t] }))} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Make</label>
-            <Input value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Tata" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Model</label>
-            <Input value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. Ace" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Year</label>
-            <Input value={form.year} onChange={e => set('year', e.target.value)} placeholder="2022" />
-          </div>
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="text-xs text-gray-500 block mb-1">Capacity</label>
-              <Input value={form.capacity} onChange={e => set('capacity', e.target.value)} />
-            </div>
-            <div className="w-20">
-              <label className="text-xs text-gray-500 block mb-1">Unit</label>
-              <Select value={form.capacityUnit} onChange={v => set('capacityUnit', v)} className="w-full"
-                options={['tons','kg','boxes'].map(u => ({ value: u, label: u }))} />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Owner Name</label>
-            <Input value={form.ownerName} onChange={e => set('ownerName', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Driver Name</label>
-            <Input value={form.driverName} onChange={e => set('driverName', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Driver Phone</label>
-            <Input value={form.driverPhone} onChange={e => set('driverPhone', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Insurance Expiry</label>
-            <Input type="date" value={form.insuranceExpiry} onChange={e => set('insuranceExpiry', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Fitness Expiry</label>
-            <Input type="date" value={form.fitnessExpiry} onChange={e => set('fitnessExpiry', e.target.value)} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Status</label>
-            <Select value={form.isActive} onChange={v => set('isActive', v)} className="w-full"
-              options={[{ value: true, label: 'Active' }, { value: false, label: 'Inactive' }]} />
-          </div>
-          <div className="col-span-2">
-            <label className="text-xs text-gray-500 block mb-1">Remarks</label>
-            <Input.TextArea rows={2} value={form.remarks} onChange={e => set('remarks', e.target.value)} />
-          </div>
+        <div className="flex gap-3">
+          <Input placeholder="Search vehicle no, driver..." prefix={<SearchOutlined className="text-gray-400" />}
+            value={search} onChange={e => setSearch(e.target.value)} className="w-64" allowClear />
+          <Button icon={<ReloadOutlined />} onClick={fetchVehicles}>Refresh</Button>
         </div>
+      </div>
+
+      <div className="bg-white rounded-lg border border-gray-200">
+        <Table columns={columns} dataSource={vehicles} rowKey="_id" loading={loading}
+          size="middle" scroll={{ x: 1200 }} pagination={{ pageSize: 20 }} />
+      </div>
+
+      {/* Add/Edit Modal */}
+      <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
+        onCancel={() => { setShowForm(false); setEditRecord(null); form.resetFields(); }}
+        onOk={handleSubmit} confirmLoading={formLoading} width={640} destroyOnHidden>
+        <Form form={form} layout="vertical" className="mt-4">
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="vehicleNumber" label="Vehicle Number" rules={[{ required: true }]}>
+              <Input placeholder="e.g. GJ01AB1234" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="vehicleType" label="Vehicle Type" rules={[{ required: true }]}>
+              <Select placeholder="Select type" options={VEHICLE_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
+            <Col span={8}><Form.Item name="ownershipType" label="Ownership">
+              <Select placeholder="Select" options={OWNERSHIP_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="driverName" label="Driver Name"><Input placeholder="Full name" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="driverMobile" label="Driver Mobile"><Input placeholder="10-digit" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="capacity" label="Capacity (Tons)"><Input type="number" placeholder="e.g. 5" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="insuranceExpiry" label="Insurance Expiry"><Input type="date" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="fitnessExpiry" label="Fitness Expiry"><Input type="date" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="pollutionExpiry" label="Pollution Expiry"><Input type="date" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="permitExpiry" label="Permit Expiry"><Input type="date" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="assignedRoute" label="Assigned Route"><Input placeholder="Route name" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="status" label="Status" initialValue="active">
+              <Select options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} /></Form.Item></Col>
+          </Row>
+          <Form.Item name="remarks" label="Remarks"><Input.TextArea rows={2} placeholder="GPS device, service notes..." /></Form.Item>
+        </Form>
       </Modal>
     </div>
   );

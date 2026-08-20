@@ -5,9 +5,8 @@ import {
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, CheckOutlined,
-  SaveOutlined, PrinterOutlined
+  SaveOutlined, PrinterOutlined, AuditOutlined, WarningOutlined, CheckCircleOutlined
 } from '@ant-design/icons';
-import { ClipboardCheck, AlertTriangle, CheckCircle } from 'lucide-react';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
@@ -213,7 +212,7 @@ const PhysicalAudit = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardCheck size={22} className="text-blue-500" />
+            <AuditOutlined className="text-blue-500 text-xl" />
             Physical Stock Audit
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -323,7 +322,7 @@ const PhysicalAudit = () => {
 
       {/* Confirm post modal */}
       <Modal
-        title={<span className="font-bold text-orange-600"><AlertTriangle size={16} className="inline mr-2" />Confirm Audit Adjustments</span>}
+        title={<span className="font-bold text-orange-600"><WarningOutlined className="inline mr-2" />Confirm Audit Adjustments</span>}
         open={showConfirm}
         onCancel={() => setShowConfirm(false)}
         onOk={handlePostAdjustments}

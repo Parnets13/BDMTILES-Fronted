@@ -1,16 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input, Select, InputNumber, Button, message, Divider, Table, DatePicker, Modal } from 'antd';
 import { PlusOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
+import getImageUrl from '../../utils/imageUrl.js';
 
 const CreateSalesOrder = ({ onClose, onSuccess }) => {
-  // Dealer
+  // Customer Type
+  const [customerType, setCustomerType] = useState('dealer'); // dealer, wholesaler, retail, distributor, builder
+
+  // Dealer/Customer
   const [dealerSearch, setDealerSearch] = useState('');
   const [dealerResults, setDealerResults] = useState([]);
   const [selectedDealer, setSelectedDealer] = useState(null);
   const [showDealerDropdown, setShowDealerDropdown] = useState(false);
+  const [dealerPage, setDealerPage] = useState(1);
+  const [dealerHasMore, setDealerHasMore] = useState(true);
+  const [dealerLoading, setDealerLoading] = useState(false);
+  const dealerDropdownRef = useRef(null);
 
   // Products
   const [productSearch, setProductSearch] = useState('');
@@ -49,27 +57,76 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
     }).catch(() => {});
   }, []);
 
-  // Search dealers (debounced)
+  // Search dealers (debounced + paginated)
+  const loadDealers = useCallback(async (searchText, page, append = false) => {
+    setDealerLoading(true);
+    try {
+      const q = searchText || '';
+      const TIER_MAP = { dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate', distributor: 'distributorRate', builder: 'builderRate' };
+      const pricingTier = TIER_MAP[customerType] || 'dealerRate';
+      const res = await salesService.searchDealers(q.length >= 2 ? q : '', page, pricingTier);
+      if (res.success) {
+        const newData = res.data || [];
+        if (append) {
+          setDealerResults(prev => [...prev, ...newData]);
+        } else {
+          setDealerResults(newData);
+        }
+        setDealerHasMore(newData.length >= 20);
+      }
+    } catch (err) { console.error('Dealer search error:', err.message); }
+    finally { setDealerLoading(false); }
+  }, [customerType]);
+
   useEffect(() => {
-    if (dealerSearch.length < 2) { setDealerResults([]); return; }
+    setDealerPage(1);
     const timer = setTimeout(() => {
-      salesService.searchDealers(dealerSearch).then(r => {
-        if (r.success) setDealerResults(r.data);
-      });
-    }, 300);
+      loadDealers(dealerSearch, 1, false);
+    }, dealerSearch.length >= 2 ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [dealerSearch]);
+  }, [dealerSearch, loadDealers]);
+
+  // Close dealer dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (dealerDropdownRef.current && !dealerDropdownRef.current.contains(e.target) &&
+          dealerInputRef.current && !dealerInputRef.current.input?.contains(e.target)) {
+        setShowDealerDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Load initial dealers on focus (first 20)
+  const handleDealerFocus = () => {
+    setShowDealerDropdown(true);
+    if (dealerResults.length === 0) {
+      loadDealers('', 1, false);
+    }
+  };
+
+  // Infinite scroll in dealer dropdown
+  const handleDealerScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollHeight - scrollTop - clientHeight < 50 && dealerHasMore && !dealerLoading) {
+      const nextPage = dealerPage + 1;
+      setDealerPage(nextPage);
+      loadDealers(dealerSearch, nextPage, true);
+    }
+  };
 
   // Search products (debounced)
   useEffect(() => {
     if (productSearch.length < 2) { setProductResults([]); return; }
     const timer = setTimeout(() => {
-      salesService.searchProducts(productSearch).then(r => {
+      salesService.searchProducts(productSearch, 1, undefined, undefined, customerType || 'dealer').then(r => {
         if (r.success) setProductResults(r.data);
-      });
+        else console.warn('Product search failed:', r);
+      }).catch(err => { console.error('Product search error:', err.message); });
     }, 300);
     return () => clearTimeout(timer);
-  }, [productSearch]);
+  }, [productSearch, customerType]);
 
   // Select dealer
   const handleSelectDealer = (dealer) => {
@@ -77,6 +134,16 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
     setDealerSearch('');
     setShowDealerDropdown(false);
     setDealerResults([]);
+
+    // Auto-detect customer type from dealer's dealerType.pricingTier
+    if (dealer.dealerType?.pricingTier) {
+      const tierToType = {
+        dealerRate: 'dealer', wholesaleRate: 'wholesaler', retailRate: 'retail',
+        distributorRate: 'distributor', builderRate: 'builder', projectRate: 'builder',
+      };
+      setCustomerType(tierToType[dealer.dealerType.pricingTier] || 'dealer');
+    }
+
     // Auto-fill from dealer
     const creditDays = dealer.creditDays || 30;
     const dueDate = dayjs(orderData.orderDate).add(creditDays, 'day').format('YYYY-MM-DD');
@@ -94,18 +161,30 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
       message.warning('Product already added. Set shade/batch to add again.');
       return;
     }
-    // Rate based on dealer price tier
-    const rate = selectedDealer?.priceTier === 'Wholesale'
-      ? (product.wholesaleRate || product.dealerRate || product.mrp)
-      : selectedDealer?.priceTier === 'Retail'
-        ? (product.retailRate || product.mrp)
-        : (product.dealerRate || product.mrp);
+    // Rate based on customer type
+    const RATE_MAP = {
+      dealer: product.dealerRate || product.mrp,
+      wholesaler: product.wholesaleRate || product.dealerRate || product.mrp,
+      retail: product.retailRate || product.mrp,
+      distributor: product.distributorRate || product.dealerRate || product.mrp,
+      builder: product.builderRate || product.projectRate || product.dealerRate || product.mrp,
+    };
+    const rate = RATE_MAP[customerType] || product.dealerRate || product.mrp;
+
+    // Auto-apply discount from backend if available
+    let discount = 0, discountType = 'flat', discountRuleName = '';
+    if (product.discount) {
+      discount = product.discount.discountPercentage || 0;
+      discountType = 'percentage';
+      discountRuleName = product.discount.ruleName || '';
+    }
 
     setItems(prev => [...prev, {
       key: Date.now() + Math.random(),
       product: product._id,
       productCode: product.productCode,
       productName: product.itemName,
+      productImage: product.images?.[0] || '',
       brandName: product.brand?.name || '',
       tileSize: product.tileSize || '',
       finish: product.finish || '',
@@ -114,8 +193,9 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
       quantity: 1,
       unit: product.unit || 'Box',
       rate: rate || 0,
-      discount: 0,
-      discountType: 'flat',
+      discount,
+      discountType,
+      discountRuleName,
       schemeDiscount: 0,
       gstPercentage: product.gst || 18,
       piecesPerBox: product.piecesPerBox || 0,
@@ -153,8 +233,8 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
   const grandTotal = Math.round(subtotal + totalTax + charges);
   const balanceAmount = grandTotal - (orderData.advanceAmount || 0);
 
-  // Credit check
-  const creditExceeded = selectedDealer?.creditLimit > 0 &&
+  // Credit check (skip for retail — no credit)
+  const creditExceeded = customerType !== 'retail' && selectedDealer?.creditLimit > 0 &&
     ((selectedDealer.currentOutstanding || 0) + grandTotal) > selectedDealer.creditLimit;
 
   // Below min rate check
@@ -162,7 +242,7 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
 
   // Submit
   const handleSubmit = async (status = 'draft') => {
-    if (!selectedDealer) { message.error('Select a dealer first'); return; }
+    if (!selectedDealer) { message.error(`Select a ${customerType === 'retail' ? 'customer' : customerType} first`); return; }
     if (items.length === 0) { message.error('Add at least one product'); return; }
     if (belowMinItems.length > 0 && status === 'confirmed') {
       message.warning(`${belowMinItems.length} item(s) below minimum rate. Will need approval.`);
@@ -171,7 +251,7 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
     try {
       const payload = {
         dealer: selectedDealer._id,
-        orderType: orderData.orderType,
+        orderType: customerType,
         status,
         items: items.map(i => ({
           product: i.product, productCode: i.productCode, productName: i.productName,
@@ -199,9 +279,12 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
   // Columns
   const columns = [
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
-    { title: 'Product', width: 180, render: (_, r) => (
-      <div><div className="text-xs font-medium truncate max-w-[170px]">{r.productName}</div>
+    { title: 'Product', width: 200, render: (_, r) => (
+      <div className="flex items-center gap-1.5">
+        {r.productImage && <img src={getImageUrl(r.productImage)} alt="" className="w-7 h-7 rounded object-cover shrink-0 border border-gray-100" />}
+        <div><div className="text-xs font-medium truncate max-w-[150px]">{r.productName}</div>
         <div className="text-[10px] text-gray-400">{r.productCode} · {r.brandName} · {r.tileSize} · {r.finish}</div></div>
+      </div>
     )},
     { title: 'Shade', width: 70, render: (_, r) => <Input size="small" value={r.shade} onChange={e => updateItem(r.key, 'shade', e.target.value)} placeholder="—" className="text-xs" /> },
     { title: 'Batch', width: 70, render: (_, r) => <Input size="small" value={r.batch} onChange={e => updateItem(r.key, 'batch', e.target.value)} placeholder="—" className="text-xs" /> },
@@ -238,27 +321,60 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
           {/* Body */}
           <div className="flex-1 overflow-y-auto p-6 space-y-5">
 
-            {/* === DEALER SELECTION === */}
+            {/* === CUSTOMER TYPE SELECTOR === */}
             <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-1.5">Select Dealer *</label>
+              <label className="text-sm font-semibold text-gray-700 block mb-1.5">Customer Type *</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'dealer', label: 'Dealer', color: '#FF5F03' },
+                  { value: 'wholesaler', label: 'Wholesaler', color: '#1890ff' },
+                  { value: 'retail', label: 'Retail', color: '#52c41a' },
+                  { value: 'distributor', label: 'Distributor', color: '#722ed1' },
+                  { value: 'builder', label: 'Builder / Architect', color: '#fa8c16' },
+                ].map(t => (
+                  <button key={t.value}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${customerType === t.value
+                      ? 'text-white shadow-sm' : 'text-gray-500 border-gray-200 bg-white hover:border-gray-300'}`}
+                    style={customerType === t.value ? { background: t.color, borderColor: t.color } : {}}
+                    onClick={() => { setCustomerType(t.value); setSelectedDealer(null); setItems([]); }}>
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {customerType === 'retail' && (
+                <div className="mt-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded px-3 py-1.5">
+                  Retail orders: No credit limit check. Immediate payment required.
+                </div>
+              )}
+            </div>
+
+            {/* === DEALER/CUSTOMER SELECTION === */}
+            <div>
+              <label className="text-sm font-semibold text-gray-700 block mb-1.5">
+                Select {customerType === 'dealer' ? 'Dealer' : customerType === 'wholesaler' ? 'Wholesaler' : customerType === 'retail' ? 'Customer' : customerType === 'distributor' ? 'Distributor' : 'Builder/Architect'} *
+              </label>
               <div className="relative">
                 <Input
                   ref={dealerInputRef}
                   prefix={<SearchOutlined className="text-gray-400" />}
-                  placeholder="Search by dealer name, code, mobile..."
+                  placeholder={`Search ${customerType === 'retail' ? 'customer' : customerType} by name, code, mobile...`}
                   value={dealerSearch}
                   onChange={e => { setDealerSearch(e.target.value); setShowDealerDropdown(true); }}
-                  onFocus={() => setShowDealerDropdown(true)}
+                  onFocus={handleDealerFocus}
                   size="large"
                 />
                 {showDealerDropdown && dealerResults.length > 0 && (
-                  <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-56 overflow-y-auto">
+                  <div
+                    ref={dealerDropdownRef}
+                    className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-56 overflow-y-auto"
+                    onScroll={handleDealerScroll}
+                  >
                     {dealerResults.map(d => (
                       <div key={d._id} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex justify-between items-center"
                         onClick={() => handleSelectDealer(d)}>
                         <div>
                           <div className="text-sm font-medium text-gray-900">{d.businessName}</div>
-                          <div className="text-xs text-gray-400">{d.dealerCode} · {d.ownerName} · {d.mobile} · {d.city}</div>
+                          <div className="text-xs text-gray-400">{d.dealerCode} · {d.ownerName} · {d.mobile} · {d.city} {d.dealerType?.name ? `· ${d.dealerType.name}` : ''}</div>
                         </div>
                         <div className="text-right">
                           <div className="text-xs text-gray-500">Credit: ₹{(d.creditLimit || 0).toLocaleString()}</div>
@@ -266,6 +382,12 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
                         </div>
                       </div>
                     ))}
+                    {dealerLoading && (
+                      <div className="px-4 py-3 text-center text-xs text-gray-400">Loading more...</div>
+                    )}
+                    {!dealerHasMore && dealerResults.length > 0 && (
+                      <div className="px-4 py-2 text-center text-[10px] text-gray-300">— End of list —</div>
+                    )}
                   </div>
                 )}
               </div>
@@ -351,19 +473,37 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
                       <div key={p._id} className="px-4 py-3 hover:bg-orange-50 cursor-pointer border-b border-gray-50"
                         onClick={() => addProduct(p)}>
                         <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="text-sm font-medium text-gray-900">{p.itemName}</div>
-                            <div className="text-xs text-gray-400 mt-0.5">
-                              {p.productCode} · {p.brand?.name} · {p.tileSize} · {p.finish} · {p.colour}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
-                              Unit: {p.unit} · Pcs/Box: {p.piecesPerBox || '-'} · SqFt/Box: {p.sqftPerBox || '-'}
+                          <div className="flex items-start gap-2 flex-1">
+                            {p.images?.[0] && <img src={getImageUrl(p.images[0])} alt="" className="w-10 h-10 rounded object-cover shrink-0 border border-gray-100 mt-0.5" />}
+                            <div className="flex-1">
+                              <div className="text-sm font-medium text-gray-900">{p.itemName}</div>
+                              <div className="text-xs text-gray-400 mt-0.5">
+                                {p.productCode} · {p.brand?.name} · {p.tileSize} · {p.finish} · {p.colour}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-0.5">
+                                Unit: {p.unit} · Pcs/Box: {p.piecesPerBox || '-'} · SqFt/Box: {p.sqftPerBox || '-'}
+                              </div>
+                              {p.discount && (
+                                <div className="text-[10px] text-green-600 font-medium mt-0.5">
+                                  {p.discount.discountPercentage}% discount · {p.discount.ruleName}
+                                </div>
+                              )}
                             </div>
                           </div>
                           <div className="text-right shrink-0 ml-4">
-                            <div className="text-sm font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}/{p.unit || 'Box'}</div>
+                            {p.discount ? (
+                              <>
+                                <div className="text-sm font-bold text-green-600">₹{p.discount.effectiveRate}/{p.unit || 'Box'}</div>
+                                <div className="text-[10px] text-gray-400 line-through">₹{p.dealerRate || p.mrp || 0}</div>
+                              </>
+                            ) : (
+                              <div className="text-sm font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}/{p.unit || 'Box'}</div>
+                            )}
                             <div className="text-[10px] text-gray-400">MRP ₹{p.mrp} · GST {p.gst}%</div>
                             {p.minimumSellingRate > 0 && <div className="text-[10px] text-red-400">Min: ₹{p.minimumSellingRate}</div>}
+                            <div className={`text-[10px] font-semibold mt-0.5 ${(p.stockAvailable || 0) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              Stock: {p.stockAvailable || 0} {p.unit || 'Box'}
+                            </div>
                           </div>
                         </div>
                       </div>

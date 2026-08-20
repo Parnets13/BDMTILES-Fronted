@@ -4,9 +4,8 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, Badge, Timeline
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, PhoneOutlined
+  PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, PhoneOutlined, ClockCircleOutlined, CalendarOutlined
 } from '@ant-design/icons';
-import { Calendar, Clock } from 'lucide-react';
 import crmService from '../../services/crmService.js';
 
 const STATUS_COLORS = {
@@ -144,7 +143,7 @@ const FollowUpManager = () => {
       {dueToday.length > 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
           <div className="flex items-center gap-2 mb-3">
-            <Clock size={16} className="text-orange-500" />
+            <ClockCircleOutlined className="text-orange-500" />
             <span className="font-semibold text-orange-700">{dueToday.length} Follow-up{dueToday.length > 1 ? 's' : ''} Due Today</span>
           </div>
           <div className="flex flex-wrap gap-2">

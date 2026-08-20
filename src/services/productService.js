@@ -26,6 +26,9 @@ const productService = {
     });
     return res.data;
   },
+
+  // Bulk price update — brand/category/product-wise
+  bulkPriceUpdate: (data) => api.post('/products/bulk-price-update', data),
 };
 
 export default productService;

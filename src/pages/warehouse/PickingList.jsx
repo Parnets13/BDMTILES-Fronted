@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, PrinterOutlined } from '@ant-design/icons';
-import { Package, ClipboardList } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
 
@@ -122,7 +121,7 @@ const PickingList = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <ClipboardList size={24} className="text-blue-600" /> Picking List
+            <UnorderedListOutlined className="text-blue-600 text-xl" /> Picking List
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Generate picking lists from pending dispatch orders</p>
         </div>

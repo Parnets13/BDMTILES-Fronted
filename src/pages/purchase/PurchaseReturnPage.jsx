@@ -5,11 +5,11 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
-  EyeOutlined, CheckCircleOutlined, CloseCircleOutlined
+  EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, UndoOutlined
 } from '@ant-design/icons';
-import { RotateCcw } from 'lucide-react';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = {
   draft: 'default',
@@ -144,15 +144,18 @@ const PurchaseReturnPage = () => {
           <h1 className="text-2xl font-bold text-gray-800">Purchase Returns</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage debit notes for returned goods to suppliers</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large"
-          onClick={() => setShowCreate(true)} danger>
-          New Return / Debit Note
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="purchase_return" title="Deleted Purchase Returns" onRestore={fetchReturns} />
+          <Button type="primary" icon={<PlusOutlined />} size="large"
+            onClick={() => setShowCreate(true)} danger>
+            New Return / Debit Note
+          </Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<RotateCcw size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<UndoOutlined />} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Debit Issued" value={stats.debitIssued || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>

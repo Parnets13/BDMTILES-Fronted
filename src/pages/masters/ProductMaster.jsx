@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Package } from 'lucide-react';
+import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Modal } from 'antd';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, ShopOutlined } from '@ant-design/icons';
 import productService from '../../services/productService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import getImageUrl from '../../utils/imageUrl.js';
+import { useConfirm } from '../../components/ConfirmModal.jsx';
 
 const TILE_SIZES = ['200x200','200x300','250x375','300x300','300x450','300x600','400x400','600x600','600x1200','800x800','800x1200','800x1600','1000x1000','1200x1200','1200x1800','1200x2400','1600x3200'];
 const FINISHES = ['Glossy','Matt','Sugar','Carving','Satin','Rustic','Polished','Lapato','High Gloss','Anti-Skid','Rocker','Book Match'];
@@ -14,6 +16,7 @@ const ANTI_SKID = ['','R9','R10','R11','R12','R13'];
 const ORIGINS = ['India','Spain','Italy','China','Vietnam','Indonesia','Turkey'];
 
 const ProductMaster = () => {
+  const { confirm, alertModal } = useConfirm();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -70,7 +73,7 @@ const ProductMaster = () => {
     setEditingProduct(product);
     setShowPreview(false);
     setImageFiles([]);
-    setImagePreviews(product?.images || []);
+    setImagePreviews((product?.images || []).map(img => getImageUrl(img)));
     if (product) {
       form.setFieldsValue({
         ...product,
@@ -164,10 +167,15 @@ const ProductMaster = () => {
 
   // Delete
   const handleDelete = async (id) => {
+    const proceed = await confirm('Delete this product?', { type: 'danger', okText: 'Delete', content: 'Product will be moved to Recycle Bin. You can restore it within 30 days.' });
+    if (!proceed) return;
     try {
       const res = await productService.deleteProduct(id);
-      if (res.success) { message.success('Deleted'); fetchProducts(); }
-    } catch (err) { message.error(err.message); }
+      if (res.success) { message.success(res.message || 'Moved to Recycle Bin'); fetchProducts(); }
+      else { alertModal('Cannot Delete', res.message, 'error'); }
+    } catch (err) {
+      alertModal('Cannot Delete', err.message, 'error');
+    }
   };
 
   // View product detail
@@ -179,12 +187,14 @@ const ProductMaster = () => {
   // Get filtered categories/subcategories based on selection (cascading)
   const getFilteredCategories = (brandId) => {
     const bid = brandId || form.getFieldValue('brand');
-    return bid ? filterOptions.categories.filter(c => c.brand === bid) : filterOptions.categories;
+    if (!bid) return filterOptions.categories;
+    return filterOptions.categories.filter(c => String(c.brand) === String(bid) || String(c.brand?._id) === String(bid));
   };
 
   const getFilteredSubcategories = (categoryId) => {
     const cid = categoryId || form.getFieldValue('category');
-    return cid ? filterOptions.subcategories.filter(s => s.category === cid) : filterOptions.subcategories;
+    if (!cid) return filterOptions.subcategories;
+    return filterOptions.subcategories.filter(s => String(s.category) === String(cid) || String(s.category?._id) === String(cid));
   };
 
   // When brand changes → clear category and subcategory
@@ -277,14 +287,17 @@ const ProductMaster = () => {
           <h1 className="text-2xl font-bold text-gray-800">Product Master</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage tiles, granite, marble & building material products</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large">
-          Add New Product
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="product" title="Deleted Products" onRestore={fetchProducts} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large">
+            Add New Product
+          </Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={6}><Card size="small"><Statistic title="Total Products" value={stats.total} prefix={<Package size={16} />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Total Products" value={stats.total} prefix={<ShopOutlined />} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Active" value={stats.active} valueStyle={{ color: '#22c55e' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Inactive" value={stats.inactive} valueStyle={{ color: '#ef4444' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Draft" value={stats.draft} valueStyle={{ color: '#f59e0b' }} /></Card></Col>
@@ -367,17 +380,29 @@ const ProductMaster = () => {
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="category" label="Category" rules={[{ required: true, message: 'Select category' }]}>
-                    <Select placeholder="Search categories..." showSearch optionFilterProp="label"
-                      options={getFilteredCategories().map(c => ({ value: c._id, label: c.name }))}
-                      onChange={handleCategoryChange} />
+                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.brand !== curr.brand}>
+                    {() => (
+                      <Form.Item name="category" label="Category" rules={[{ required: true, message: 'Select category' }]}>
+                        <Select placeholder={form.getFieldValue('brand') ? 'Select category...' : 'Select brand first'} showSearch optionFilterProp="label"
+                          disabled={!form.getFieldValue('brand')}
+                          options={getFilteredCategories().map(c => ({ value: c._id, label: c.name }))}
+                          onChange={handleCategoryChange}
+                          notFoundContent={form.getFieldValue('brand') ? 'No categories for this brand' : 'Select a brand first'} />
+                      </Form.Item>
+                    )}
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item name="subcategory" label="Subcategory" rules={[{ required: true, message: 'Select subcategory' }]}>
-                    <Select placeholder="Search subcategories..." showSearch optionFilterProp="label"
-                      options={getFilteredSubcategories().map(s => ({ value: s._id, label: s.name }))}
-                      onChange={handleSubcategoryChange} />
+                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.category !== curr.category || prev.brand !== curr.brand}>
+                    {() => (
+                      <Form.Item name="subcategory" label="Subcategory" rules={[{ required: true, message: 'Select subcategory' }]}>
+                        <Select placeholder={form.getFieldValue('category') ? 'Select subcategory...' : 'Select category first'} showSearch optionFilterProp="label"
+                          disabled={!form.getFieldValue('category')}
+                          options={getFilteredSubcategories().map(s => ({ value: s._id, label: s.name }))}
+                          onChange={handleSubcategoryChange}
+                          notFoundContent={form.getFieldValue('category') ? 'No subcategories for this category' : 'Select a category first'} />
+                      </Form.Item>
+                    )}
                   </Form.Item>
                 </Col>
               </Row>
@@ -455,14 +480,26 @@ const ProductMaster = () => {
 
               <Divider className="my-4" />
 
-              {/* Pricing */}
+              {/* Pricing — Basic Price & Purchase Control */}
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4">
+                <div className="text-sm font-semibold text-orange-800 mb-2">Purchase Price Control</div>
+                <Row gutter={16}>
+                  <Col span={6}><Form.Item name="basicPrice" label="Basic Price (₹)" tooltip="Base purchase price of this product"><InputNumber min={0} className="w-full" prefix="₹" placeholder="e.g. 100" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="excessPrice" label="Excess Price (₹)" tooltip="Max excess allowed above basic. Purchase rate cannot exceed Basic + Excess"><InputNumber min={0} className="w-full" prefix="₹" placeholder="e.g. 15" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="purchaseRate" label="Purchase Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="landingCost" label="Landing Cost"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+                </Row>
+                <div className="text-xs text-orange-600 -mt-2">⚠ Max Purchase Rate = Basic Price + Excess Price. PO rate above this will be blocked.</div>
+              </div>
+
+              {/* Selling Prices */}
               <Row gutter={16}>
-                <Col span={4}><Form.Item name="purchaseRate" label="Purchase Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="landingCost" label="Landing Cost"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="mrp" label="MRP"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="retailRate" label="Retail Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="dealerRate" label="Dealer Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="wholesaleRate" label="Wholesale Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="distributorRate" label="Distributor Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="builderRate" label="Builder Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
                 <Col span={4}><Form.Item name="projectRate" label="Project Rate"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
@@ -634,7 +671,7 @@ const ViewProductModal = ({ product, onClose }) => {
           {product.images?.length > 0 && (
             <div className="flex gap-3 mb-4">
               {product.images.map((src, i) => (
-                <img key={i} src={src.startsWith('http') ? src : `http://localhost:5000${src}`} alt="" className="w-24 h-24 rounded-lg object-cover border" />
+                <img key={i} src={getImageUrl(src)} alt="" className="w-24 h-24 rounded-lg object-cover border" />
               ))}
             </div>
           )}

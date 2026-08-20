@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, Card, Statistic, DatePicker } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { ShoppingCart, TrendingUp } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, ShoppingCartOutlined, RiseOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
-import CreateSalesOrder from './CreateSalesOrder.jsx';
 import SalesOrderView from './SalesOrderView.jsx';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', confirmed: 'blue', approved: 'cyan', processing: 'orange',
@@ -13,6 +13,7 @@ const STATUS_COLORS = {
 const PAYMENT_COLORS = { pending: 'orange', partial: 'blue', paid: 'green', overdue: 'red' };
 
 const SalesOrderDashboard = () => {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -20,8 +21,6 @@ const SalesOrderDashboard = () => {
   const [filters, setFilters] = useState({ status: undefined, paymentStatus: undefined });
   const [stats, setStats] = useState({});
 
-  // Create order overlay
-  const [showCreateOrder, setShowCreateOrder] = useState(false);
   const [viewOrderId, setViewOrderId] = useState(null);
 
   useEffect(() => {
@@ -84,12 +83,15 @@ const SalesOrderDashboard = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Sales Order Dashboard</h1><p className="text-sm text-gray-500 mt-0.5">Manage all dealer and retail sales orders</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreateOrder(true)}>New Sales Order</Button>
+        <Space>
+          <ModuleRecycleBin module="sales_order" title="Deleted Sales Orders" onRestore={fetchOrders} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/sales-purchase/quotation-manager')}>Create Quotation</Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Today's Sales" value={`₹${(stats.todaySales||0).toLocaleString()}`} prefix={<TrendingUp size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Today's Sales" value={`₹${(stats.todaySales||0).toLocaleString()}`} prefix={<RiseOutlined />} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{color:'#666'}} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Confirmed" value={stats.confirmed || 0} valueStyle={{color:'#1890ff'}} /></Card></Col>
@@ -118,14 +120,6 @@ const SalesOrderDashboard = () => {
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t,r) => `${r[0]}-${r[1]} of ${t} orders` }}
           onChange={pag => setPagination(p => ({...p, current: pag.current, pageSize: pag.pageSize}))} />
       </div>
-
-      {/* Create Order */}
-      {showCreateOrder && (
-        <CreateSalesOrder
-          onClose={() => setShowCreateOrder(false)}
-          onSuccess={() => { fetchOrders(); salesService.getStats().then(r => { if (r.success) setStats(r.data); }); }}
-        />
-      )}
 
       {/* View Order Detail */}
       {viewOrderId && (

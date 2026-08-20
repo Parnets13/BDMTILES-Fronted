@@ -3,8 +3,7 @@ import {
   Table, Input, Button, Tag, message,
   Card, Statistic, Row, Col, Spin
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons';
-import { BookOpen } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, ArrowLeftOutlined, PrinterOutlined, BookOutlined } from '@ant-design/icons';
 import financeService from '../../services/financeService.js';
 
 const ENTRY_COLORS = {
@@ -96,7 +95,7 @@ const SupplierLedger = () => {
     { title: 'City', dataIndex: 'city', width: 130 },
     { title: 'Mobile', dataIndex: 'mobile', width: 130, render: v => <span className="text-xs">{v || '—'}</span> },
     { title: '', width: 110,
-      render: (_, r) => <Button size="small" type="link" icon={<BookOpen size={13} />} onClick={() => openStatement(r)}>View Ledger</Button> },
+      render: (_, r) => <Button size="small" type="link" icon={<BookOutlined />} onClick={() => openStatement(r)}>View Ledger</Button> },
   ];
 
   const entryColumns = [

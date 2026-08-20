@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, message, Popconfirm, Tooltip, Row, Col, Divider } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const SupplierMaster = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -69,7 +70,10 @@ const SupplierMaster = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Supplier Master</h1><p className="text-sm text-gray-500 mt-0.5">Manage tile & material suppliers</p></div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm()} size="large">Add Supplier</Button>
+        <Space>
+          <ModuleRecycleBin module="supplier" title="Deleted Suppliers" onRestore={fetchSuppliers} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm()} size="large">Add Supplier</Button>
+        </Space>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

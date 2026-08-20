@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Undo2 } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = { draft: 'default', approved: 'blue', stock_updated: 'cyan', credit_issued: 'green', cancelled: 'red' };
 const REASON_LABELS = { damaged: 'Damaged', wrong_product: 'Wrong Product', quality_issue: 'Quality Issue', excess: 'Excess', shade_mismatch: 'Shade Mismatch', other: 'Other' };
@@ -214,12 +214,15 @@ const SalesReturnPage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Sales Returns & Credit Notes</h1><p className="text-sm text-gray-500 mt-0.5">Handle product returns and issue credit notes</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Sales Return</Button>
+        <Space>
+          <ModuleRecycleBin module="sales_return" title="Deleted Sales Returns" onRestore={fetchReturns} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Sales Return</Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Total Returns" value={stats.total || 0} prefix={<Undo2 size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Total Returns" value={stats.total || 0} prefix={<UndoOutlined />} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Credit Issued" value={stats.creditIssued || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>

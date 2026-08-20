@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, Card, Statistic, InputNumber, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Package, TrendingUp } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, ShopOutlined, RiseOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', pending_approval: 'orange', approved: 'cyan', sent: 'blue',
@@ -88,12 +88,15 @@ const PurchaseOrderPage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Purchase Order Management</h1><p className="text-sm text-gray-500 mt-0.5">Create and manage supplier purchase orders</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreatePO(true)}>New PO</Button>
+        <Space>
+          <ModuleRecycleBin module="purchase" title="Deleted Purchase Orders" onRestore={fetchOrders} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreatePO(true)}>New PO</Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={5}><Card size="small"><Statistic title="Total POs" value={stats.total || 0} prefix={<Package size={14} />} /></Card></Col>
+        <Col span={5}><Card size="small"><Statistic title="Total POs" value={stats.total || 0} prefix={<ShopOutlined />} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#13c2c2' }} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="Received" value={stats.received || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>

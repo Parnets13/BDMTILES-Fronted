@@ -11,8 +11,8 @@ const salesService = {
   getStats: () => api.get('/sales-orders/stats'),
 
   // Search helpers
-  searchDealers: (q) => api.get('/sales-orders/search-dealers', { params: { q } }),
-  searchProducts: (q, brand, category) => api.get('/sales-orders/search-products', { params: { q, brand, category } }),
+  searchDealers: (q, page = 1, pricingTier) => api.get('/sales-orders/search-dealers', { params: { q, page, limit: 20, pricingTier } }),
+  searchProducts: (q, page = 1, brand, category, dealerType) => api.get('/sales-orders/search-products', { params: { q, page, limit: 20, brand, category, dealerType } }),
 
   // Sales Returns
   getReturns: (params) => api.get('/sales-returns', { params }),

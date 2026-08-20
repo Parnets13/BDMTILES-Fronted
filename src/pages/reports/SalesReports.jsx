@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Select, Table, message, Divider } from 'antd';
-import { SearchOutlined, PrinterOutlined } from '@ant-design/icons';
+import { SearchOutlined, PrinterOutlined, BarChartOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 
@@ -120,7 +120,7 @@ const SalesReports = () => {
 
       {!data && !loading && (
         <div className="bg-white rounded-lg border border-gray-200 py-20 text-center text-gray-400">
-          <BarChart size={48} className="mx-auto mb-3" />
+          <BarChartOutlined className="mx-auto mb-3 text-5xl" />
           <p>Set filters and click "Generate Report" to view sales data</p>
         </div>
       )}

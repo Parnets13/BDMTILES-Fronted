@@ -3,8 +3,7 @@ import {
   Table, Button, Select, Tag, message,
   Row, Col, Card, Statistic, Tabs, Divider, Space
 } from 'antd';
-import { ReloadOutlined, UserOutlined, BookOutlined } from '@ant-design/icons';
-import { Users, ShoppingBag, CreditCard, AlertTriangle, DollarSign } from 'lucide-react';
+import { ReloadOutlined, UserOutlined, BookOutlined, ShoppingOutlined, CreditCardOutlined, WarningOutlined, DollarOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
@@ -141,13 +140,13 @@ const Customer360 = () => {
   ];
 
   const tabItems = [
-    { key: 'orders', label: <span><ShoppingBag size={14} className="inline mr-1" />Orders</span>,
+    { key: 'orders', label: <span><ShoppingOutlined className="mr-1" />Orders</span>,
       children: <Table columns={orderColumns} dataSource={orders} rowKey="_id" loading={ordersLoading}
         size="small" pagination={false} scroll={{ x: 700 }} /> },
-    { key: 'payments', label: <span><CreditCard size={14} className="inline mr-1" />Payments</span>,
+    { key: 'payments', label: <span><CreditCardOutlined className="mr-1" />Payments</span>,
       children: <Table columns={paymentColumns} dataSource={payments} rowKey="_id" loading={paymentsLoading}
         size="small" pagination={false} scroll={{ x: 600 }} /> },
-    { key: 'complaints', label: <span><AlertTriangle size={14} className="inline mr-1" />Complaints</span>,
+    { key: 'complaints', label: <span><WarningOutlined className="mr-1" />Complaints</span>,
       children: <Table columns={complaintColumns} dataSource={complaints} rowKey="_id" loading={complaintsLoading}
         size="small" pagination={false} scroll={{ x: 600 }} /> },
     { key: 'ledger', label: <span><BookOutlined className="mr-1" />Ledger</span>,
@@ -167,7 +166,7 @@ const Customer360 = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Users size={24} className="text-indigo-600" /> Customer 360°
+            <TeamOutlined className="text-indigo-600 text-xl" /> Customer 360°
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Complete dealer profile — orders, payments, complaints & ledger</p>
         </div>
@@ -186,7 +185,7 @@ const Customer360 = () => {
 
       {!selectedDealerId ? (
         <div className="bg-white rounded-lg border border-gray-200 py-24 text-center">
-          <Users size={48} className="mx-auto mb-4 text-gray-300" />
+          <TeamOutlined className="mx-auto mb-4 text-gray-300 text-5xl" />
           <h3 className="text-lg font-medium text-gray-400">Select a dealer to view their 360° profile</h3>
           <p className="text-sm text-gray-400 mt-1">Choose a dealer from the dropdown above</p>
         </div>
@@ -228,16 +227,16 @@ const Customer360 = () => {
             <Col span={17}>
               <Row gutter={[12, 12]}>
                 {[
-                  ['Total Orders', orderStats.total, '#1890ff', ShoppingBag],
-                  ['Total Purchases', `₹${(orderStats.totalAmount || 0).toLocaleString()}`, '#722ed1', DollarSign],
-                  ['Total Paid', `₹${(orderStats.paid || 0).toLocaleString()}`, '#52c41a', CreditCard],
-                  ['Balance Due', `₹${(orderStats.balance || 0).toLocaleString()}`, '#f5222d', DollarSign],
-                  ['Open Complaints', orderStats.openComplaints, '#fa8c16', AlertTriangle],
+                  ['Total Orders', orderStats.total, '#1890ff', ShoppingOutlined],
+                  ['Total Purchases', `₹${(orderStats.totalAmount || 0).toLocaleString()}`, '#722ed1', DollarOutlined],
+                  ['Total Paid', `₹${(orderStats.paid || 0).toLocaleString()}`, '#52c41a', CreditCardOutlined],
+                  ['Balance Due', `₹${(orderStats.balance || 0).toLocaleString()}`, '#f5222d', DollarOutlined],
+                  ['Open Complaints', orderStats.openComplaints, '#fa8c16', WarningOutlined],
                 ].map(([label, val, color, Icon]) => (
                   <Col key={label} span={8}>
                     <Card size="small" style={{ borderColor: color + '30' }}>
                       <div className="flex items-center gap-2">
-                        <Icon size={18} style={{ color }} />
+                        <Icon style={{ color, fontSize: 18 }} />
                         <div>
                           <div className="text-xs text-gray-400">{label}</div>
                           <div className="font-bold text-base" style={{ color }}>{val}</div>

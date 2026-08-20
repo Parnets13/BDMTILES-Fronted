@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider } from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, PrinterOutlined } from '@ant-design/icons';
-import { ReceiptText } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import api from '../../config/api.js';
@@ -139,7 +138,7 @@ const SupplierInvoicePage = () => {
       </div>
 
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<ReceiptText size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileTextOutlined />} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Pending" value={stats.pendingVerification || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Verified" value={stats.verified || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>

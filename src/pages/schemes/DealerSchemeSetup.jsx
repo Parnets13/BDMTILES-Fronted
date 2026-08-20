@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Card, Modal, InputNumber, Divider
 } from 'antd';
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Percent } from 'lucide-react';
+import { PlusOutlined, ReloadOutlined, PercentageOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 
 const STATUS_COLORS = { active: 'green', paused: 'orange', expired: 'default', closed: 'red' };
@@ -96,7 +95,7 @@ const DealerSchemeSetup = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Percent size={22} className="text-blue-600" /> Dealer Scheme Setup
+            <PercentageOutlined className="text-blue-600" /> Dealer Scheme Setup
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Configure dealer discount and incentive schemes</p>
         </div>

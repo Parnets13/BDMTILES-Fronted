@@ -3,8 +3,7 @@ import {
   Table, Input, Button, Select, Tag, Space, message,
   Card, Statistic, Row, Col, Divider, Spin
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, ArrowLeftOutlined, PrinterOutlined } from '@ant-design/icons';
-import { BookOpen } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, ArrowLeftOutlined, PrinterOutlined, BookOutlined } from '@ant-design/icons';
 import financeService from '../../services/financeService.js';
 import masterService from '../../services/masterService.js';
 
@@ -107,7 +106,7 @@ const DealerLedger = () => {
     { title: 'Outstanding', dataIndex: 'currentOutstanding', width: 130,
       render: v => <span className={`font-semibold text-sm ${v > 0 ? 'text-red-600' : 'text-green-600'}`}>₹{(v || 0).toLocaleString()}</span> },
     { title: '', width: 100,
-      render: (_, r) => <Button size="small" type="link" icon={<BookOpen size={13} />} onClick={() => openStatement(r)}>View Ledger</Button> },
+      render: (_, r) => <Button size="small" type="link" icon={<BookOutlined />} onClick={() => openStatement(r)}>View Ledger</Button> },
   ];
 
   const entryColumns = [

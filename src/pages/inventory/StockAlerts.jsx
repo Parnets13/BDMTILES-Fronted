@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Badge, Tooltip
 } from 'antd';
-import { ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
-import { AlertTriangle, Package, TrendingDown } from 'lucide-react';
+import { ReloadOutlined, SearchOutlined, WarningOutlined, ShopOutlined, FallOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
@@ -171,7 +170,7 @@ const StockAlerts = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <AlertTriangle size={22} className="text-orange-500" />
+            <WarningOutlined className="text-orange-500 text-xl" />
             Stock Alerts
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -200,7 +199,7 @@ const StockAlerts = () => {
           <Card size="small" style={{ borderLeft: '4px solid #ea580c', cursor: 'pointer' }}
             onClick={() => setAlertFilter('critical')}>
             <Statistic
-              title={<span className="flex items-center gap-1"><TrendingDown size={13} className="text-orange-600" /> Critical</span>}
+              title={<span className="flex items-center gap-1"><FallOutlined className="text-orange-600" /> Critical</span>}
               value={summary.critical}
               valueStyle={{ color: '#ea580c', fontSize: 28 }}
             />
@@ -211,7 +210,7 @@ const StockAlerts = () => {
           <Card size="small" style={{ borderLeft: '4px solid #d97706', cursor: 'pointer' }}
             onClick={() => setAlertFilter('low_stock')}>
             <Statistic
-              title={<span className="flex items-center gap-1"><Package size={13} className="text-yellow-600" /> Low Stock</span>}
+              title={<span className="flex items-center gap-1"><ShopOutlined className="text-yellow-600" /> Low Stock</span>}
               value={summary.lowStock}
               valueStyle={{ color: '#d97706', fontSize: 28 }}
             />

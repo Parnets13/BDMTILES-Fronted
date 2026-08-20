@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { Descriptions, Table, Tag, Button, Space, message, Modal, Input, Divider, Timeline, Spin } from 'antd';
-import { PrinterOutlined, EditOutlined, CloseCircleOutlined, CheckCircleOutlined, CarOutlined, ArrowLeftOutlined } from '@ant-design/icons';
-import { FileText } from 'lucide-react';
+import { PrinterOutlined, EditOutlined, CloseCircleOutlined, CheckCircleOutlined, CarOutlined, ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
+import api from '../../config/api.js';
+import getImageUrl from '../../utils/imageUrl.js';
 
 const STATUS_COLORS = {
   draft: 'default', confirmed: 'blue', approved: 'cyan', processing: 'orange',
@@ -101,9 +102,12 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
   const itemColumns = [
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
     { title: 'Product', key: 'product', render: (_, r) => (
-      <div>
-        <div className="text-sm font-medium">{r.productName || r.product?.itemName}</div>
-        <div className="text-xs text-gray-400">{r.productCode || r.product?.productCode} · {r.product?.tileSize} · {r.product?.finish}</div>
+      <div className="flex items-center gap-2">
+        {(r.productImage || r.product?.images?.[0]) && <img src={getImageUrl(r.productImage || r.product?.images?.[0])} alt="" className="w-8 h-8 rounded object-cover border border-gray-100 shrink-0" />}
+        <div>
+          <div className="text-sm font-medium">{r.productName || r.product?.itemName}</div>
+          <div className="text-xs text-gray-400">{r.productCode || r.product?.productCode} · {r.product?.tileSize} · {r.product?.finish}</div>
+        </div>
       </div>
     )},
     { title: 'Shade', dataIndex: 'shade', width: 80, render: v => v || '—' },
@@ -155,6 +159,22 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
                 <Button danger icon={<CloseCircleOutlined />} onClick={() => setCancelModal(true)}>Cancel</Button>
               )}
               <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Invoice</Button>
+              {['confirmed', 'processing', 'dispatched', 'delivered'].includes(order.status) && (
+                <Button type="primary" icon={<FileTextOutlined />} onClick={async () => {
+                  try {
+                    const res = await api.post(`/invoices/generate-from-so/${order._id}`);
+                    if (res.success) { message.success(`${res.data.invoiceNumber} generated!`); }
+                  } catch (err) { message.error(err.message); }
+                }}>Generate GST Invoice</Button>
+              )}
+              {order.status === 'confirmed' && (
+                <Button icon={<FileTextOutlined />} onClick={async () => {
+                  try {
+                    const res = await api.post(`/pick-lists/generate/${order._id}`);
+                    if (res.success) { message.success(`${res.data.pickListNumber} generated!`); }
+                  } catch (err) { message.error(err.message); }
+                }}>Generate Pick List</Button>
+              )}
               <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl px-1 ml-1" onClick={onClose}>✕</span>
             </Space>
           </div>

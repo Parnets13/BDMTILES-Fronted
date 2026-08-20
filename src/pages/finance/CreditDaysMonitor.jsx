@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Progress, Tooltip
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, WarningOutlined, PhoneOutlined } from '@ant-design/icons';
-import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, WarningOutlined, PhoneOutlined, ClockCircleOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import financeService from '../../services/financeService.js';
 import masterService from '../../services/masterService.js';
 
@@ -156,9 +155,9 @@ const CreditDaysMonitor = () => {
       width: 110,
       sorter: (a, b) => b.daysOverdue - a.daysOverdue,
       render: (v, r) => {
-        if (v <= 0) return <Tag color="green" icon={<CheckCircle size={11} />}>Current</Tag>;
+        if (v <= 0) return <Tag color="green" icon={<CheckCircleOutlined />}>Current</Tag>;
         const bkt = OVERDUE_BUCKETS.find(b => b.key === r.bucket);
-        return <Tag color={bkt?.color || 'red'}><Clock size={11} className="inline mr-1" />{v} days</Tag>;
+        return <Tag color={bkt?.color || 'red'}><ClockCircleOutlined className="inline mr-1" />{v} days</Tag>;
       },
     },
     {
@@ -179,7 +178,7 @@ const CreditDaysMonitor = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Clock size={22} className="text-blue-500" />
+            <ClockCircleOutlined className="text-blue-500 text-xl" />
             Credit Days Monitor
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">

@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Alert
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import { CheckSquare, XCircle, Clock } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, CheckSquareOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const TYPE_COLORS = {
@@ -170,7 +169,7 @@ const ApprovalWorkflow = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <CheckSquare size={24} className="text-green-600" /> Approval Workflow
+            <CheckSquareOutlined className="text-green-600 text-xl" /> Approval Workflow
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Review and approve pending requests</p>
         </div>
@@ -179,7 +178,7 @@ const ApprovalWorkflow = () => {
       {(stats.pending > 0) && (
         <Alert type="warning" showIcon className="mb-4"
           message={<span><strong>{stats.pending}</strong> requests are pending your approval</span>}
-          icon={<Clock size={16} />} />
+          icon={<ClockCircleOutlined />} />
       )}
 
       <Row gutter={[12, 12]} className="mb-4">

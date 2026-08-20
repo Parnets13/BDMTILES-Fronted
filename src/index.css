@@ -12,3 +12,11 @@
     outline: none;
   }
 }
+
+/* Remove scrollbar from Ant Design Modal body */
+.ant-modal .ant-modal-body {
+  overflow: visible !important;
+}
+.ant-modal-wrap {
+  overflow: auto !important;
+}

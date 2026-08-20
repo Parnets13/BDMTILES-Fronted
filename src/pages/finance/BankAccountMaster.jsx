@@ -6,7 +6,6 @@ import {
 import {
   PlusOutlined, SearchOutlined, EditOutlined, ReloadOutlined, BankOutlined
 } from '@ant-design/icons';
-import { Landmark } from 'lucide-react';
 import financeService from '../../services/financeService.js';
 
 const ACCOUNT_TYPES = ['savings', 'current', 'cc', 'od'];

@@ -6,12 +6,15 @@ import {
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
   SendOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  SwapOutlined, DeleteOutlined, PrinterOutlined
+  SwapOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined
 } from '@ant-design/icons';
-import { FileSpreadsheet } from 'lucide-react';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
+import ProductSelectionModal from '../../components/ProductSelectionModal.jsx';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import getImageUrl from '../../utils/imageUrl.js';
+import { useConfirm } from '../../components/ConfirmModal.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', sent: 'blue', accepted: 'green',
@@ -19,6 +22,7 @@ const STATUS_COLORS = {
 };
 
 const QuotationManager = () => {
+  const { confirm, alertModal } = useConfirm();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
@@ -55,37 +59,31 @@ const QuotationManager = () => {
   const handleStatusChange = async (id, status) => {
     try {
       const res = await salesService.updateQuotationStatus(id, { status });
-      if (res.success) { message.success(res.message); fetchQuotations(); loadStats(); }
-    } catch (err) { message.error(err.message); }
+      if (res.success) { message.success(res.message || `Status updated to ${status}`); fetchQuotations(); loadStats(); }
+      else { alertModal('Failed', res.message, 'error'); }
+    } catch (err) { alertModal('Error', err.message, 'error'); }
   };
 
-  const handleConvert = (record) => {
-    Modal.confirm({
-      title: `Convert ${record.quotationNumber} to Sales Order?`,
-      content: 'A confirmed Sales Order will be created from this quotation.',
-      okText: 'Convert to SO', okType: 'primary',
-      onOk: async () => {
-        try {
-          const res = await salesService.convertQuotation(record._id);
-          if (res.success) {
-            message.success(`✅ Converted! Sales Order ${res.data.salesOrder.orderNumber} created.`);
-            fetchQuotations(); loadStats();
-          }
-        } catch (err) { message.error(err.message); }
-      },
-    });
+  const handleConvert = async (record) => {
+    const proceed = await confirm(`Convert ${record.quotationNumber} to Sales Order?`, { content: 'A confirmed Sales Order will be created from this quotation.', okText: 'Convert to SO', type: 'info' });
+    if (!proceed) return;
+    try {
+      const res = await salesService.convertQuotation(record._id);
+      if (res.success) {
+        message.success(`Converted! Sales Order ${res.data.salesOrder.orderNumber} created.`);
+        fetchQuotations(); loadStats();
+      }
+    } catch (err) { alertModal('Convert Failed', err.message, 'error'); }
   };
 
-  const handleDelete = (id) => {
-    Modal.confirm({
-      title: 'Delete Quotation?', okText: 'Delete', okType: 'danger',
-      onOk: async () => {
-        try {
-          const res = await salesService.deleteQuotation(id);
-          if (res.success) { message.success('Deleted.'); fetchQuotations(); loadStats(); }
-        } catch (err) { message.error(err.message); }
-      },
-    });
+  const handleDelete = async (id) => {
+    const proceed = await confirm('Delete this quotation?', { type: 'danger', okText: 'Delete', content: 'This will move the quotation to Recycle Bin.' });
+    if (!proceed) return;
+    try {
+      const res = await salesService.deleteQuotation(id);
+      if (res.success) { message.success(res.message || 'Deleted.'); fetchQuotations(); loadStats(); }
+      else { alertModal('Delete Failed', res.message, 'error'); }
+    } catch (err) { alertModal('Delete Failed', err.message, 'error'); }
   };
 
   const isExpired = (validUntil) => validUntil && new Date(validUntil) < new Date();
@@ -159,14 +157,17 @@ const QuotationManager = () => {
           <h1 className="text-2xl font-bold text-gray-800">Quotation Manager</h1>
           <p className="text-sm text-gray-500 mt-0.5">Create quotations, send to dealers, convert to Sales Orders</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
-          New Quotation
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="quotation" title="Deleted Quotations" onRestore={fetchQuotations} />
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
+            New Quotation
+          </Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={12} className="mb-4">
-        <Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileSpreadsheet size={13} />} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileTextOutlined />} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Sent" value={stats.sent || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Accepted" value={stats.accepted || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
@@ -228,10 +229,10 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
   const [dealers, setDealers] = useState([]);
 
   const [form, setForm] = useState({
-    dealer: '', customerName: '', customerPhone: '', customerAddress: '',
+    dealer: '', customerType: 'dealer', customerName: '', customerPhone: '', customerAddress: '',
     quotationDate: new Date().toISOString().split('T')[0],
     validUntil: (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; })(),
-    freightCharges: 0, otherCharges: 0,
+    freightCharges: 0, loadingCharges: 0, installationCharges: 0, otherCharges: 0,
     remarks: '', termsAndConditions: 'Prices are subject to change. GST extra as applicable.',
   });
 
@@ -242,30 +243,77 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
 
   const [productSearches, setProductSearches] = useState({});
   const [productResults, setProductResults] = useState({});
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [productPages, setProductPages] = useState({});
+  const [productHasMore, setProductHasMore] = useState({});
+  const [productLoading, setProductLoading] = useState({});
 
   useEffect(() => {
     if (open) {
-      masterService.getDealers({ limit: 100, status: 'active' }).then(r => {
+      // Map customerType to pricingTier for filtering dealers
+      const TIER_MAP = {
+        dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate',
+        distributor: 'distributorRate', builder: 'builderRate',
+      };
+      const pricingTier = TIER_MAP[form.customerType] || 'dealerRate';
+      masterService.getDealers({ limit: 200, status: 'active', pricingTier }).then(r => {
         if (r.success) setDealers(r.data);
       }).catch(() => {});
     }
-  }, [open]);
+  }, [open, form.customerType]);
 
   const searchProduct = (idx, val) => {
     setProductSearches(p => ({ ...p, [idx]: val }));
-    if (val.length < 2) { setProductResults(p => ({ ...p, [idx]: [] })); return; }
-    setTimeout(() => {
-      productService.getProducts({ search: val, limit: 10 }).then(r => {
-        if (r.success) setProductResults(p => ({ ...p, [idx]: r.data }));
-      }).catch(() => {});
-    }, 300);
+    setProductPages(p => ({ ...p, [idx]: 1 }));
+    const timer = setTimeout(() => {
+      setProductLoading(p => ({ ...p, [idx]: true }));
+      salesService.searchProducts(val || '', 1, undefined, undefined, form.customerType || 'dealer').then(r => {
+        if (r.success) {
+          setProductResults(p => ({ ...p, [idx]: r.data || [] }));
+          setProductHasMore(p => ({ ...p, [idx]: (r.data || []).length >= 20 }));
+        }
+      }).catch(() => {}).finally(() => setProductLoading(p => ({ ...p, [idx]: false })));
+    }, val ? 300 : 0);
+    return () => clearTimeout(timer);
+  };
+
+  const loadMoreProducts = (idx) => {
+    const page = (productPages[idx] || 1) + 1;
+    const searchVal = productSearches[idx] || '';
+    setProductPages(p => ({ ...p, [idx]: page }));
+    setProductLoading(p => ({ ...p, [idx]: true }));
+    salesService.searchProducts(searchVal.length >= 2 ? searchVal : 'a', page, undefined, undefined, form.customerType || 'dealer').then(r => {
+      if (r.success) {
+        setProductResults(p => ({ ...p, [idx]: [...(p[idx] || []), ...(r.data || [])] }));
+        setProductHasMore(p => ({ ...p, [idx]: (r.data || []).length >= 20 }));
+      }
+    }).catch(() => {}).finally(() => setProductLoading(p => ({ ...p, [idx]: false })));
+  };
+
+  const handleProductDropdownScroll = (e, idx) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    if (scrollHeight - scrollTop - clientHeight < 50 && productHasMore[idx] && !productLoading[idx]) {
+      loadMoreProducts(idx);
+    }
   };
 
   const selectProduct = (idx, prod) => {
+    const RATE_KEY = { dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate', distributor: 'distributorRate', builder: 'builderRate' };
+    const baseRate = prod[RATE_KEY[form.customerType]] || prod.dealerRate || prod.mrp || 0;
+
+    // Auto-apply discount from backend if available
+    let discount = 0, discountType = 'flat', discountRuleName = '';
+    if (prod.discount?.hasDiscount !== false && prod.discount) {
+      discount = prod.discount.discountPercentage || 0;
+      discountType = 'percentage';
+      discountRuleName = prod.discount.ruleName || '';
+    }
+
     updateItem(idx, {
       product: prod._id, productName: prod.itemName, productCode: prod.productCode,
-      rate: prod.dealerRate || prod.wholesaleRate || prod.mrp || 0,
-      unit: prod.unit || 'Box', gstPercentage: prod.gst || 18,
+      productImage: prod.images?.[0] || '',
+      rate: baseRate, unit: prod.unit || 'Box', gstPercentage: prod.gst || 18,
+      discount, discountType, discountRuleName,
     });
     setProductSearches(p => ({ ...p, [idx]: prod.itemName }));
     setProductResults(p => ({ ...p, [idx]: [] }));
@@ -280,6 +328,34 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
     quantity: 1, unit: 'Box', rate: 0, discount: 0, discountType: 'flat', gstPercentage: 18
   }]);
 
+  // Handle products from ProductSelectionModal
+  const handleProductsFromModal = (selectedProducts) => {
+    const RATE_MAP_KEY = {
+      dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate',
+      distributor: 'distributorRate', builder: 'builderRate',
+    };
+    const rateField = RATE_MAP_KEY[form.customerType] || 'dealerRate';
+
+    const newItems = selectedProducts.map(p => {
+      const baseRate = p[rateField] || p.dealerRate || p.mrp || 0;
+      // Auto-apply discount if available from product data
+      let discount = 0, discountType = 'flat', discountRuleName = '';
+      if (p.discount) {
+        discount = p.discount.discountPercentage || 0;
+        discountType = 'percentage';
+        discountRuleName = p.discount.ruleName || '';
+      }
+      return {
+        product: p._id, productName: p.itemName, productCode: p.productCode,
+        productImage: p.images?.[0] || '',
+        shade: '', batch: '', quantity: 1, unit: p.unit || 'Box',
+        rate: baseRate, discount, discountType, discountRuleName,
+        gstPercentage: p.gst || 18,
+      };
+    });
+    setItems(prev => [...prev.filter(i => i.product), ...newItems]);
+  };
+
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
 
   const calcTotals = () => {
@@ -291,7 +367,7 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
       subtotal += taxable;
       totalTax += (taxable * item.gstPercentage) / 100;
     });
-    const grand = subtotal + totalTax + (form.freightCharges || 0) + (form.otherCharges || 0);
+    const grand = subtotal + totalTax + (form.freightCharges || 0) + (form.loadingCharges || 0) + (form.installationCharges || 0) + (form.otherCharges || 0);
     return { subtotal, totalTax, grandTotal: grand };
   };
 
@@ -310,10 +386,10 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
 
   const handleClose = () => {
     setForm({
-      dealer: '', customerName: '', customerPhone: '', customerAddress: '',
+      dealer: '', customerType: 'dealer', customerName: '', customerPhone: '', customerAddress: '',
       quotationDate: new Date().toISOString().split('T')[0],
       validUntil: (() => { const d = new Date(); d.setDate(d.getDate() + 30); return d.toISOString().split('T')[0]; })(),
-      freightCharges: 0, otherCharges: 0, remarks: '',
+      freightCharges: 0, loadingCharges: 0, installationCharges: 0, otherCharges: 0, remarks: '',
       termsAndConditions: 'Prices are subject to change. GST extra as applicable.',
     });
     setItems([{ product: '', productName: '', productCode: '', shade: '', batch: '', quantity: 1, unit: 'Box', rate: 0, discount: 0, discountType: 'flat', gstPercentage: 18 }]);
@@ -325,13 +401,36 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
 
   return (
     <Modal title="New Quotation" open={open} onCancel={handleClose}
-      width={1000} footer={null} destroyOnHidden>
+      width="calc(100vw - 240px)" style={{ top: 20, marginLeft: 'auto', marginRight: 20 }}
+      styles={{ body: { overflow: 'visible', padding: '24px 32px' } }}
+      footer={null} closable destroyOnHidden>
       <div className="space-y-4 mt-4">
+        {/* Customer Type */}
+        <div>
+          <label className="text-xs text-gray-500 block mb-1">Quotation For *</label>
+          <div className="flex gap-2">
+            {[
+              { value: 'dealer', label: 'Dealer' },
+              { value: 'wholesaler', label: 'Wholesaler' },
+              { value: 'retail', label: 'Retail / Walk-in' },
+              { value: 'distributor', label: 'Distributor' },
+              { value: 'builder', label: 'Builder / Architect' },
+            ].map(t => (
+              <button key={t.value}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium border transition ${form.customerType === t.value
+                  ? 'bg-[#FF5F03] text-white border-[#FF5F03]' : 'text-gray-500 border-gray-200 bg-white hover:border-gray-300'}`}
+                onClick={() => setForm(f => ({ ...f, customerType: t.value, dealer: '' }))}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Customer / Dealer */}
         <div className="grid grid-cols-3 gap-4">
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Dealer (optional)</label>
-            <Select className="w-full" showSearch placeholder="Select dealer..." allowClear
+            <label className="text-xs text-gray-500 block mb-1">{form.customerType === 'retail' ? 'Customer' : form.customerType || 'Dealer'} (optional)</label>
+            <Select className="w-full" showSearch placeholder={`Select ${form.customerType || 'dealer'}...`} allowClear
               optionFilterProp="label" size="large"
               onChange={v => setForm(f => ({ ...f, dealer: v || '' }))}
               options={dealers.map(d => ({ value: d._id, label: `${d.businessName} (${d.dealerCode})` }))} />
@@ -339,7 +438,7 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
           <div>
             <label className="text-xs text-gray-500 block mb-1">Walk-in Customer Name</label>
             <Input value={form.customerName} onChange={e => setForm(f => ({ ...f, customerName: e.target.value }))}
-              placeholder="If not a registered dealer" size="large" />
+              placeholder="If not a registered customer" size="large" />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Customer Phone</label>
@@ -365,10 +464,13 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
         <div>
           <div className="flex justify-between items-center mb-2">
             <label className="text-sm font-semibold text-gray-700">Products / Items *</label>
-            <Button size="small" icon={<PlusOutlined />} onClick={addItem}>Add Row</Button>
+            <Space>
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setShowProductModal(true)}>Browse & Add Products</Button>
+              <Button size="small" onClick={addItem}>+ Manual Row</Button>
+            </Space>
           </div>
-          <div className="border border-gray-200 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
+          <div className="border border-gray-200 rounded-lg">
+            <div>
               <table className="w-full text-xs">
                 <thead className="bg-blue-50">
                   <tr>
@@ -380,20 +482,56 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
                 <tbody>
                   {items.map((item, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
-                      <td className="px-2 py-1.5 relative">
-                        <Input value={productSearches[idx] ?? item.productName}
-                          onChange={e => searchProduct(idx, e.target.value)}
-                          placeholder="Search product..." className="w-44" />
-                        {(productResults[idx] || []).length > 0 && (
-                          <div className="absolute z-20 left-2 mt-1 w-72 bg-white border rounded-lg shadow-xl max-h-44 overflow-y-auto">
-                            {(productResults[idx] || []).map(p => (
-                              <div key={p._id} className="px-3 py-2 hover:bg-blue-50 cursor-pointer border-b border-gray-50"
-                                onClick={() => selectProduct(idx, p)}>
-                                <div className="text-xs font-semibold">{p.itemName}</div>
-                                <div className="text-[10px] text-gray-400">{p.productCode} · ₹{p.dealerRate || p.mrp}</div>
-                              </div>
-                            ))}
+                      <td className="px-2 py-1.5 relative" style={{minWidth: 220}}>
+                        {item.product ? (
+                          <div className="flex items-center gap-1">
+                            {item.productImage && <img src={getImageUrl(item.productImage)} alt="" className="w-7 h-7 rounded object-cover shrink-0 border border-gray-100" />}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs font-semibold truncate">{item.productName}</div>
+                              <div className="text-[9px] text-gray-400">{item.productCode}{item.discountRuleName ? <span className="ml-1 text-green-600">· {item.discountRuleName}</span> : ''}</div>
+                            </div>
+                            <button className="text-gray-300 hover:text-red-500 text-xs shrink-0 px-1" onClick={() => { updateItem(idx, { product: '', productName: '', productCode: '', productImage: '', rate: 0, discount: 0, discountType: 'flat', discountRuleName: '' }); setProductSearches(p => ({...p, [idx]: ''})); }}>✕</button>
                           </div>
+                        ) : (
+                          <>
+                            <Input value={productSearches[idx] ?? ''}
+                              onChange={e => searchProduct(idx, e.target.value)}
+                              onFocus={() => { if (!productResults[idx]?.length) searchProduct(idx, ''); }}
+                              placeholder="Type to search..." size="small" />
+                            {(productResults[idx] || []).length > 0 && (
+                              <div className="absolute z-50 left-0 top-full mt-1 w-[380px] bg-white border rounded-lg shadow-2xl max-h-60 overflow-y-auto"
+                                onScroll={e => handleProductDropdownScroll(e, idx)}>
+                                {(productResults[idx] || []).filter(p => !items.some(i => i.product === p._id)).map(p => (
+                                  <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50"
+                                    onClick={() => selectProduct(idx, p)}>
+                                    <div className="flex justify-between items-center">
+                                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                                        {p.images?.[0] && <img src={getImageUrl(p.images[0])} alt="" className="w-8 h-8 rounded object-cover shrink-0 border border-gray-100" />}
+                                        <div className="min-w-0 flex-1">
+                                          <div className="text-sm font-medium truncate">{p.itemName}</div>
+                                          <div className="text-[10px] text-gray-400">{p.productCode} · {p.brand?.name || ''} · {p.tileSize || ''}</div>
+                                        </div>
+                                      </div>
+                                      <div className="text-right shrink-0 ml-2">
+                                        {p.discount ? (
+                                          <>
+                                            <div className="text-xs font-bold text-green-600">₹{p.discount.effectiveRate}</div>
+                                            <div className="text-[9px] text-gray-400 line-through">₹{p.dealerRate || p.mrp || 0}</div>
+                                            <div className="text-[9px] text-green-600 font-medium">{p.discount.discountPercentage}% off</div>
+                                          </>
+                                        ) : (
+                                          <div className="text-xs font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}</div>
+                                        )}
+                                        <div className={`text-[9px] ${(p.stockAvailable || 0) > 0 ? 'text-green-600' : 'text-red-500'}`}>Stock: {p.stockAvailable || 0}</div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                                {productLoading[idx] && <div className="px-3 py-2 text-center text-xs text-gray-400">Loading more...</div>}
+                                {!productHasMore[idx] && (productResults[idx] || []).length > 0 && <div className="px-3 py-1.5 text-center text-[10px] text-gray-300">— End —</div>}
+                              </div>
+                            )}
+                          </>
                         )}
                       </td>
                       <td className="px-2 py-1.5">
@@ -443,10 +581,18 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
         {/* Charges & Remarks */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Freight Charges</label>
                 <InputNumber value={form.freightCharges} onChange={v => setForm(f => ({ ...f, freightCharges: v || 0 }))} prefix="₹" className="w-full" min={0} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Loading Charges</label>
+                <InputNumber value={form.loadingCharges} onChange={v => setForm(f => ({ ...f, loadingCharges: v || 0 }))} prefix="₹" className="w-full" min={0} />
+              </div>
+              <div>
+                <label className="text-xs text-gray-500 block mb-1">Installation Charges</label>
+                <InputNumber value={form.installationCharges} onChange={v => setForm(f => ({ ...f, installationCharges: v || 0 }))} prefix="₹" className="w-full" min={0} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Other Charges</label>
@@ -465,6 +611,9 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
           <div className="flex items-end justify-end">
             <div className="w-full bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>₹{subtotal.toLocaleString()}</span></div>
+              {items.reduce((s, i) => s + (i.discountType === 'percentage' ? (i.quantity * i.rate * i.discount / 100) : i.discount * i.quantity), 0) > 0 && (
+                <div className="flex justify-between"><span className="text-gray-500">Discount</span><span className="text-green-600">-₹{items.reduce((s, i) => s + (i.discountType === 'percentage' ? (i.quantity * i.rate * i.discount / 100) : i.discount * i.quantity), 0).toLocaleString()}</span></div>
+              )}
               <div className="flex justify-between"><span className="text-gray-500">GST</span><span>₹{totalTax.toFixed(2)}</span></div>
               {form.freightCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Freight</span><span>₹{form.freightCharges}</span></div>}
               {form.otherCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Other</span><span>₹{form.otherCharges}</span></div>}
@@ -484,6 +633,15 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
           </Button>
         </div>
       </div>
+
+      {/* Product Selection Modal */}
+      <ProductSelectionModal
+        open={showProductModal}
+        onClose={() => setShowProductModal(false)}
+        onAdd={handleProductsFromModal}
+        customerType={form.customerType || 'dealer'}
+        alreadyAdded={items.filter(i => i.product).map(i => i.product)}
+      />
     </Modal>
   );
 };
@@ -610,8 +768,13 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange })
                 <tr key={i} className="border-t border-gray-100">
                   <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
                   <td className="px-2 py-1.5">
-                    <div className="font-medium">{item.productName || item.product?.itemName}</div>
-                    <div className="text-[10px] text-gray-400">{item.productCode || item.product?.productCode}</div>
+                    <div className="flex items-center gap-1.5">
+                      {(item.productImage || item.product?.images?.[0]) && <img src={getImageUrl(item.productImage || item.product?.images?.[0])} alt="" className="w-6 h-6 rounded object-cover shrink-0 border border-gray-100" />}
+                      <div>
+                        <div className="font-medium">{item.productName || item.product?.itemName}</div>
+                        <div className="text-[10px] text-gray-400">{item.productCode || item.product?.productCode}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5">{item.shade || '—'}</td>
                   <td className="px-2 py-1.5">{item.quantity} {item.unit}</td>
@@ -666,7 +829,7 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange })
             <tbody>{q.items?.map((item, i) => (
               <tr key={i}>
                 <td>{i + 1}</td>
-                <td><strong>{item.productName}</strong>{item.shade ? ` (${item.shade})` : ''}</td>
+                <td style={{display:'flex',alignItems:'center',gap:'6px'}}>{item.productImage && <img src={getImageUrl(item.productImage)} style={{width:'24px',height:'24px',borderRadius:'3px',objectFit:'cover'}} />}<div><strong>{item.productName}</strong>{item.shade ? ` (${item.shade})` : ''}</div></td>
                 <td>{item.quantity} {item.unit}</td>
                 <td>₹{(item.rate || 0).toLocaleString()}</td>
                 <td>{item.gstPercentage}%</td>

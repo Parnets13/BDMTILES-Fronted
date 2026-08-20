@@ -4,9 +4,8 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, Popconfirm, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
-import { Map } from 'lucide-react';
 import masterService from '../../services/masterService.js';
 import userService from '../../services/userService.js';
 
@@ -196,7 +195,7 @@ const RoutePage = () => {
       <div className="flex justify-between items-center mb-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#fff7ed' }}>
-            <Map size={20} style={{ color: '#FF5F03' }} />
+            <EnvironmentOutlined style={{ color: '#FF5F03', fontSize: 20 }} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Route Master</h1>

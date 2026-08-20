@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Users } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const DealerMaster = () => {
   const [dealers, setDealers] = useState([]);
@@ -124,11 +124,14 @@ const DealerMaster = () => {
           <h1 className="text-2xl font-bold text-gray-800">Dealer Master</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage all dealers and their information</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm()} size="large">Add New Dealer</Button>
+        <Space>
+          <ModuleRecycleBin module="dealer" title="Deleted Dealers" onRestore={fetchDealers} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openForm()} size="large">Add New Dealer</Button>
+        </Space>
       </div>
 
       <Row gutter={16} className="mb-4">
-        <Col span={6}><Card size="small"><Statistic title="Total Dealers" value={stats.total} prefix={<Users size={16} />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Total Dealers" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Active" value={stats.active} valueStyle={{ color: '#22c55e' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Inactive" value={stats.inactive} valueStyle={{ color: '#f59e0b' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Blocked" value={stats.blocked} valueStyle={{ color: '#ef4444' }} /></Card></Col>

@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Tooltip } from 'antd';
-import { SearchOutlined, PrinterOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
-import { FileText } from 'lucide-react';
+import { SearchOutlined, PrinterOutlined, EyeOutlined, ReloadOutlined, FileTextOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import SalesOrderView from './SalesOrderView.jsx';
 

@@ -5,9 +5,8 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
-  ReloadOutlined, EnvironmentOutlined,
+  ReloadOutlined, EnvironmentOutlined, HomeOutlined,
 } from '@ant-design/icons';
-import { Warehouse as WarehouseIcon } from 'lucide-react';
 import masterService from '../../services/masterService.js';
 
 const WAREHOUSE_TYPES = [
@@ -180,7 +179,7 @@ const WarehousePage = () => {
       <div className="flex justify-between items-center mb-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ background: '#fff7ed' }}>
-            <WarehouseIcon size={20} style={{ color: '#FF5F03' }} />
+            <HomeOutlined style={{ color: '#FF5F03', fontSize: 20 }} />
           </div>
           <div>
             <h1 className="text-2xl font-bold text-gray-800">Warehouse Master</h1>

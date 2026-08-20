@@ -3,8 +3,7 @@ import {
   Table, Button, Tag, Space, message,
   Row, Col, Card, Statistic, Tabs, Divider
 } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
-import { TrendingUp, Gift } from 'lucide-react';
+import { ReloadOutlined, RiseOutlined, GiftOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 
 const STATUS_COLORS = { active: 'green', expired: 'orange', claimed: 'blue', closed: 'default' };

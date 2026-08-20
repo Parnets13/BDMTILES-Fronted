@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
-import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
-import { FileX } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, FileExclamationOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
@@ -196,7 +195,7 @@ const DebitNotePage = () => {
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileX size={14} />} /></Card></Col>
+        <Col span={4}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileExclamationOutlined />} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Debit Issued" value={stats.debitIssued || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>

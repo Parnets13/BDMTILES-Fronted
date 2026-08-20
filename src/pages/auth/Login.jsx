@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Lock, Eye, EyeOff, AlertCircle, Loader, ShieldCheck } from 'lucide-react';
+import { UserOutlined, LockOutlined, EyeOutlined, EyeInvisibleOutlined, ExclamationCircleOutlined, LoadingOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const Login = () => {
@@ -53,7 +53,7 @@ const Login = () => {
                   <img src="/logo.jpeg" alt="BDMTILES" className="w-14 h-14 object-contain" />
                 </div>
                 <div className="absolute -bottom-1 -right-1 bg-[#FF5F03] rounded-full p-[3px] shadow-sm">
-                  <ShieldCheck size={10} className="text-white" />
+                  <SafetyCertificateOutlined className="text-white text-[10px]" />
                 </div>
               </div>
               <h1 className="text-xl font-bold text-gray-900">BDMTILES</h1>
@@ -69,7 +69,7 @@ const Login = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -6 }}
                 >
-                  <AlertCircle size={14} className="shrink-0" />
+                  <ExclamationCircleOutlined className="shrink-0 text-sm" />
                   {error}
                 </motion.div>
               )}
@@ -84,7 +84,7 @@ const Login = () => {
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-3 flex items-center">
-                    <User size={15} strokeWidth={2} className={focused === 'email' ? 'text-[#FF5F03]' : 'text-gray-400'} />
+                    <UserOutlined className={`text-[15px] ${focused === 'email' ? 'text-[#FF5F03]' : 'text-gray-400'}`} />
                   </span>
                   <input
                     name="email" type="text" required autoComplete="username"
@@ -106,7 +106,7 @@ const Login = () => {
                 </label>
                 <div className="relative">
                   <span className="absolute inset-y-0 left-3 flex items-center">
-                    <Lock size={15} strokeWidth={2} className={focused === 'password' ? 'text-[#FF5F03]' : 'text-gray-400'} />
+                    <LockOutlined className={`text-[15px] ${focused === 'password' ? 'text-[#FF5F03]' : 'text-gray-400'}`} />
                   </span>
                   <input
                     name="password" type={showPassword ? 'text' : 'password'} required autoComplete="current-password"
@@ -122,7 +122,7 @@ const Login = () => {
                     className="absolute inset-y-0 right-3 flex items-center cursor-pointer text-gray-400 hover:text-gray-600"
                     onClick={() => setShowPassword(!showPassword)}
                   >
-                    {showPassword ? <EyeOff size={15} strokeWidth={2} /> : <Eye size={15} strokeWidth={2} />}
+                    {showPassword ? <EyeInvisibleOutlined className="text-[15px]" /> : <EyeOutlined className="text-[15px]" />}
                   </span>
                 </div>
               </div>
@@ -135,7 +135,7 @@ const Login = () => {
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader size={14} className="animate-spin" />
+                    <LoadingOutlined className="text-sm" />
                     Signing in...
                   </span>
                 ) : 'Sign in to Portal'}

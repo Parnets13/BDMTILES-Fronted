@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, InputNumber, Modal, Divider } from 'antd';
 import { SearchOutlined, ReloadOutlined, SwapOutlined, PlusCircleOutlined } from '@ant-design/icons';
-import { Warehouse, BoxIcon } from 'lucide-react';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const StockPage = () => {
   const [stock, setStock] = useState([]);
@@ -61,6 +61,7 @@ const StockPage = () => {
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Stock Management</h1><p className="text-sm text-gray-500 mt-0.5">Real-time inventory view across all warehouses</p></div>
         <Space>
+          <ModuleRecycleBin module="stock" title="Deleted Stock Records" onRestore={fetchStock} />
           <Button icon={<PlusCircleOutlined />} onClick={() => setShowAdjust(true)}>Adjust Stock</Button>
           <Button type="primary" icon={<SwapOutlined />} onClick={() => setShowTransfer(true)}>Transfer</Button>
         </Space>
@@ -68,11 +69,11 @@ const StockPage = () => {
 
       {/* Summary Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={5}><Card size="small"><Statistic title="Total Qty" value={summary.totalQty || 0} prefix={<BoxIcon size={14} />} /></Card></Col>
+        <Col span={5}><Card size="small"><Statistic title="Total Qty" value={summary.totalQty || 0} /></Card></Col>
         <Col span={5}><Card size="small"><Statistic title="Available" value={summary.availableQty || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Reserved" value={summary.reservedQty || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
         <Col span={4}><Card size="small"><Statistic title="Damaged" value={summary.damagedQty || 0} valueStyle={{ color: '#f5222d' }} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Total Value" value={`₹${(summary.totalValue || 0).toLocaleString()}`} prefix={<Warehouse size={14} />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Total Value" value={`₹${(summary.totalValue || 0).toLocaleString()}`} /></Card></Col>
       </Row>
 
       {/* Filters */}

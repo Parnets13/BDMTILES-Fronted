@@ -4,9 +4,8 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, InputNumber, Checkbox
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, CheckOutlined
+  PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, CheckOutlined, WarningOutlined
 } from '@ant-design/icons';
-import { AlertTriangle } from 'lucide-react';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
 

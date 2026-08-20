@@ -4,9 +4,8 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, Checkbox
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, SendOutlined, ReloadOutlined, EyeOutlined
+  PlusOutlined, SearchOutlined, SendOutlined, ReloadOutlined, EyeOutlined, CarOutlined, ShopOutlined
 } from '@ant-design/icons';
-import { Truck, Package } from 'lucide-react';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
 
@@ -113,7 +112,7 @@ const DeliveryAssignment = () => {
           {r.status === 'planned' && (
             <Button size="small" type="primary"
               style={{ background: '#FF5F03', borderColor: '#FF5F03' }}
-              icon={<Truck size={12} />}
+              icon={<CarOutlined />}
               onClick={() => { setShowAssign(r); setAssignForm({ vehicle: r.vehicle || '', driverName: r.driverName || '', driverPhone: r.driverPhone || '', departureTime: '' }); }}>
               Assign
             </Button>

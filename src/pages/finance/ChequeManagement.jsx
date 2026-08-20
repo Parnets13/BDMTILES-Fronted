@@ -5,9 +5,8 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
-  CheckCircleOutlined, BankOutlined, CloseCircleOutlined, EyeOutlined
+  CheckCircleOutlined, BankOutlined, CloseCircleOutlined, EyeOutlined, CreditCardOutlined
 } from '@ant-design/icons';
-import { CreditCard } from 'lucide-react';
 import financeService from '../../services/financeService.js';
 import masterService from '../../services/masterService.js';
 import dayjs from 'dayjs';

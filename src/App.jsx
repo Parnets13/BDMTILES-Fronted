@@ -7,6 +7,8 @@ import AppLayout from './components/layout/AppLayout.jsx';
 // Pages
 import Login from './pages/auth/Login.jsx';
 import UserManagement from './pages/system/UserManagement.jsx';
+import RecycleBin from './pages/system/RecycleBin.jsx';
+import CustomerMaster from './pages/masters/CustomerMaster.jsx';
 import CategorySetup from './pages/masters/CategorySetup.jsx';
 import ProductMaster from './pages/masters/ProductMaster.jsx';
 import PriceListPage from './pages/masters/PriceListPage.jsx';
@@ -34,7 +36,19 @@ import StockAdjustmentPage from './pages/inventory/StockAdjustmentPage.jsx';
 import StockTransferPage from './pages/inventory/StockTransferPage.jsx';
 import PurchaseReturnPage from './pages/purchase/PurchaseReturnPage.jsx';
 import QuotationManager from './pages/sales/QuotationManager.jsx';
-import DealerDiscounts from './pages/sales/DealerDiscounts.jsx';
+import DiscountMappingPage from './pages/sales/DiscountMappingPage.jsx';
+import InvoiceManager from './pages/sales/InvoiceManager.jsx';
+import PickingListPage from './pages/warehouse/PickingListPage.jsx';
+import DispatchPlanningPage from './pages/warehouse/DispatchPlanningPage.jsx';
+import DeliveryTrackingPage from './pages/warehouse/DeliveryTrackingPage.jsx';
+import SupplierSchemePage from './pages/purchase/SupplierSchemePage.jsx';
+import BankReconciliationPage from './pages/finance/BankReconciliationPage.jsx';
+import AdvancedReportsPage from './pages/reports/AdvancedReportsPage.jsx';
+import BarcodeLabelPage from './pages/inventory/BarcodeLabelPage.jsx';
+import TileCalculatorPage from './pages/tools/TileCalculatorPage.jsx';
+import TaskManagementPage from './pages/system/TaskManagementPage.jsx';
+import DocumentManagementPage from './pages/system/DocumentManagementPage.jsx';
+import NotificationTemplatePage from './pages/system/NotificationTemplatePage.jsx';
 
 // Finance Pages
 import DealerLedger from './pages/finance/DealerLedger.jsx';
@@ -66,6 +80,7 @@ import DealerPerformance from './pages/reports/DealerPerformance.jsx';
 import FinanceStatements from './pages/reports/FinanceStatements.jsx';
 import HRReports from './pages/reports/HRReports.jsx';
 import ActivityLogs from './pages/reports/ActivityLogs.jsx';
+import SEPerformance from './pages/reports/SEPerformance.jsx';
 import TallyDashboard from './pages/tally/TallyDashboard.jsx';
 import SupplierSchemeEntry from './pages/schemes/SupplierSchemeEntry.jsx';
 import SupplierSchemeAnalysis from './pages/schemes/SupplierSchemeAnalysis.jsx';
@@ -92,6 +107,7 @@ import ReturnRequest from './pages/complaints/ReturnRequest.jsx';
 // Inventory extra
 import StockAlerts from './pages/inventory/StockAlerts.jsx';
 import PhysicalAudit from './pages/inventory/PhysicalAudit.jsx';
+import SampleManagement from './pages/inventory/SampleManagement.jsx';
 
 // Finance extra (credit monitor)
 import CreditDaysMonitor from './pages/finance/CreditDaysMonitor.jsx';
@@ -189,6 +205,7 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route path="/system/recycle-bin" element={<ProtectedRoute requiredPermission="users.manage"><RecycleBin /></ProtectedRoute>} />
 
         {/* Master Management */}
         <Route
@@ -287,6 +304,7 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+        <Route path="/masters/customers" element={<ProtectedRoute requiredPermission="dealer.master"><CustomerMaster /></ProtectedRoute>} />
 
         {/* Sales & Purchase */}
         <Route
@@ -298,10 +316,10 @@ const App = () => {
           }
         />
         <Route
-          path="/sales-purchase/dealer-discounts"
+          path="/sales-purchase/discount-mapping"
           element={
-            <ProtectedRoute requiredPermission="dealer.discounts">
-              <DealerDiscounts />
+            <ProtectedRoute requiredPermission="product.master">
+              <DiscountMappingPage />
             </ProtectedRoute>
           }
         />
@@ -555,6 +573,7 @@ const App = () => {
         {/* Inventory — additional */}
         <Route path="/inventory/physical-audit" element={<ProtectedRoute requiredPermission="stock.adjustment"><PhysicalAudit /></ProtectedRoute>} />
         <Route path="/inventory/stock-alerts" element={<ProtectedRoute requiredPermission="stock.view"><StockAlerts /></ProtectedRoute>} />
+        <Route path="/inventory/samples" element={<ProtectedRoute requiredPermission="stock.view"><SampleManagement /></ProtectedRoute>} />
 
         {/* Warehouse Operations */}
         <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><PickingList /></ProtectedRoute>} />
@@ -595,6 +614,19 @@ const App = () => {
 
         {/* Sales & Purchase — additional */}
         <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="sales.order.create"><QuotationManager /></ProtectedRoute>} />
+        <Route path="/sales-purchase/invoices" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><InvoiceManager /></ProtectedRoute>} />
+        <Route path="/inventory/stock-transfers" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><StockTransferPage /></ProtectedRoute>} />
+        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><PickingListPage /></ProtectedRoute>} />
+        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><DispatchPlanningPage /></ProtectedRoute>} />
+        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><DeliveryTrackingPage /></ProtectedRoute>} />
+        <Route path="/sales-purchase/supplier-schemes" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><SupplierSchemePage /></ProtectedRoute>} />
+        <Route path="/finance/bank-reconciliation" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><BankReconciliationPage /></ProtectedRoute>} />
+        <Route path="/reports/advanced" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><AdvancedReportsPage /></ProtectedRoute>} />
+        <Route path="/inventory/barcode-labels" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><BarcodeLabelPage /></ProtectedRoute>} />
+        <Route path="/tools/tile-calculator" element={<ProtectedRoute requiredPermission="dashboard.view"><TileCalculatorPage /></ProtectedRoute>} />
+        <Route path="/system/tasks" element={<ProtectedRoute requiredPermission="dashboard.view"><TaskManagementPage /></ProtectedRoute>} />
+        <Route path="/system/documents" element={<ProtectedRoute requiredPermission="dashboard.view"><DocumentManagementPage /></ProtectedRoute>} />
+        <Route path="/system/notifications" element={<ProtectedRoute requiredPermission="system.management"><NotificationTemplatePage /></ProtectedRoute>} />
         <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredPermission="po.management"><PurchaseRequisition /></ProtectedRoute>} />
         <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
 
@@ -603,7 +635,7 @@ const App = () => {
         <Route path="/reports/purchase-reports" element={<ProtectedRoute requiredPermission="reports.management"><PurchaseReports /></ProtectedRoute>} />
         <Route path="/reports/inventory-reports" element={<ProtectedRoute requiredPermission="reports.management"><InventoryReports /></ProtectedRoute>} />
         <Route path="/reports/hr-reports" element={<ProtectedRoute requiredPermission="reports.management"><HRReports /></ProtectedRoute>} />
-        <Route path="/reports/se-performance" element={<ProtectedRoute requiredPermission="reports.management"><PlaceholderPage title="SE Performance" /></ProtectedRoute>} />
+        <Route path="/reports/se-performance" element={<ProtectedRoute requiredPermission="reports.management"><SEPerformance /></ProtectedRoute>} />
         <Route path="/reports/cash-flow" element={<ProtectedRoute requiredPermission="balance.sheet"><FinanceStatements /></ProtectedRoute>} />
         <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="balance.sheet"><PlaceholderPage title="Bank Reconciliation" /></ProtectedRoute>} />
         <Route path="/reports/gst-reports" element={<ProtectedRoute requiredPermission="reports.management"><GSTReports /></ProtectedRoute>} />

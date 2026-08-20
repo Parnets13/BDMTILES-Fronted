@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Select, Tag, message,
   Row, Col, Card, Statistic, Spin, Divider
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, PrinterOutlined, FilterOutlined } from '@ant-design/icons';
-import { Banknote, Building2 } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, FilterOutlined, BankOutlined } from '@ant-design/icons';
 import financeService from '../../services/financeService.js';
 
 const TYPE_COLORS = {
@@ -150,8 +149,8 @@ const CashBankBook = () => {
               >
                 <div className="flex items-center gap-2">
                   {acc.accountType === 'current' || acc.accountType === 'savings'
-                    ? <Building2 size={16} className="text-blue-500" />
-                    : <Banknote size={16} className="text-green-500" />}
+                    ? <BankOutlined className="text-blue-500" />
+                    : <BankOutlined className="text-green-500" />}
                   <div>
                     <div className="text-xs font-semibold truncate">{acc.accountName}</div>
                     <div className="text-xs text-gray-400">{acc.bankName}</div>
@@ -168,7 +167,7 @@ const CashBankBook = () => {
               onClick={() => setSelectedAccount(undefined)}
             >
               <div className="flex items-center gap-2">
-                <Banknote size={16} className="text-orange-500" />
+                <BankOutlined className="text-orange-500" />
                 <div>
                   <div className="text-xs font-semibold">All Accounts</div>
                   <div className="text-xs text-gray-400">Combined view</div>

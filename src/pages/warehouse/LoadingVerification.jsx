@@ -3,8 +3,7 @@ import {
   Table, Button, Input, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Checkbox, Divider
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, CheckCircleOutlined } from '@ant-design/icons';
-import { Truck, UserCheck } from 'lucide-react';
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CarOutlined, UserOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const LoadingVerification = () => {
@@ -88,7 +87,7 @@ const LoadingVerification = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <UserCheck size={24} className="text-green-600" /> Loading Verification
+            <UserOutlined className="text-green-600 text-xl" /> Loading Verification
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">Verify goods loaded match dispatch plan</p>
         </div>
@@ -99,7 +98,7 @@ const LoadingVerification = () => {
         <Col span={8}>
           <Card size="small" className="border-orange-100">
             <Statistic title="Awaiting Loading" value={stats.awaitingLoading}
-              valueStyle={{ color: '#fa8c16' }} prefix={<Truck size={16} />} />
+              valueStyle={{ color: '#fa8c16' }} prefix={<CarOutlined />} />
           </Card>
         </Col>
         <Col span={8}>

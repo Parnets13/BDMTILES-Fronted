@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, DatePicker } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
-import { Users } from 'lucide-react';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import hrmsService from '../../services/hrmsService.js';
 import dayjs from 'dayjs';
+import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
 const DESIGNATIONS = ['Manager', 'Executive', 'Sr. Executive', 'Assistant', 'Supervisor', 'Driver', 'Helper', 'Accountant', 'Director', 'Intern'];
@@ -159,14 +159,17 @@ const EmployeeRegistration = () => {
           <h1 className="text-2xl font-bold text-gray-800">Employee Registration</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage employee records & details</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large" style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-          Add Employee
-        </Button>
+        <Space>
+          <ModuleRecycleBin module="hrms" title="Deleted Employees" onRestore={fetchEmployees} />
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large" style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+            Add Employee
+          </Button>
+        </Space>
       </div>
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={6}><Card size="small"><Statistic title="Total Employees" value={stats.total} prefix={<Users size={16} />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Total Employees" value={stats.total} prefix={<TeamOutlined />} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Active" value={stats.active} valueStyle={{ color: '#22c55e' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="Inactive" value={stats.inactive} valueStyle={{ color: '#ef4444' }} /></Card></Col>
         <Col span={6}><Card size="small"><Statistic title="On Leave" value={stats.onLeave} valueStyle={{ color: '#f59e0b' }} /></Card></Col>

@@ -6,9 +6,8 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined,
-  ReloadOutlined, WarningOutlined, CheckOutlined
+  ReloadOutlined, WarningOutlined, CheckOutlined, PercentageOutlined
 } from '@ant-design/icons';
-import { Percent } from 'lucide-react';
 import api from '../../config/api.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
@@ -286,7 +285,7 @@ const DealerDiscounts = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <Percent size={22} className="text-orange-500" />
+            <PercentageOutlined className="text-orange-500" />
             Dealer Discounts
           </h1>
           <p className="text-sm text-gray-500 mt-0.5">
