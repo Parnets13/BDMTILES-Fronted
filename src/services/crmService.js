@@ -5,11 +5,16 @@ const crmService = {
   getLeads: (params) => api.get('/leads', { params }),
   getLead: (id) => api.get(`/leads/${id}`),
   getLeadStats: () => api.get('/leads/stats'),
-  getDueToday: () => api.get('/leads/due-today'),
+  getSEStatus: () => api.get('/leads/se-status'),
+  getMyLeads: () => api.get('/leads/my-leads'),
   createLead: (data) => api.post('/leads', data),
   updateLead: (id, data) => api.put(`/leads/${id}`, data),
-  addFollowup: (id, data) => api.post(`/leads/${id}/followup`, data),
+  assignLead: (id, data) => api.patch(`/leads/${id}/assign`, data),
+  acceptLead: (id) => api.patch(`/leads/${id}/accept`),
+  declineLead: (id, data) => api.patch(`/leads/${id}/decline`, data),
+  addFollowup: (id, data) => api.patch(`/leads/${id}/followup`, data),
   updateLeadStatus: (id, data) => api.patch(`/leads/${id}/status`, data),
+  convertLead: (id, data) => api.patch(`/leads/${id}/convert`, data),
 
   // Complaints
   getComplaints: (params) => api.get('/complaints', { params }),

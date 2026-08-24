@@ -19,7 +19,7 @@ const HRMSSettings = () => {
     setLoading(true);
     try {
       const res = await hrmsService.getSettings();
-      const data = res.data?.data || res.data || {};
+      const data = res.data || {};
       form.setFieldsValue({
         ...data,
         shiftStart: data.shiftStart ? dayjs(data.shiftStart, 'HH:mm') : null,
@@ -57,14 +57,14 @@ const HRMSSettings = () => {
         lunchEnd: values.lunchEnd ? values.lunchEnd.format('HH:mm') : null,
       };
       const res = await hrmsService.updateSettings(payload);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Settings saved successfully');
       } else {
-        message.error(res.data?.message || 'Failed to save');
+        message.error(res.message || 'Failed to save');
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || err.message || 'Failed');
+      message.error(err.message || 'Failed');
     } finally { setSaving(false); }
   };
 

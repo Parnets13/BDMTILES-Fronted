@@ -32,14 +32,14 @@ const SalaryProcessing = () => {
     try {
       const params = { month: selectedMonth, year: selectedYear, search, status: statusFilter };
       const res = await hrmsService.getSalarySlips(params);
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       const records = Array.isArray(data) ? data : [];
       setSlips(records);
 
       // Stats
-      const generated = records.filter(r => r.status === 'generated' || r.status === 'paid').length;
-      const pending = records.filter(r => r.status === 'pending' || !r.status).length;
-      const totalPayout = records.reduce((sum, r) => sum + (r.netSalary || r.net || 0), 0);
+      const generated = records.filter(r => r.status === 'Approved' || r.status === 'Paid').length;
+      const pending = records.filter(r => r.status === 'Draft' || !r.status).length;
+      const totalPayout = records.reduce((sum, r) => sum + (r.netSalary || 0), 0);
       setStats({ totalEmployees: records.length, generated, pending, totalPayout });
     } catch (err) { message.error(err.message || 'Failed to fetch salary slips'); }
     finally { setLoading(false); }
@@ -51,13 +51,13 @@ const SalaryProcessing = () => {
     try {
       setGenerateLoading(true);
       const res = await hrmsService.generateSalarySlip({ employeeId, month: selectedMonth, year: selectedYear });
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Salary slip generated');
         fetchSlips();
       } else {
-        message.error(res.data?.message || 'Failed');
+        message.error(res.message || 'Failed');
       }
-    } catch (err) { message.error(err.response?.data?.message || err.message || 'Failed'); }
+    } catch (err) { message.error(err.message || 'Failed'); }
     finally { setGenerateLoading(false); }
   };
 
@@ -65,13 +65,13 @@ const SalaryProcessing = () => {
     try {
       setGenerateLoading(true);
       const res = await hrmsService.generateSalarySlip({ month: selectedMonth, year: selectedYear, bulk: true });
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Bulk salary slips generated');
         fetchSlips();
       } else {
-        message.error(res.data?.message || 'Failed');
+        message.error(res.message || 'Failed');
       }
-    } catch (err) { message.error(err.response?.data?.message || err.message || 'Failed'); }
+    } catch (err) { message.error(err.message || 'Failed'); }
     finally { setGenerateLoading(false); }
   };
 
@@ -80,21 +80,20 @@ const SalaryProcessing = () => {
       title: 'Employee', key: 'employee', width: 200,
       render: (_, r) => (
         <div>
-          <div className="text-sm font-medium text-gray-900">{r.employeeName || (r.employee?.firstName + ' ' + r.employee?.lastName) || '-'}</div>
-          <span className="text-xs text-gray-400">{r.employeeCode || r.employee?.employeeCode || ''}</span>
+          <div className="text-sm font-medium text-gray-900">{r.employee?.name || '-'}</div>
+          <span className="text-xs text-gray-400">{r.employee?.empId || ''}</span>
         </div>
       ),
     },
-    { title: 'Basic', key: 'basic', width: 90, render: (_, r) => <span className="text-sm">₹{(r.basic || 0).toLocaleString()}</span> },
-    { title: 'Allowances', key: 'allowances', width: 100, render: (_, r) => <span className="text-sm text-green-600">₹{(r.totalAllowances || r.allowances || 0).toLocaleString()}</span> },
-    { title: 'Gross', key: 'gross', width: 100, render: (_, r) => <span className="text-sm font-medium">₹{(r.grossSalary || r.gross || 0).toLocaleString()}</span> },
-    { title: 'Deductions', key: 'deductions', width: 100, render: (_, r) => <span className="text-sm text-red-500">₹{(r.totalDeductions || r.deductions || 0).toLocaleString()}</span> },
-    { title: 'Net Salary', key: 'net', width: 110, render: (_, r) => <span className="text-sm font-bold text-[#FF5F03]">₹{(r.netSalary || r.net || 0).toLocaleString()}</span> },
+    { title: 'Basic', key: 'basic', width: 90, render: (_, r) => <span className="text-sm">₹{(r.basicSalary || 0).toLocaleString()}</span> },
+    { title: 'Gross', key: 'gross', width: 100, render: (_, r) => <span className="text-sm font-medium">₹{(r.grossEarnings || 0).toLocaleString()}</span> },
+    { title: 'Deductions', key: 'deductions', width: 100, render: (_, r) => <span className="text-sm text-red-500">₹{(r.grossDeductions || 0).toLocaleString()}</span> },
+    { title: 'Net Salary', key: 'net', width: 110, render: (_, r) => <span className="text-sm font-bold text-[#FF5F03]">₹{(r.netSalary || 0).toLocaleString()}</span> },
     {
       title: 'Status', dataIndex: 'status', key: 'status', width: 100,
       render: s => {
-        const map = { generated: 'green', paid: 'blue', pending: 'orange' };
-        return <Tag color={map[s] || 'default'}>{s || 'Pending'}</Tag>;
+        const map = { Approved: 'green', Paid: 'blue', Draft: 'orange' };
+        return <Tag color={map[s] || 'default'}>{s || 'Draft'}</Tag>;
       },
     },
     {
@@ -161,7 +160,7 @@ const SalaryProcessing = () => {
           <div className="mt-4">
             <div className="bg-gray-50 rounded-lg p-4 mb-4 border">
               <Row gutter={16}>
-                <Col span={12}><p className="text-xs text-gray-500">Employee</p><p className="font-medium">{viewSlip.employeeName || (viewSlip.employee?.firstName + ' ' + viewSlip.employee?.lastName)}</p></Col>
+                <Col span={12}><p className="text-xs text-gray-500">Employee</p><p className="font-medium">{viewSlip.employee?.name || '-'}</p></Col>
                 <Col span={12}><p className="text-xs text-gray-500">Month/Year</p><p className="font-medium">{MONTHS.find(m => m.value === viewSlip.month)?.label || viewSlip.month} {viewSlip.year}</p></Col>
               </Row>
             </div>
@@ -171,13 +170,13 @@ const SalaryProcessing = () => {
               <div className="border rounded-lg p-4">
                 <h4 className="text-sm font-semibold text-green-700 mb-3">Earnings</h4>
                 <div className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-gray-600">Basic</span><span>₹{(viewSlip.basic || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Basic</span><span>₹{(viewSlip.basicSalary || 0).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span className="text-gray-600">HRA</span><span>₹{(viewSlip.hra || 0).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span className="text-gray-600">Conveyance</span><span>₹{(viewSlip.conveyance || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Medical</span><span>₹{(viewSlip.medical || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Special</span><span>₹{(viewSlip.special || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Medical</span><span>₹{(viewSlip.medicalAllowance || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Special</span><span>₹{(viewSlip.specialAllowance || 0).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span className="text-gray-600">Other</span><span>₹{(viewSlip.otherAllowance || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between border-t pt-2 font-bold text-green-700"><span>Gross</span><span>₹{(viewSlip.grossSalary || viewSlip.gross || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between border-t pt-2 font-bold text-green-700"><span>Gross</span><span>₹{(viewSlip.grossEarnings || 0).toLocaleString()}</span></div>
                 </div>
               </div>
 
@@ -186,11 +185,11 @@ const SalaryProcessing = () => {
                 <h4 className="text-sm font-semibold text-red-700 mb-3">Deductions</h4>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-gray-600">PF</span><span>₹{(viewSlip.pf || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">ESI</span><span>₹{(viewSlip.esiDeduction || viewSlip.esi || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between"><span className="text-gray-600">Prof. Tax</span><span>₹{(viewSlip.pt || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">ESI</span><span>₹{(viewSlip.esi || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Prof. Tax</span><span>₹{(viewSlip.professionalTax || 0).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span className="text-gray-600">TDS</span><span>₹{(viewSlip.tds || 0).toLocaleString()}</span></div>
                   <div className="flex justify-between"><span className="text-gray-600">Other</span><span>₹{(viewSlip.otherDeductions || 0).toLocaleString()}</span></div>
-                  <div className="flex justify-between border-t pt-2 font-bold text-red-700"><span>Total Deductions</span><span>₹{(viewSlip.totalDeductions || viewSlip.deductions || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between border-t pt-2 font-bold text-red-700"><span>Total Deductions</span><span>₹{(viewSlip.grossDeductions || 0).toLocaleString()}</span></div>
                 </div>
               </div>
             </div>
@@ -198,7 +197,7 @@ const SalaryProcessing = () => {
             {/* Net */}
             <div className="mt-4 bg-[#FFF5EE] rounded-lg p-4 border border-[#FF5F03]/20 text-center">
               <p className="text-sm text-gray-600">Net Salary (Take Home)</p>
-              <p className="text-2xl font-bold text-[#FF5F03]">₹{(viewSlip.netSalary || viewSlip.net || 0).toLocaleString()}</p>
+              <p className="text-2xl font-bold text-[#FF5F03]">₹{(viewSlip.netSalary || 0).toLocaleString()}</p>
             </div>
           </div>
         )}

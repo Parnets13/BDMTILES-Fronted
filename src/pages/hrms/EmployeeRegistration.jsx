@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, DatePicker } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import hrmsService from '../../services/hrmsService.js';
 import dayjs from 'dayjs';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
@@ -22,6 +22,7 @@ const EmployeeRegistration = () => {
   // Form
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+  const [viewEmployee, setViewEmployee] = useState(null);
   const [form] = Form.useForm();
 
   // Salary auto-calc
@@ -34,7 +35,7 @@ const EmployeeRegistration = () => {
   const fetchStats = async () => {
     try {
       const res = await hrmsService.getEmployeeStats();
-      if (res.data?.success !== false) setStats(res.data?.data || res.data || { total: 0, active: 0, inactive: 0, onLeave: 0 });
+      if (res.success) setStats(res.data || { total: 0, active: 0, inactive: 0, onLeave: 0 });
     } catch {}
   };
 
@@ -43,10 +44,10 @@ const EmployeeRegistration = () => {
     try {
       const params = { page: pagination.current, limit: pagination.pageSize, search, ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)) };
       const res = await hrmsService.getEmployees(params);
-      const data = res.data?.data || res.data || [];
-      const total = res.data?.pagination?.totalItems || res.data?.total || data.length;
-      setEmployees(Array.isArray(data) ? data : []);
-      setPagination(p => ({ ...p, total }));
+      if (res.success) {
+        setEmployees(res.data || []);
+        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
+      }
     } catch (err) { message.error(err.message || 'Failed to fetch employees'); }
     finally { setLoading(false); }
   }, [pagination.current, pagination.pageSize, search, filters]);
@@ -58,8 +59,8 @@ const EmployeeRegistration = () => {
     if (employee) {
       form.setFieldsValue({
         ...employee,
-        dob: employee.dob ? dayjs(employee.dob) : null,
-        joiningDate: employee.joiningDate ? dayjs(employee.joiningDate) : null,
+        dateOfBirth: employee.dateOfBirth ? dayjs(employee.dateOfBirth) : null,
+        dateOfJoining: employee.dateOfJoining ? dayjs(employee.dateOfJoining) : null,
       });
       calculateSalary(employee);
     } else {
@@ -70,17 +71,17 @@ const EmployeeRegistration = () => {
   };
 
   const calculateSalary = (values) => {
-    const basic = values?.basic || 0;
+    const basic = values?.basicSalary || 0;
     const hra = values?.hra || 0;
     const conveyance = values?.conveyance || 0;
-    const medical = values?.medical || 0;
-    const special = values?.special || 0;
+    const medical = values?.medicalAllowance || 0;
+    const special = values?.specialAllowance || 0;
     const otherAllowance = values?.otherAllowance || 0;
     const gross = basic + hra + conveyance + medical + special + otherAllowance;
 
     const pf = values?.pf || 0;
-    const esi = values?.esiDeduction || 0;
-    const pt = values?.pt || 0;
+    const esi = values?.esi || 0;
+    const pt = values?.professionalTax || 0;
     const tds = values?.tds || 0;
     const otherDeductions = values?.otherDeductions || 0;
     const totalDeductions = pf + esi + pt + tds + otherDeductions;
@@ -98,8 +99,8 @@ const EmployeeRegistration = () => {
     try {
       setLoading(true);
       const values = await form.validateFields();
-      values.dob = values.dob ? values.dob.format('YYYY-MM-DD') : null;
-      values.joiningDate = values.joiningDate ? values.joiningDate.format('YYYY-MM-DD') : null;
+      values.dateOfBirth = values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null;
+      values.dateOfJoining = values.dateOfJoining ? values.dateOfJoining.format('YYYY-MM-DD') : null;
 
       let res;
       if (editingEmployee) {
@@ -107,41 +108,42 @@ const EmployeeRegistration = () => {
       } else {
         res = await hrmsService.createEmployee(values);
       }
-      const result = res.data;
-      if (result.success !== false) {
-        message.success(result.message || 'Employee saved successfully');
+      if (res.success) {
+        message.success(res.message || 'Employee saved successfully');
         setDrawerOpen(false);
         form.resetFields();
         setEditingEmployee(null);
         fetchEmployees();
         fetchStats();
       } else {
-        message.error(result.message || 'Failed to save');
+        message.error(res.message || 'Failed to save');
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || err.message || 'Failed to save');
+      message.error(err.message || 'Failed to save');
     } finally { setLoading(false); }
   };
 
   const handleDelete = async (id) => {
     try {
       const res = await hrmsService.deleteEmployee(id);
-      if (res.data?.success !== false) { message.success('Deleted'); fetchEmployees(); fetchStats(); }
+      if (res.success) { message.success(res.message || 'Deleted'); fetchEmployees(); fetchStats(); }
+      else { message.error(res.message || 'Delete failed'); }
     } catch (err) { message.error(err.message); }
   };
 
   const columns = [
-    { title: 'Name', key: 'name', width: 180, render: (_, r) => <div><div className="text-sm font-medium text-gray-900">{r.firstName} {r.lastName}</div><span className="text-xs text-gray-400">{r.employeeCode}</span></div> },
+    { title: 'Name', key: 'name', width: 180, render: (_, r) => <div><div className="text-sm font-medium text-gray-900">{r.name}</div><span className="text-xs text-gray-400">{r.empId}</span></div> },
     { title: 'Department', dataIndex: 'department', key: 'department', width: 120, render: v => <span className="text-sm">{v}</span> },
     { title: 'Designation', dataIndex: 'designation', key: 'designation', width: 120, render: v => <span className="text-sm">{v}</span> },
     { title: 'Mobile', dataIndex: 'mobile', key: 'mobile', width: 120 },
-    { title: 'Joining', dataIndex: 'joiningDate', key: 'joiningDate', width: 100, render: v => v ? dayjs(v).format('DD/MM/YY') : '-' },
-    { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: s => <Tag color={s === 'active' ? 'green' : s === 'onLeave' ? 'orange' : 'red'}>{s || 'active'}</Tag> },
+    { title: 'Joining', dataIndex: 'dateOfJoining', key: 'dateOfJoining', width: 100, render: v => v ? dayjs(v).format('DD/MM/YY') : '-' },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 90, render: s => <Tag color={s === 'Active' ? 'green' : s === 'On Notice' ? 'orange' : 'red'}>{s || 'Active'}</Tag> },
     {
       title: 'Actions', key: 'actions', width: 100, fixed: 'right',
       render: (_, r) => (
         <Space size="small">
+          <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewEmployee(r)} /></Tooltip>
           <Tooltip title="Edit"><Button type="text" size="small" icon={<EditOutlined />} onClick={() => openDrawer(r)} /></Tooltip>
           <Popconfirm title="Delete this employee?" onConfirm={() => handleDelete(r._id)}>
             <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
@@ -224,12 +226,11 @@ const EmployeeRegistration = () => {
                 {/* Personal Info */}
                 <h3 className="text-base font-semibold text-gray-700 mb-3 flex items-center gap-2"><span className="w-1 h-5 bg-[#FF5F03] rounded-full inline-block"></span>Personal Information</h3>
                 <Row gutter={16}>
-                  <Col span={4}><Form.Item name="firstName" label="First Name" rules={[{ required: true }]}><Input placeholder="First Name" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="lastName" label="Last Name" rules={[{ required: true }]}><Input placeholder="Last Name" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="name" label="Full Name" rules={[{ required: true }]}><Input placeholder="Full Name" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="fatherName" label="Father's Name"><Input placeholder="Father's Name" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="dob" label="Date of Birth"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="dateOfBirth" label="Date of Birth"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="gender" label="Gender" rules={[{ required: true }]}><Select placeholder="Gender" options={GENDERS.map(g => ({ value: g, label: g }))} /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="mobile" label="Mobile" rules={[{ required: true }]}><Input placeholder="Mobile Number" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="mobile" label="Mobile" rules={[{ required: true }]}><Input placeholder="Mobile Number" /></Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
                   <Col span={6}><Form.Item name="email" label="Email"><Input placeholder="Email address" /></Form.Item></Col>
@@ -256,15 +257,15 @@ const EmployeeRegistration = () => {
                 <Row gutter={16}>
                   <Col span={4}><Form.Item name="designation" label="Designation" rules={[{ required: true }]}><Select placeholder="Designation" options={DESIGNATIONS.map(d => ({ value: d, label: d }))} showSearch /></Form.Item></Col>
                   <Col span={4}><Form.Item name="department" label="Department" rules={[{ required: true }]}><Select placeholder="Department" options={DEPARTMENTS.map(d => ({ value: d, label: d }))} showSearch /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="joiningDate" label="Joining Date" rules={[{ required: true }]}><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="dateOfJoining" label="Joining Date" rules={[{ required: true }]}><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="employmentType" label="Employment Type"><Select placeholder="Type" options={EMPLOYMENT_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
                   <Col span={4}><Form.Item name="shift" label="Shift"><Select placeholder="Shift" options={SHIFTS.map(s => ({ value: s, label: s }))} /></Form.Item></Col>
                   <Col span={4}><Form.Item name="reportingManager" label="Reporting Manager"><Input placeholder="Manager Name" /></Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
                   <Col span={6}><Form.Item name="branch" label="Branch"><Input placeholder="Branch / Location" /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="employeeCode" label="Employee Code"><Input placeholder="Auto-generated if empty" /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="status" label="Status"><Select placeholder="Status" options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="empId" label="Employee Code"><Input placeholder="Auto-generated if empty" /></Form.Item></Col>
+                  <Col span={6}><Form.Item name="status" label="Status"><Select placeholder="Status" options={[{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }, { value: 'On Notice', label: 'On Notice' }]} /></Form.Item></Col>
                 </Row>
 
                 <Divider className="my-4" />
@@ -284,18 +285,18 @@ const EmployeeRegistration = () => {
                 <h3 className="text-base font-semibold text-gray-700 mb-3 flex items-center gap-2"><span className="w-1 h-5 bg-[#FF5F03] rounded-full inline-block"></span>Salary Structure</h3>
                 <p className="text-xs text-gray-400 mb-3">Earnings (Allowances)</p>
                 <Row gutter={16}>
-                  <Col span={4}><Form.Item name="basic" label="Basic"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="basicSalary" label="Basic"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="hra" label="HRA"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="conveyance" label="Conveyance"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="medical" label="Medical"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="special" label="Special Allowance"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="medicalAllowance" label="Medical"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="specialAllowance" label="Special Allowance"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="otherAllowance" label="Other Allowance"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                 </Row>
                 <p className="text-xs text-gray-400 mb-3">Deductions</p>
                 <Row gutter={16}>
                   <Col span={4}><Form.Item name="pf" label="PF"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="esiDeduction" label="ESI"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
-                  <Col span={4}><Form.Item name="pt" label="Professional Tax"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="esi" label="ESI"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
+                  <Col span={4}><Form.Item name="professionalTax" label="Professional Tax"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="tds" label="TDS"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                   <Col span={4}><Form.Item name="otherDeductions" label="Other Deductions"><InputNumber min={0} className="w-full" prefix="₹" placeholder="0" /></Form.Item></Col>
                 </Row>
@@ -329,6 +330,89 @@ const EmployeeRegistration = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* View Employee Detail Modal */}
+      {viewEmployee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewEmployee(null)}>
+          <div className="fixed inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">{viewEmployee.name}</h2>
+                <p className="text-sm text-gray-500">{viewEmployee.empId} • {viewEmployee.designation}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Tag color={viewEmployee.status === 'Active' ? 'green' : viewEmployee.status === 'On Notice' ? 'orange' : 'red'}>{viewEmployee.status || 'Active'}</Tag>
+                <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl" onClick={() => setViewEmployee(null)}>✕</span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Personal Info */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Personal Information</h3>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><span className="text-gray-500">Father's Name:</span> <span className="font-medium">{viewEmployee.fatherName || '-'}</span></div>
+                  <div><span className="text-gray-500">DOB:</span> <span className="font-medium">{viewEmployee.dateOfBirth ? dayjs(viewEmployee.dateOfBirth).format('DD/MM/YYYY') : '-'}</span></div>
+                  <div><span className="text-gray-500">Gender:</span> <span className="font-medium">{viewEmployee.gender || '-'}</span></div>
+                  <div><span className="text-gray-500">Mobile:</span> <span className="font-medium">{viewEmployee.mobile || '-'}</span></div>
+                  <div><span className="text-gray-500">Alt Mobile:</span> <span className="font-medium">{viewEmployee.alternateMobile || '-'}</span></div>
+                  <div><span className="text-gray-500">Email:</span> <span className="font-medium">{viewEmployee.email || '-'}</span></div>
+                  <div className="col-span-2"><span className="text-gray-500">Address:</span> <span className="font-medium">{viewEmployee.address || '-'}, {viewEmployee.city || ''} {viewEmployee.state || ''} {viewEmployee.pinCode || ''}</span></div>
+                  <div><span className="text-gray-500">Emergency:</span> <span className="font-medium">{viewEmployee.emergencyContact || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Employment Details */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Employment Details</h3>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><span className="text-gray-500">Department:</span> <span className="font-medium">{viewEmployee.department || '-'}</span></div>
+                  <div><span className="text-gray-500">Designation:</span> <span className="font-medium">{viewEmployee.designation || '-'}</span></div>
+                  <div><span className="text-gray-500">Employment Type:</span> <span className="font-medium">{viewEmployee.employmentType || '-'}</span></div>
+                  <div><span className="text-gray-500">Joining Date:</span> <span className="font-medium">{viewEmployee.dateOfJoining ? dayjs(viewEmployee.dateOfJoining).format('DD/MM/YYYY') : '-'}</span></div>
+                  <div><span className="text-gray-500">Reporting To:</span> <span className="font-medium">{viewEmployee.reportingManager || '-'}</span></div>
+                  <div><span className="text-gray-500">Shift:</span> <span className="font-medium">{viewEmployee.shift || '-'}</span></div>
+                  <div><span className="text-gray-500">Branch:</span> <span className="font-medium">{viewEmployee.branch || '-'}</span></div>
+                  <div><span className="text-gray-500">Work Location:</span> <span className="font-medium">{viewEmployee.workLocation || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Identity */}
+              <div className="bg-green-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Identity & Bank</h3>
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div><span className="text-gray-500">Aadhaar:</span> <span className="font-medium">{viewEmployee.aadhaar || '-'}</span></div>
+                  <div><span className="text-gray-500">PAN:</span> <span className="font-medium">{viewEmployee.pan || '-'}</span></div>
+                  <div><span className="text-gray-500">UAN:</span> <span className="font-medium">{viewEmployee.uan || '-'}</span></div>
+                  <div><span className="text-gray-500">Bank:</span> <span className="font-medium">{viewEmployee.bankName || '-'}</span></div>
+                  <div><span className="text-gray-500">Account No:</span> <span className="font-medium">{viewEmployee.accountNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">IFSC:</span> <span className="font-medium">{viewEmployee.ifscCode || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Salary */}
+              <div className="bg-orange-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Salary Structure</h3>
+                <div className="grid grid-cols-4 gap-3 text-sm">
+                  <div><span className="text-gray-500 block text-xs">Basic</span><span className="font-semibold">₹{(viewEmployee.basicSalary || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">HRA</span><span className="font-medium">₹{(viewEmployee.hra || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">Conveyance</span><span className="font-medium">₹{(viewEmployee.conveyance || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">Special Allow.</span><span className="font-medium">₹{(viewEmployee.specialAllowance || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">PF</span><span className="font-medium text-red-600">₹{(viewEmployee.pf || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">ESI</span><span className="font-medium text-red-600">₹{(viewEmployee.esi || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">Prof Tax</span><span className="font-medium text-red-600">₹{(viewEmployee.professionalTax || 0).toLocaleString()}</span></div>
+                  <div><span className="text-gray-500 block text-xs">TDS</span><span className="font-medium text-red-600">₹{(viewEmployee.tds || 0).toLocaleString()}</span></div>
+                </div>
+                <div className="grid grid-cols-3 gap-4 mt-3 pt-3 border-t border-orange-200">
+                  <div className="text-center"><span className="text-xs text-gray-500 block">Gross</span><span className="text-base font-bold text-green-700">₹{(viewEmployee.grossSalary || 0).toLocaleString()}</span></div>
+                  <div className="text-center"><span className="text-xs text-gray-500 block">Deductions</span><span className="text-base font-bold text-red-600">₹{((viewEmployee.pf || 0) + (viewEmployee.esi || 0) + (viewEmployee.professionalTax || 0) + (viewEmployee.tds || 0) + (viewEmployee.otherDeductions || 0)).toLocaleString()}</span></div>
+                  <div className="text-center"><span className="text-xs text-gray-500 block">Net Salary</span><span className="text-base font-bold text-[#FF5F03]">₹{(viewEmployee.netSalary || 0).toLocaleString()}</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

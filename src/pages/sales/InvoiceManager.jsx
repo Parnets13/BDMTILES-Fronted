@@ -185,7 +185,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
                 <td className="px-1.5 py-1">{item.sqft ? item.sqft.toFixed(1) : '—'}</td>
                 <td className="px-1.5 py-1">₹{item.rate}</td>
                 <td className="px-1.5 py-1">{item.discountAmount > 0 ? `₹${item.discountAmount}` : '—'}</td>
-                <td className="px-1.5 py-1">{item.gstPercentage}%<br/><span className="text-[8px] text-gray-400">₹{item.gstAmount}</span></td>
+                <td className="px-1.5 py-1">{item.gstPercentage}%<br/><span className="text-[8px] text-gray-400">{inv?.isInterState ? `IGST ₹${item.igst}` : `C₹${item.cgst} S₹${item.sgst}`}</span></td>
                 <td className="px-1.5 py-1 font-medium">₹{item.totalAmount?.toLocaleString()}</td>
               </tr>
             ))}
@@ -197,8 +197,14 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
           <div className="w-72 bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1">
             <div className="flex justify-between"><span className="text-gray-500">Taxable Amount</span><span>₹{inv.taxableTotal?.toLocaleString()}</span></div>
             {inv.totalDiscount > 0 && <div className="flex justify-between"><span className="text-gray-500">Discount</span><span className="text-green-600">-₹{inv.totalDiscount?.toLocaleString()}</span></div>}
-            <div className="flex justify-between"><span className="text-gray-500">CGST</span><span>₹{inv.totalCgst?.toFixed(2)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">SGST</span><span>₹{inv.totalSgst?.toFixed(2)}</span></div>
+            {inv.isInterState ? (
+              <div className="flex justify-between"><span className="text-gray-500">IGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalIgst?.toFixed(2)}</span></div>
+            ) : (
+              <>
+                <div className="flex justify-between"><span className="text-gray-500">CGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalCgst?.toFixed(2)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">SGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalSgst?.toFixed(2)}</span></div>
+              </>
+            )}
             {inv.freightCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Freight</span><span>₹{inv.freightCharges}</span></div>}
             {inv.loadingCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Loading</span><span>₹{inv.loadingCharges}</span></div>}
             {inv.otherCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Other</span><span>₹{inv.otherCharges}</span></div>}
@@ -243,8 +249,14 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
           <div className="totals">
             <div className="row"><span>Taxable Amount</span><span>₹{inv.taxableTotal?.toLocaleString()}</span></div>
             {inv.totalDiscount > 0 && <div className="row"><span>Total Discount</span><span>-₹{inv.totalDiscount?.toLocaleString()}</span></div>}
-            <div className="row"><span>CGST</span><span>₹{inv.totalCgst?.toFixed(2)}</span></div>
-            <div className="row"><span>SGST</span><span>₹{inv.totalSgst?.toFixed(2)}</span></div>
+            {inv.isInterState ? (
+              <div className="row"><span>IGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalIgst?.toFixed(2)}</span></div>
+            ) : (
+              <>
+                <div className="row"><span>CGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalCgst?.toFixed(2)}</span></div>
+                <div className="row"><span>SGST ({inv.gstType === 'output' ? 'Output' : 'Input'})</span><span>₹{inv.totalSgst?.toFixed(2)}</span></div>
+              </>
+            )}
             {inv.freightCharges > 0 && <div className="row"><span>Freight</span><span>₹{inv.freightCharges}</span></div>}
             {inv.loadingCharges > 0 && <div className="row"><span>Loading</span><span>₹{inv.loadingCharges}</span></div>}
             {inv.roundOff !== 0 && <div className="row"><span>Round Off</span><span>₹{inv.roundOff?.toFixed(2)}</span></div>}

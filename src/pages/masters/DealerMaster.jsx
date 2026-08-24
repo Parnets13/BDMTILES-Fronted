@@ -16,6 +16,7 @@ const DealerMaster = () => {
   // Form
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingDealer, setEditingDealer] = useState(null);
+  const [viewDealer, setViewDealer] = useState(null);
   const [form] = Form.useForm();
 
   // Load options
@@ -109,6 +110,7 @@ const DealerMaster = () => {
     { title: 'Status', dataIndex: 'status', key: 'status', width: 80, render: s => <Tag color={s === 'active' ? 'green' : s === 'blocked' ? 'red' : 'orange'}>{s}</Tag> },
     { title: 'Actions', key: 'actions', width: 100, render: (_, r) => (
       <Space size="small">
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewDealer(r)} /></Tooltip>
         <Tooltip title="Edit"><Button type="text" size="small" icon={<EditOutlined />} onClick={() => openForm(r)} /></Tooltip>
         <Popconfirm title="Delete?" onConfirm={() => handleDelete(r._id)}>
           <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
@@ -240,6 +242,100 @@ const DealerMaster = () => {
             </div>
           </div>
         </>
+      )}
+
+      {/* View Dealer Detail Modal */}
+      {viewDealer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewDealer(null)}>
+          <div className="fixed inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">{viewDealer.businessName}</h2>
+                <p className="text-sm text-gray-500">{viewDealer.dealerCode} • {viewDealer.ownerName}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Tag color={viewDealer.status === 'active' ? 'green' : viewDealer.status === 'blocked' ? 'red' : 'orange'}>{viewDealer.status}</Tag>
+                <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl" onClick={() => setViewDealer(null)}>✕</span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Contact Info */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Contact Information</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Owner:</span> <span className="font-medium">{viewDealer.ownerName || '-'}</span></div>
+                  <div><span className="text-gray-500">Mobile:</span> <span className="font-medium">{viewDealer.mobile || '-'}</span></div>
+                  <div><span className="text-gray-500">Alt Mobile:</span> <span className="font-medium">{viewDealer.alternateMobile || '-'}</span></div>
+                  <div><span className="text-gray-500">Email:</span> <span className="font-medium">{viewDealer.email || '-'}</span></div>
+                  <div><span className="text-gray-500">Whatsapp:</span> <span className="font-medium">{viewDealer.whatsappNumber || viewDealer.mobile || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="bg-blue-50 rounded-lg p-4">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Address</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div className="col-span-2"><span className="text-gray-500">Address:</span> <span className="font-medium">{viewDealer.address || '-'}</span></div>
+                  <div><span className="text-gray-500">City:</span> <span className="font-medium">{viewDealer.city || '-'}</span></div>
+                  <div><span className="text-gray-500">State:</span> <span className="font-medium">{viewDealer.state || '-'}</span></div>
+                  <div><span className="text-gray-500">Pin Code:</span> <span className="font-medium">{viewDealer.pinCode || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Business Details */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Business Info</h3>
+                  <div className="space-y-1.5 text-sm">
+                    <div><span className="text-gray-500">GSTIN:</span> <span className="font-medium">{viewDealer.gstin || '-'}</span></div>
+                    <div><span className="text-gray-500">PAN:</span> <span className="font-medium">{viewDealer.pan || '-'}</span></div>
+                    <div><span className="text-gray-500">Dealer Type:</span> <span className="font-medium">{viewDealer.dealerType?.name || '-'}</span></div>
+                    <div><span className="text-gray-500">Category:</span> <span className="font-medium">{viewDealer.dealerCategory?.name || '-'}</span></div>
+                    <div><span className="text-gray-500">Region:</span> <span className="font-medium">{viewDealer.assignedRegion?.name || '-'}</span></div>
+                    <div><span className="text-gray-500">Route:</span> <span className="font-medium">{viewDealer.assignedRoute?.name || '-'}</span></div>
+                  </div>
+                </div>
+                <div className="bg-orange-50 rounded-lg p-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Financial</h3>
+                  <div className="space-y-1.5 text-sm">
+                    <div><span className="text-gray-500">Credit Limit:</span> <span className="font-semibold">₹{(viewDealer.creditLimit || 0).toLocaleString()}</span></div>
+                    <div><span className="text-gray-500">Credit Days:</span> <span className="font-medium">{viewDealer.creditDays || 0}</span></div>
+                    <div><span className="text-gray-500">Outstanding:</span> <span className={`font-semibold ${(viewDealer.currentOutstanding || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>₹{(viewDealer.currentOutstanding || 0).toLocaleString()}</span></div>
+                    <div><span className="text-gray-500">Opening Balance:</span> <span className="font-medium">₹{(viewDealer.openingBalance || 0).toLocaleString()}</span></div>
+                    <div><span className="text-gray-500">Payment Terms:</span> <span className="font-medium">{viewDealer.paymentTerms || '-'}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Security Cheque */}
+              {viewDealer.securityChequeNo && (
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Security Cheque</h3>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div><span className="text-gray-500">Cheque No:</span> <span className="font-medium">{viewDealer.securityChequeNo}</span></div>
+                    <div><span className="text-gray-500">Bank:</span> <span className="font-medium">{viewDealer.securityChequeBank || '-'}</span></div>
+                    <div><span className="text-gray-500">Amount:</span> <span className="font-semibold">₹{(viewDealer.securityChequeAmount || 0).toLocaleString()}</span></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Eligibility & Other */}
+              <div className="grid grid-cols-4 gap-3 text-xs">
+                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Scheme</span><Tag color={viewDealer.schemeEligible ? 'green' : 'red'}>{viewDealer.schemeEligible ? 'Yes' : 'No'}</Tag></div>
+                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Discount</span><Tag color={viewDealer.discountEligible ? 'green' : 'red'}>{viewDealer.discountEligible ? 'Yes' : 'No'}</Tag></div>
+                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Visit Freq</span><span className="font-medium">{viewDealer.visitFrequency || '-'}</span></div>
+                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Tally Ledger</span><span className="font-medium text-[10px]">{viewDealer.tallyLedgerName || '-'}</span></div>
+              </div>
+
+              {/* Meta */}
+              <div className="text-xs text-gray-400 flex gap-4 pt-2 border-t">
+                <span>Created: {viewDealer.createdAt ? new Date(viewDealer.createdAt).toLocaleDateString('en-IN') : '-'}</span>
+                <span>Assigned SE: {viewDealer.assignedSalesExecutive?.name || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

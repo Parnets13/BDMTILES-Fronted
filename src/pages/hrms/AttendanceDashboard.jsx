@@ -24,7 +24,7 @@ const AttendanceDashboard = () => {
   const fetchEmployeeList = async () => {
     try {
       const res = await hrmsService.getEmployees({ limit: 200, status: 'active' });
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
     } catch {}
   };
@@ -34,15 +34,15 @@ const AttendanceDashboard = () => {
     try {
       const params = { date: selectedDate.format('YYYY-MM-DD'), search, status: statusFilter };
       const res = await hrmsService.getAttendance(params);
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       setAttendance(Array.isArray(data) ? data : []);
 
       // Calculate stats
       const records = Array.isArray(data) ? data : [];
-      const present = records.filter(r => r.status === 'present').length;
-      const absent = records.filter(r => r.status === 'absent').length;
-      const late = records.filter(r => r.status === 'late').length;
-      const onLeave = records.filter(r => r.status === 'onLeave' || r.status === 'leave').length;
+      const present = records.filter(r => r.status === 'Present').length;
+      const absent = records.filter(r => r.status === 'Absent').length;
+      const late = records.filter(r => r.status === 'Late').length;
+      const onLeave = records.filter(r => r.status === 'Leave' || r.status === 'On Duty').length;
       setStats({ present, absent, late, onLeave, total: records.length });
     } catch (err) { message.error(err.message || 'Failed to fetch attendance'); }
     finally { setLoading(false); }
@@ -54,35 +54,36 @@ const AttendanceDashboard = () => {
     try {
       const values = await markForm.validateFields();
       const payload = {
-        employeeId: values.employeeId,
+        employee: values.employeeId,
         date: values.date.format('YYYY-MM-DD'),
         status: values.status,
         punchIn: values.punchIn ? values.punchIn.format('HH:mm') : null,
         punchOut: values.punchOut ? values.punchOut.format('HH:mm') : null,
       };
       const res = await hrmsService.markAttendance(payload);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Attendance marked successfully');
         setMarkModal(false);
         markForm.resetFields();
         fetchAttendance();
       } else {
-        message.error(res.data?.message || 'Failed');
+        message.error(res.message || 'Failed');
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || err.message || 'Failed');
+      message.error(err.message || 'Failed');
     }
   };
 
   const getStatusTag = (status) => {
     const map = {
-      present: { color: 'green', label: 'Present' },
-      absent: { color: 'red', label: 'Absent' },
-      late: { color: 'orange', label: 'Late' },
-      onLeave: { color: 'blue', label: 'On Leave' },
-      leave: { color: 'blue', label: 'On Leave' },
-      halfDay: { color: 'gold', label: 'Half Day' },
+      Present: { color: 'green', label: 'Present' },
+      Absent: { color: 'red', label: 'Absent' },
+      Late: { color: 'orange', label: 'Late' },
+      Leave: { color: 'blue', label: 'On Leave' },
+      'On Duty': { color: 'cyan', label: 'On Duty' },
+      'Half Day': { color: 'gold', label: 'Half Day' },
+      'Week Off': { color: 'default', label: 'Week Off' },
     };
     const info = map[status] || { color: 'default', label: status };
     return <Tag color={info.color}>{info.label}</Tag>;
@@ -93,12 +94,12 @@ const AttendanceDashboard = () => {
       title: 'Employee', key: 'employee', width: 200,
       render: (_, r) => (
         <div>
-          <div className="text-sm font-medium text-gray-900">{r.employeeName || r.employee?.firstName + ' ' + r.employee?.lastName || '-'}</div>
-          <span className="text-xs text-gray-400">{r.employeeCode || r.employee?.employeeCode || ''}</span>
+          <div className="text-sm font-medium text-gray-900">{r.employee?.name || '-'}</div>
+          <span className="text-xs text-gray-400">{r.employee?.empId || ''} · {r.employee?.department || ''}</span>
         </div>
       ),
     },
-    { title: 'Department', key: 'department', width: 120, render: (_, r) => <span className="text-sm">{r.department || r.employee?.department || '-'}</span> },
+    { title: 'Department', key: 'department', width: 120, render: (_, r) => <span className="text-sm">{r.employee?.department || '-'}</span> },
     { title: 'Punch In', dataIndex: 'punchIn', key: 'punchIn', width: 100, render: v => v ? <span className="text-sm text-green-600 font-medium">{v}</span> : <span className="text-gray-400">—</span> },
     { title: 'Punch Out', dataIndex: 'punchOut', key: 'punchOut', width: 100, render: v => v ? <span className="text-sm text-red-500 font-medium">{v}</span> : <span className="text-gray-400">—</span> },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 100, render: s => getStatusTag(s) },
@@ -145,8 +146,8 @@ const AttendanceDashboard = () => {
           <Input placeholder="Search employee..." prefix={<SearchOutlined className="text-gray-400" />}
             value={search} onChange={e => setSearch(e.target.value)} className="w-60" allowClear />
           <Select placeholder="Status" options={[
-            { value: 'present', label: 'Present' }, { value: 'absent', label: 'Absent' },
-            { value: 'late', label: 'Late' }, { value: 'onLeave', label: 'On Leave' },
+            { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
+            { value: 'Late', label: 'Late' }, { value: 'Leave', label: 'On Leave' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
           <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
         </div>
@@ -164,15 +165,15 @@ const AttendanceDashboard = () => {
         <Form form={markForm} layout="vertical" className="mt-4">
           <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"
-              options={employees.map(e => ({ value: e._id, label: `${e.firstName} ${e.lastName} (${e.employeeCode || ''})` }))} />
+              options={employees.map(e => ({ value: e._id, label: `${e.name} (${e.empId || ''})` }))} />
           </Form.Item>
           <Form.Item name="date" label="Date" rules={[{ required: true }]} initialValue={dayjs()}>
             <DatePicker className="w-full" format="DD/MM/YYYY" />
           </Form.Item>
           <Form.Item name="status" label="Status" rules={[{ required: true }]}>
             <Select placeholder="Select status" options={[
-              { value: 'present', label: 'Present' }, { value: 'absent', label: 'Absent' },
-              { value: 'late', label: 'Late' }, { value: 'halfDay', label: 'Half Day' }, { value: 'onLeave', label: 'On Leave' },
+              { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
+              { value: 'Late', label: 'Late' }, { value: 'Half Day', label: 'Half Day' }, { value: 'Leave', label: 'On Leave' },
             ]} />
           </Form.Item>
           <Row gutter={16}>

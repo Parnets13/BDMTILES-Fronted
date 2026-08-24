@@ -15,6 +15,7 @@ import ProductSelectionModal from '../../components/ProductSelectionModal.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', sent: 'blue', accepted: 'green',
@@ -485,7 +486,7 @@ const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
                       <td className="px-2 py-1.5 relative" style={{minWidth: 220}}>
                         {item.product ? (
                           <div className="flex items-center gap-1">
-                            {item.productImage && <img src={getImageUrl(item.productImage)} alt="" className="w-7 h-7 rounded object-cover shrink-0 border border-gray-100" />}
+                            {item.productImage && <ProductImage src={item.productImage} size="sm" />}
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-semibold truncate">{item.productName}</div>
                               <div className="text-[9px] text-gray-400">{item.productCode}{item.discountRuleName ? <span className="ml-1 text-green-600">· {item.discountRuleName}</span> : ''}</div>
@@ -769,7 +770,7 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange })
                   <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
                   <td className="px-2 py-1.5">
                     <div className="flex items-center gap-1.5">
-                      {(item.productImage || item.product?.images?.[0]) && <img src={getImageUrl(item.productImage || item.product?.images?.[0])} alt="" className="w-6 h-6 rounded object-cover shrink-0 border border-gray-100" />}
+                      {(item.productImage || item.product?.images?.[0]) && <ProductImage src={item.productImage || item.product?.images?.[0]} size="xs" />}
                       <div>
                         <div className="font-medium">{item.productName || item.product?.itemName}</div>
                         <div className="text-[10px] text-gray-400">{item.productCode || item.product?.productCode}</div>

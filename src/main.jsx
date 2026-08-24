@@ -120,17 +120,20 @@ const antdTheme = {
 };
 
 import { ConfirmProvider } from './components/ConfirmModal.jsx';
+import { LightboxProvider } from './components/ImageLightbox.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ConfigProvider theme={antdTheme}>
-          <ConfirmProvider>
-            <AuthProvider>
-              <App />
-            </AuthProvider>
-          </ConfirmProvider>
+          <LightboxProvider>
+            <ConfirmProvider>
+              <AuthProvider>
+                <App />
+              </AuthProvider>
+            </ConfirmProvider>
+          </LightboxProvider>
         </ConfigProvider>
       </QueryClientProvider>
     </BrowserRouter>

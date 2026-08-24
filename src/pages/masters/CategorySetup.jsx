@@ -77,7 +77,7 @@ const CategorySetup = () => {
   // Add/Edit
   const openModal = (item = null) => {
     setEditingItem(item);
-    form.setFieldsValue(item ? { name: item.name, description: item.description } : { name: '', description: '' });
+    form.setFieldsValue(item ? { name: item.name, description: item.description, status: item.status || 'active' } : { name: '', description: '', status: 'active' });
     setModalOpen(true);
   };
 

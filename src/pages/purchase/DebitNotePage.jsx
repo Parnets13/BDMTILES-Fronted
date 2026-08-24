@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
-import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, FileExclamationOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, FileExclamationOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
@@ -18,6 +18,7 @@ const DebitNotePage = () => {
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [viewReturn, setViewReturn] = useState(null);
 
   // Supplier selection
   const [suppliers, setSuppliers] = useState([]);
@@ -151,8 +152,9 @@ const DebitNotePage = () => {
     { title: 'Items', key: 'items', width: 55, render: (_, r) => r.items?.length || 0 },
     { title: 'Amount', dataIndex: 'grandTotal', width: 100, render: v => <span className="font-semibold text-sm">₹{(v || 0).toLocaleString()}</span> },
     { title: 'Status', dataIndex: 'status', width: 110, render: s => <Tag color={STATUS_COLORS[s]}>{s?.replace('_', ' ')}</Tag> },
-    { title: 'Actions', width: 100, render: (_, r) => (
+    { title: 'Actions', width: 120, render: (_, r) => (
       <Space size="small">
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewReturn(r)} /></Tooltip>
         {r.status === 'draft' && (
           <>
             <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleApprove(r._id)} /></Tooltip>
@@ -270,6 +272,91 @@ const DebitNotePage = () => {
           </div>
         </div>
       </Modal>
+
+      {/* View Return Detail Modal */}
+      {viewReturn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewReturn(null)}>
+          <div className="fixed inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">Debit Note Details</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{viewReturn.debitNoteNumber}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Tag color={STATUS_COLORS[viewReturn.status]} className="text-sm px-3 py-0.5">{viewReturn.status?.replace(/_/g, ' ')}</Tag>
+                <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl" onClick={() => setViewReturn(null)}>✕</span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Supplier & Reference */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Supplier:</span> <span className="font-medium">{viewReturn.supplierName || viewReturn.supplier?.companyName || '-'}</span></div>
+                  <div><span className="text-gray-500">Supplier Code:</span> <span className="font-medium">{viewReturn.supplier?.supplierCode || '-'}</span></div>
+                  <div><span className="text-gray-500">Return Date:</span> <span className="font-medium">{viewReturn.returnDate ? new Date(viewReturn.returnDate).toLocaleDateString('en-IN') : '-'}</span></div>
+                  <div><span className="text-gray-500">Against PO:</span> <span className="font-medium font-mono">{viewReturn.poNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">Against GRN:</span> <span className="font-medium font-mono">{viewReturn.grnNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">Debit Note #:</span> <span className="font-medium text-red-600">{viewReturn.debitNoteNumber || '-'}</span></div>
+                </div>
+              </div>
+
+              {/* Items */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Returned Items ({viewReturn.items?.length || 0})</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-100"><tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Rate</th>
+                      <th className="px-3 py-2 text-left">Reason</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr></thead>
+                    <tbody>
+                      {viewReturn.items?.map((item, idx) => {
+                        const taxable = (item.returnQty || item.quantity || 0) * (item.rate || 0);
+                        const gst = (taxable * (item.gstPercentage || 0)) / 100;
+                        return (
+                          <tr key={idx} className="border-t">
+                            <td className="px-3 py-2">{idx + 1}</td>
+                            <td className="px-3 py-2"><div className="font-medium">{item.productName}</div><div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div></td>
+                            <td className="px-3 py-2 text-right font-medium">{item.returnQty || item.quantity || 0} {item.unit}</td>
+                            <td className="px-3 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
+                            <td className="px-3 py-2"><Tag color="default">{REASON_LABELS[item.reason] || item.reason || '-'}</Tag></td>
+                            <td className="px-3 py-2 text-right font-semibold">₹{Math.round(taxable + gst).toLocaleString()}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="bg-red-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Subtotal:</span><span className="font-medium">₹{(viewReturn.subtotal || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">GST:</span><span className="font-medium">₹{(viewReturn.totalTax || 0).toLocaleString()}</span></div>
+                  <div className="col-span-2 border-t pt-2 mt-1 flex justify-between text-base font-bold"><span>Grand Total:</span><span className="text-red-700">₹{(viewReturn.grandTotal || 0).toLocaleString()}</span></div>
+                </div>
+              </div>
+
+              {/* Remarks */}
+              {viewReturn.remarks && (
+                <div className="bg-yellow-50 rounded-lg p-3"><span className="text-xs font-semibold text-gray-600">Remarks:</span><p className="text-sm mt-1">{viewReturn.remarks}</p></div>
+              )}
+
+              {/* Meta */}
+              <div className="text-xs text-gray-400 flex gap-4 pt-2 border-t">
+                <span>Created: {viewReturn.createdAt ? new Date(viewReturn.createdAt).toLocaleDateString('en-IN') : '-'}</span>
+                <span>By: {viewReturn.createdBy?.name || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

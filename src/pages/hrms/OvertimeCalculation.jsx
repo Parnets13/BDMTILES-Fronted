@@ -78,7 +78,7 @@ const OvertimeCalculation = () => {
 
         return {
           employeeId:   emp._id,
-          empCode:      emp.employeeCode || '',
+          empCode:      emp.empId || '',
           name:         emp.name,
           department:   emp.department || '—',
           basicSalary,

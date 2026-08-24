@@ -406,14 +406,6 @@ const App = () => {
           }
         />
         <Route
-          path="/inventory/stock-transfer"
-          element={
-            <ProtectedRoute requiredPermission="stock.transfer">
-              <StockTransferPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path="/inventory/stock-adjustment"
           element={
             <ProtectedRoute requiredPermission="stock.adjustment">
@@ -498,21 +490,13 @@ const App = () => {
         <Route path="/finance/voucher-entry"
           element={<ProtectedRoute requiredPermission="finance.management"><VoucherEntry /></ProtectedRoute>} />
         <Route path="/finance/bank-account-master"
-          element={<ProtectedRoute requiredPermission="finance.management"><VoucherEntry /></ProtectedRoute>} />
+          element={<ProtectedRoute requiredPermission="finance.management"><BankAccountMaster /></ProtectedRoute>} />
         <Route path="/finance/cash-bank-book"
           element={<ProtectedRoute requiredPermission="finance.management"><CashBankBook /></ProtectedRoute>} />
         <Route path="/finance/payment-allocation"
           element={<ProtectedRoute requiredPermission="finance.management"><PaymentAllocation /></ProtectedRoute>} />
         <Route path="/finance/auto-reconciliation"
           element={<ProtectedRoute requiredPermission="reconciliation"><Reconciliation /></ProtectedRoute>} />
-        <Route
-          path="/finance/bank-account-master"
-          element={
-            <ProtectedRoute requiredPermission="finance.management">
-              <BankAccountMaster />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/finance/account-master"
           element={
@@ -575,11 +559,9 @@ const App = () => {
         <Route path="/inventory/stock-alerts" element={<ProtectedRoute requiredPermission="stock.view"><StockAlerts /></ProtectedRoute>} />
         <Route path="/inventory/samples" element={<ProtectedRoute requiredPermission="stock.view"><SampleManagement /></ProtectedRoute>} />
 
-        {/* Warehouse Operations */}
-        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><PickingList /></ProtectedRoute>} />
+        {/* Warehouse Operations — handled by new pages below */}
         <Route path="/warehouse/sorting-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><SortingList /></ProtectedRoute>} />
         <Route path="/warehouse/loading-verification" element={<ProtectedRoute requiredPermission="warehouse.manager"><LoadingVerification /></ProtectedRoute>} />
-        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="warehouse.manager"><DispatchPlanning /></ProtectedRoute>} />
 
         {/* Dispatch & Delivery */}
         <Route path="/dispatch/delivery-assignment" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryAssignment /></ProtectedRoute>} />
@@ -615,14 +597,14 @@ const App = () => {
         {/* Sales & Purchase — additional */}
         <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="sales.order.create"><QuotationManager /></ProtectedRoute>} />
         <Route path="/sales-purchase/invoices" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><InvoiceManager /></ProtectedRoute>} />
-        <Route path="/inventory/stock-transfers" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><StockTransferPage /></ProtectedRoute>} />
-        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><PickingListPage /></ProtectedRoute>} />
-        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><DispatchPlanningPage /></ProtectedRoute>} />
-        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><DeliveryTrackingPage /></ProtectedRoute>} />
+        <Route path="/inventory/stock-transfers" element={<ProtectedRoute requiredPermission="stock.transfer"><StockTransferPage /></ProtectedRoute>} />
+        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><PickingListPage /></ProtectedRoute>} />
+        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="warehouse.manager"><DispatchPlanningPage /></ProtectedRoute>} />
+        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryTrackingPage /></ProtectedRoute>} />
         <Route path="/sales-purchase/supplier-schemes" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><SupplierSchemePage /></ProtectedRoute>} />
-        <Route path="/finance/bank-reconciliation" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><BankReconciliationPage /></ProtectedRoute>} />
+        <Route path="/finance/bank-reconciliation" element={<ProtectedRoute requiredPermission="reconciliation"><BankReconciliationPage /></ProtectedRoute>} />
         <Route path="/reports/advanced" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><AdvancedReportsPage /></ProtectedRoute>} />
-        <Route path="/inventory/barcode-labels" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><BarcodeLabelPage /></ProtectedRoute>} />
+        <Route path="/inventory/barcode-labels" element={<ProtectedRoute requiredPermission="stock.view"><BarcodeLabelPage /></ProtectedRoute>} />
         <Route path="/tools/tile-calculator" element={<ProtectedRoute requiredPermission="dashboard.view"><TileCalculatorPage /></ProtectedRoute>} />
         <Route path="/system/tasks" element={<ProtectedRoute requiredPermission="dashboard.view"><TaskManagementPage /></ProtectedRoute>} />
         <Route path="/system/documents" element={<ProtectedRoute requiredPermission="dashboard.view"><DocumentManagementPage /></ProtectedRoute>} />

@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Checkbox, Divider
+  Row, Col, Card, Statistic, Modal, Checkbox, Divider, Descriptions, Timeline
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CarOutlined, UserOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CarOutlined, UserOutlined, EyeOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
+import api from '../../config/api.js';
+import getImageUrl from '../../utils/imageUrl.js';
 
 const LoadingVerification = () => {
   const [dispatches, setDispatches] = useState([]);
@@ -14,6 +16,8 @@ const LoadingVerification = () => {
   const [verifyModal, setVerifyModal] = useState(null);
   const [checkedOrders, setCheckedOrders] = useState([]);
   const [verifyLoading, setVerifyLoading] = useState(false);
+  const [viewDetail, setViewDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
 
   const [stats, setStats] = useState({ awaitingLoading: 0, verifiedToday: 0 });
 
@@ -62,6 +66,24 @@ const LoadingVerification = () => {
     setCheckedOrders(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  const handleViewDetail = async (dispatch) => {
+    setDetailLoading(true);
+    try {
+      // Try to fetch trip detail from dispatch-trips API (has more info)
+      const res = await api.get(`/dispatch-trips/${dispatch._id}`);
+      if (res.success) {
+        setViewDetail(res.data);
+      } else {
+        // Fallback to dispatch data
+        setViewDetail(dispatch);
+      }
+    } catch {
+      // Fallback to dispatch data directly
+      setViewDetail(dispatch);
+    }
+    finally { setDetailLoading(false); }
+  };
+
   const columns = [
     { title: 'Dispatch #', dataIndex: 'dispatchNumber', width: 130,
       render: v => <span className="font-mono text-xs text-blue-600 font-medium">{v}</span> },
@@ -73,12 +95,17 @@ const LoadingVerification = () => {
       render: v => <span className="text-sm">{v || 0}</span> },
     { title: 'Status', dataIndex: 'status', width: 100,
       render: () => <Tag color="blue">Planned</Tag> },
-    { title: 'Actions', width: 160,
+    { title: 'Actions', width: 200,
       render: (_, r) => (
-        <Button type="primary" size="small" icon={<CheckCircleOutlined />}
-          onClick={() => openVerifyModal(r)}>
-          Verify & Mark Loaded
-        </Button>
+        <Space size="small">
+          <Button size="small" icon={<EyeOutlined />} onClick={() => handleViewDetail(r)}>
+            View Detail
+          </Button>
+          <Button type="primary" size="small" icon={<CheckCircleOutlined />}
+            onClick={() => openVerifyModal(r)}>
+            Verify
+          </Button>
+        </Space>
       )},
   ];
 
@@ -162,6 +189,112 @@ const LoadingVerification = () => {
             <div className="bg-blue-50 rounded p-2 text-xs text-blue-700 mt-2">
               Confirming will mark this dispatch as <strong>Loaded</strong> and ready for transit.
             </div>
+          </div>
+        </Modal>
+      )}
+      {/* View Detail Modal */}
+      {viewDetail && (
+        <Modal title={`Dispatch Detail — ${viewDetail.dispatchNumber || viewDetail.tripNumber || ''}`}
+          open onCancel={() => setViewDetail(null)} width={850}
+          footer={<Button onClick={() => setViewDetail(null)}>Close</Button>}>
+          <div className="space-y-4 mt-3">
+            {/* Trip/Dispatch Info */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-gray-50 p-3 rounded border">
+                <div className="text-[10px] text-gray-400 uppercase font-semibold">Vehicle</div>
+                <div className="font-bold text-sm mt-1">{viewDetail.vehicleNumber || viewDetail.vehicle || '—'}</div>
+                <div className="text-xs text-gray-500">{viewDetail.vehicleType || ''}</div>
+              </div>
+              <div className="bg-blue-50 p-3 rounded border border-blue-100">
+                <div className="text-[10px] text-gray-400 uppercase font-semibold">Driver</div>
+                <div className="font-bold text-sm mt-1">{viewDetail.driverName || '—'}</div>
+                <div className="text-xs text-gray-500">{viewDetail.driverPhone || ''}</div>
+              </div>
+              <div className="bg-green-50 p-3 rounded border border-green-100">
+                <div className="text-[10px] text-gray-400 uppercase font-semibold">Summary</div>
+                <div className="font-bold text-sm mt-1">{viewDetail.totalOrders || viewDetail.orders?.length || 0} Orders</div>
+                <div className="text-xs text-gray-500">{viewDetail.totalBoxes || 0} Total Boxes · {viewDetail.totalWeight || 0} kg</div>
+              </div>
+            </div>
+
+            {/* Route & Status */}
+            <div className="flex items-center gap-3 text-xs">
+              {viewDetail.routeName && <Tag color="blue">Route: {viewDetail.routeName}</Tag>}
+              <Tag color={viewDetail.status === 'loaded' ? 'green' : viewDetail.status === 'dispatched' ? 'geekblue' : 'orange'}>
+                {viewDetail.status || 'Planned'}
+              </Tag>
+              {viewDetail.loadingVerified && <Tag color="green">Loading Verified ✓</Tag>}
+              {viewDetail.dispatchTime && <span className="text-gray-400">Dispatched: {new Date(viewDetail.dispatchTime).toLocaleString('en-IN')}</span>}
+            </div>
+
+            {/* Orders with Products */}
+            <div className="font-semibold text-gray-700">Orders ({viewDetail.orders?.length || 0})</div>
+            <div className="max-h-96 overflow-y-auto space-y-3">
+              {(viewDetail.orders || []).map((order, idx) => (
+                <div key={idx} className="border border-gray-200 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <div>
+                      <span className="font-mono text-sm font-medium text-blue-600">{order.orderNumber || `Order ${idx + 1}`}</span>
+                      <span className="text-xs text-gray-500 ml-2">{order.dealerName}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">{order.totalBoxes || 0} boxes</span>
+                      {order.loadingVerified ? (
+                        <Tag color="green" className="text-[9px]">Verified ✓</Tag>
+                      ) : (
+                        <Tag color="orange" className="text-[9px]">Pending</Tag>
+                      )}
+                    </div>
+                  </div>
+                  {order.deliveryAddress && (
+                    <div className="text-[10px] text-gray-400 mb-2">📍 {order.deliveryAddress}</div>
+                  )}
+                  {/* If we have item-level details from SO population */}
+                  {order.salesOrder?.items && (
+                    <table className="w-full text-[10px] border border-gray-100 rounded">
+                      <thead className="bg-gray-50">
+                        <tr>{['Product', 'Shade', 'Qty', 'Boxes'].map(h => <th key={h} className="px-2 py-1 text-left">{h}</th>)}</tr>
+                      </thead>
+                      <tbody>
+                        {order.salesOrder.items.map((item, i) => (
+                          <tr key={i} className="border-t border-gray-50">
+                            <td className="px-2 py-1">
+                              <div className="flex items-center gap-1">
+                                {(item.productImage || item.product?.images?.[0]) && (
+                                  <img src={getImageUrl(item.productImage || item.product?.images?.[0])} className="w-5 h-5 rounded object-cover border" />
+                                )}
+                                <span>{item.productName || item.product?.itemName || '—'}</span>
+                              </div>
+                            </td>
+                            <td className="px-2 py-1">{item.shade || '—'}</td>
+                            <td className="px-2 py-1 font-medium">{item.quantity} {item.unit || 'Box'}</td>
+                            <td className="px-2 py-1">{item.quantity}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                  {order.loadingRemarks && (
+                    <div className="text-[10px] text-gray-500 mt-1 italic">Remarks: {order.loadingRemarks}</div>
+                  )}
+                </div>
+              ))}
+              {(!viewDetail.orders || viewDetail.orders.length === 0) && (
+                <div className="text-center text-gray-400 py-6">No orders in this dispatch</div>
+              )}
+            </div>
+
+            {/* Loading timeline */}
+            {(viewDetail.loadingStartTime || viewDetail.loadingEndTime) && (
+              <div className="bg-gray-50 rounded-lg p-3 border">
+                <div className="text-xs font-semibold text-gray-600 mb-2">Loading Timeline</div>
+                <Timeline items={[
+                  viewDetail.loadingStartTime && { color: 'blue', children: `Loading Started: ${new Date(viewDetail.loadingStartTime).toLocaleString('en-IN')}` },
+                  viewDetail.loadingEndTime && { color: 'green', children: `Loading Completed: ${new Date(viewDetail.loadingEndTime).toLocaleString('en-IN')}` },
+                  viewDetail.dispatchTime && { color: 'purple', children: `Dispatched: ${new Date(viewDetail.dispatchTime).toLocaleString('en-IN')}` },
+                ].filter(Boolean)} />
+              </div>
+            )}
           </div>
         </Modal>
       )}

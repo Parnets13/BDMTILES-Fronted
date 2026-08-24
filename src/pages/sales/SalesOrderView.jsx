@@ -4,6 +4,7 @@ import { PrinterOutlined, EditOutlined, CloseCircleOutlined, CheckCircleOutlined
 import salesService from '../../services/salesService.js';
 import api from '../../config/api.js';
 import getImageUrl from '../../utils/imageUrl.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', confirmed: 'blue', approved: 'cyan', processing: 'orange',
@@ -103,7 +104,7 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
     { title: 'Product', key: 'product', render: (_, r) => (
       <div className="flex items-center gap-2">
-        {(r.productImage || r.product?.images?.[0]) && <img src={getImageUrl(r.productImage || r.product?.images?.[0])} alt="" className="w-8 h-8 rounded object-cover border border-gray-100 shrink-0" />}
+        {(r.productImage || r.product?.images?.[0]) && <ProductImage src={r.productImage || r.product?.images?.[0]} size="sm" />}
         <div>
           <div className="text-sm font-medium">{r.productName || r.product?.itemName}</div>
           <div className="text-xs text-gray-400">{r.productCode || r.product?.productCode} · {r.product?.tileSize} · {r.product?.finish}</div>

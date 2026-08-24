@@ -29,8 +29,8 @@ const LeaveManagement = () => {
 
   const fetchEmployeeList = async () => {
     try {
-      const res = await hrmsService.getEmployees({ limit: 200, status: 'active' });
-      const data = res.data?.data || res.data || [];
+      const res = await hrmsService.getEmployees({ limit: 200, status: 'Active' });
+      const data = res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
     } catch {}
   };
@@ -40,14 +40,14 @@ const LeaveManagement = () => {
     try {
       const params = { search, status: statusFilter };
       const res = await hrmsService.getLeaves(params);
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       const records = Array.isArray(data) ? data : [];
       setLeaves(records);
 
       // Stats
-      const pending = records.filter(r => r.status === 'pending').length;
-      const approved = records.filter(r => r.status === 'approved').length;
-      const rejected = records.filter(r => r.status === 'rejected').length;
+      const pending = records.filter(r => r.status === 'Pending').length;
+      const approved = records.filter(r => r.status === 'Approved').length;
+      const rejected = records.filter(r => r.status === 'Rejected').length;
       setStats({ total: records.length, pending, approved, rejected });
     } catch (err) { message.error(err.message || 'Failed to fetch leaves'); }
     finally { setLoading(false); }
@@ -59,31 +59,31 @@ const LeaveManagement = () => {
     try {
       const values = await applyForm.validateFields();
       const payload = {
-        employeeId: values.employeeId,
+        employee: values.employeeId,
         leaveType: values.leaveType,
         fromDate: values.dateRange[0].format('YYYY-MM-DD'),
         toDate: values.dateRange[1].format('YYYY-MM-DD'),
         reason: values.reason,
       };
       const res = await hrmsService.applyLeave(payload);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Leave applied successfully');
         setApplyModal(false);
         applyForm.resetFields();
         fetchLeaves();
       } else {
-        message.error(res.data?.message || 'Failed');
+        message.error(res.message || 'Failed');
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || err.message || 'Failed');
+      message.error(err.message || 'Failed');
     }
   };
 
   const handleApprove = async (id) => {
     try {
       const res = await hrmsService.approveLeave(id);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Leave approved');
         fetchLeaves();
       }
@@ -93,7 +93,7 @@ const LeaveManagement = () => {
   const handleReject = async () => {
     try {
       const res = await hrmsService.rejectLeave(rejectingId, rejectReason);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Leave rejected');
         setRejectModal(false);
         setRejectingId(null);
@@ -105,9 +105,10 @@ const LeaveManagement = () => {
 
   const getStatusTag = (status) => {
     const map = {
-      pending: { color: 'orange', label: 'Pending' },
-      approved: { color: 'green', label: 'Approved' },
-      rejected: { color: 'red', label: 'Rejected' },
+      Pending: { color: 'orange', label: 'Pending' },
+      Approved: { color: 'green', label: 'Approved' },
+      Rejected: { color: 'red', label: 'Rejected' },
+      Cancelled: { color: 'default', label: 'Cancelled' },
     };
     const info = map[status] || { color: 'default', label: status };
     return <Tag color={info.color}>{info.label}</Tag>;
@@ -118,8 +119,8 @@ const LeaveManagement = () => {
       title: 'Employee', key: 'employee', width: 180,
       render: (_, r) => (
         <div>
-          <div className="text-sm font-medium text-gray-900">{r.employeeName || (r.employee?.firstName + ' ' + r.employee?.lastName) || '-'}</div>
-          <span className="text-xs text-gray-400">{r.department || r.employee?.department || ''}</span>
+          <div className="text-sm font-medium text-gray-900">{r.employee?.name || '-'}</div>
+          <span className="text-xs text-gray-400">{r.employee?.department || ''}</span>
         </div>
       ),
     },
@@ -143,7 +144,7 @@ const LeaveManagement = () => {
     { title: 'Status', dataIndex: 'status', key: 'status', width: 100, render: s => getStatusTag(s) },
     {
       title: 'Actions', key: 'actions', width: 120, fixed: 'right',
-      render: (_, r) => r.status === 'pending' ? (
+      render: (_, r) => r.status === 'Pending' ? (
         <Space size="small">
           <Popconfirm title="Approve this leave?" onConfirm={() => handleApprove(r._id)}>
             <Button type="text" size="small" icon={<CheckOutlined />} className="text-green-600" />
@@ -200,7 +201,7 @@ const LeaveManagement = () => {
         <Form form={applyForm} layout="vertical" className="mt-4">
           <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"
-              options={employees.map(e => ({ value: e._id, label: `${e.firstName} ${e.lastName}` }))} />
+              options={employees.map(e => ({ value: e._id, label: e.name }))} />
           </Form.Item>
           <Form.Item name="leaveType" label="Leave Type" rules={[{ required: true }]}>
             <Select placeholder="Select type" options={LEAVE_TYPES.map(t => ({ value: t, label: t }))} />

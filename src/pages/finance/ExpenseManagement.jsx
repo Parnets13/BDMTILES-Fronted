@@ -52,14 +52,14 @@ const ExpenseManagement = () => {
   const fetchStats = useCallback(async () => {
     try {
       const res = await api.get('/expenses/stats');
-      if (res.data?.success) setStats(res.data.data);
+      if (res.success) setStats(res.data);
     } catch { /* ignore */ }
   }, []);
 
   const fetchEmployees = useCallback(async () => {
     try {
       const res = await api.get('/hrms/employees', { params: { limit: 200 } });
-      if (res.data?.success) setEmployees(res.data.data || []);
+      if (res.success) setEmployees(res.data || []);
     } catch { /* ignore */ }
   }, []);
 
@@ -73,16 +73,16 @@ const ExpenseManagement = () => {
         ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
       };
       if (dateRange && dateRange[0] && dateRange[1]) {
-        params.startDate = dateRange[0].format('YYYY-MM-DD');
-        params.endDate = dateRange[1].format('YYYY-MM-DD');
+        params.dateFrom = dateRange[0].format('YYYY-MM-DD');
+        params.dateTo = dateRange[1].format('YYYY-MM-DD');
       }
       const res = await api.get('/expenses', { params });
-      if (res.data?.success) {
-        setExpenses(res.data.data);
-        setPagination(p => ({ ...p, total: res.data.pagination?.totalItems || 0 }));
+      if (res.success) {
+        setExpenses(res.data);
+        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) {
-      message.error(err.response?.data?.message || 'Failed to fetch expenses');
+      message.error(err.message || 'Failed to fetch expenses');
     } finally {
       setLoading(false);
     }
@@ -97,7 +97,7 @@ const ExpenseManagement = () => {
       if (values.expenseDate) values.expenseDate = values.expenseDate.format('YYYY-MM-DD');
       setLoading(true);
       const res = await api.post('/expenses', values);
-      if (res.data?.success) {
+      if (res.success) {
         message.success('Expense submitted');
         setModalOpen(false);
         form.resetFields();
@@ -106,7 +106,7 @@ const ExpenseManagement = () => {
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || 'Submit failed');
+      message.error(err.message || 'Submit failed');
     } finally {
       setLoading(false);
     }
@@ -115,15 +115,15 @@ const ExpenseManagement = () => {
   const handleApprove = async (id) => {
     try {
       const res = await api.patch(`/expenses/${id}/approve`);
-      if (res.data?.success) { message.success('Approved'); fetchExpenses(); fetchStats(); }
-    } catch (err) { message.error(err.response?.data?.message || 'Approval failed'); }
+      if (res.success) { message.success('Approved'); fetchExpenses(); fetchStats(); }
+    } catch (err) { message.error(err.message || 'Approval failed'); }
   };
 
   const handleReject = async () => {
     if (!rejectReason.trim()) { message.error('Reason is required'); return; }
     try {
       const res = await api.patch(`/expenses/${rejectingId}/reject`, { reason: rejectReason });
-      if (res.data?.success) {
+      if (res.success) {
         message.success('Rejected');
         setRejectModalOpen(false);
         setRejectingId(null);
@@ -131,14 +131,14 @@ const ExpenseManagement = () => {
         fetchExpenses();
         fetchStats();
       }
-    } catch (err) { message.error(err.response?.data?.message || 'Reject failed'); }
+    } catch (err) { message.error(err.message || 'Reject failed'); }
   };
 
   const handleReimburse = async (id) => {
     try {
       const res = await api.patch(`/expenses/${id}/reimburse`, { ref: `REIMB-${Date.now()}` });
-      if (res.data?.success) { message.success('Reimbursed'); fetchExpenses(); fetchStats(); }
-    } catch (err) { message.error(err.response?.data?.message || 'Reimburse failed'); }
+      if (res.success) { message.success('Reimbursed'); fetchExpenses(); fetchStats(); }
+    } catch (err) { message.error(err.message || 'Reimburse failed'); }
   };
 
   const columns = [

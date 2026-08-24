@@ -5,7 +5,7 @@ import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 
 const STATUS_COLORS = {
-  pending: 'orange', approved: 'green', cancelled: 'red',
+  draft: 'default', verified: 'orange', approved: 'green', posted: 'blue',
 };
 
 const GRNEntryPage = () => {
@@ -16,6 +16,7 @@ const GRNEntryPage = () => {
   const [filters, setFilters] = useState({ status: undefined });
   const [stats, setStats] = useState({});
   const [showCreateGRN, setShowCreateGRN] = useState(false);
+  const [viewGRN, setViewGRN] = useState(null);
 
   const fetchStats = () => {
     // Derive stats from list or a separate endpoint if available
@@ -59,7 +60,7 @@ const GRNEntryPage = () => {
     { title: 'GRN #', dataIndex: 'grnNumber', width: 120, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'grnDate', width: 100, render: v => <span className="text-xs">{v ? new Date(v).toLocaleDateString('en-IN') : '-'}</span> },
     { title: 'Supplier', key: 'supplier', width: 180, render: (_, r) => (
-      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.supplierName || r.supplier?.businessName || '-'}</div></div>
+      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.supplierName || r.supplier?.companyName || '-'}</div></div>
     )},
     { title: 'PO #', dataIndex: 'poNumber', width: 110, render: (v, r) => <span className="text-xs font-mono">{v || r.purchaseOrder?.poNumber || '-'}</span> },
     { title: 'Invoice No', dataIndex: 'supplierInvoiceNo', width: 120, render: v => <span className="text-xs">{v || '-'}</span> },
@@ -67,8 +68,8 @@ const GRNEntryPage = () => {
     { title: 'Status', dataIndex: 'status', width: 100, render: s => <Tag color={STATUS_COLORS[s]}>{s}</Tag> },
     { title: 'Actions', width: 100, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" /></Tooltip>
-        {r.status === 'pending' && (
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewGRN(r)} /></Tooltip>
+        {(r.status === 'draft' || r.status === 'verified') && (
           <Popconfirm title="Approve GRN & update stock?" onConfirm={() => handleApprove(r._id)} okText="Approve" cancelText="Cancel">
             <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" /></Tooltip>
           </Popconfirm>
@@ -86,9 +87,10 @@ const GRNEntryPage = () => {
 
       {/* Stats */}
       <Row gutter={16} className="mb-4">
-        <Col span={8}><Card size="small"><Statistic title="Total GRNs" value={stats.total || 0} prefix={<AuditOutlined />} /></Card></Col>
-        <Col span={8}><Card size="small"><Statistic title="Pending" value={stats.pending || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
-        <Col span={8}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Total GRNs" value={stats.total || 0} prefix={<AuditOutlined />} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Verified" value={stats.verified || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
       </Row>
 
       {/* Filters */}
@@ -96,7 +98,7 @@ const GRNEntryPage = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search GRN #, supplier, invoice..." prefix={<SearchOutlined className="text-gray-400" />}
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
-          <Select placeholder="Status" options={[{ value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'cancelled', label: 'Cancelled' }]}
+          <Select placeholder="Status" options={[{ value: 'draft', label: 'Draft' }, { value: 'verified', label: 'Verified' }, { value: 'approved', label: 'Approved' }, { value: 'posted', label: 'Posted' }]}
             value={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} allowClear className="w-36" />
           <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined }); }}>Reset</Button>
         </div>
@@ -115,6 +117,77 @@ const GRNEntryPage = () => {
           onClose={() => setShowCreateGRN(false)}
           onSuccess={() => { fetchGRNs(); fetchStats(); }}
         />
+      )}
+
+      {/* View GRN Detail Modal */}
+      {viewGRN && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewGRN(null)}>
+          <div className="fixed inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">GRN Details</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{viewGRN.grnNumber}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Tag color={STATUS_COLORS[viewGRN.status]} className="text-sm px-3 py-0.5">{viewGRN.status}</Tag>
+                <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl" onClick={() => setViewGRN(null)}>✕</span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Supplier & PO Info */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Supplier:</span> <span className="font-medium">{viewGRN.supplierName || viewGRN.supplier?.companyName || '-'}</span></div>
+                  <div><span className="text-gray-500">PO Number:</span> <span className="font-medium font-mono">{viewGRN.poNumber || viewGRN.purchaseOrder?.poNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">GRN Date:</span> <span className="font-medium">{viewGRN.grnDate ? new Date(viewGRN.grnDate).toLocaleDateString('en-IN') : '-'}</span></div>
+                  <div><span className="text-gray-500">Invoice No:</span> <span className="font-medium">{viewGRN.supplierInvoiceNo || '-'}</span></div>
+                  <div><span className="text-gray-500">Invoice Date:</span> <span className="font-medium">{viewGRN.supplierInvoiceDate ? new Date(viewGRN.supplierInvoiceDate).toLocaleDateString('en-IN') : '-'}</span></div>
+                  <div><span className="text-gray-500">Vehicle No:</span> <span className="font-medium">{viewGRN.vehicleNo || '-'}</span></div>
+                  <div><span className="text-gray-500">Driver Name:</span> <span className="font-medium">{viewGRN.driverName || '-'}</span></div>
+                  <div><span className="text-gray-500">Driver Mobile:</span> <span className="font-medium">{viewGRN.driverMobile || '-'}</span></div>
+                </div>
+              </div>
+              {/* Items */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Received Items ({viewGRN.items?.length || 0})</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-100"><tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Ordered</th>
+                      <th className="px-3 py-2 text-right">Received</th>
+                      <th className="px-3 py-2 text-right">Accepted</th>
+                      <th className="px-3 py-2 text-right">Rejected</th>
+                    </tr></thead>
+                    <tbody>
+                      {viewGRN.items?.map((item, idx) => (
+                        <tr key={idx} className="border-t">
+                          <td className="px-3 py-2">{idx + 1}</td>
+                          <td className="px-3 py-2"><div className="font-medium">{item.productName}</div><div className="text-gray-400">{item.productCode}</div></td>
+                          <td className="px-3 py-2 text-right">{item.orderedQty || item.quantity || 0}</td>
+                          <td className="px-3 py-2 text-right font-medium">{item.receivedQty || 0}</td>
+                          <td className="px-3 py-2 text-right text-green-600">{item.acceptedQty || item.receivedQty || 0}</td>
+                          <td className="px-3 py-2 text-right text-red-600">{item.rejectedQty || 0}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {/* QC Remarks */}
+              {(viewGRN.qcRemarks || viewGRN.remarks) && (
+                <div className="bg-yellow-50 rounded-lg p-3"><span className="text-xs font-semibold text-gray-600">QC / Remarks:</span><p className="text-sm mt-1">{viewGRN.qcRemarks || viewGRN.remarks}</p></div>
+              )}
+              {/* Meta */}
+              <div className="text-xs text-gray-400 flex gap-4">
+                <span>Created: {viewGRN.createdAt ? new Date(viewGRN.createdAt).toLocaleDateString('en-IN') : '-'}</span>
+                <span>By: {viewGRN.receivedBy?.name || viewGRN.createdBy?.name || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

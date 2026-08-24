@@ -22,6 +22,15 @@ const purchaseService = {
   getStockSummary: () => api.get('/purchase/stock/summary'),
   adjustStock: (data) => api.post('/purchase/stock/adjust', data),
   transferStock: (data) => api.post('/purchase/stock/transfer', data),
+  getStockAlerts: (params) => api.get('/purchase/stock/alerts', { params }),
+
+  // Physical Audit
+  getAuditPending: (warehouse) => api.get('/purchase/audit/pending', { params: { warehouse } }),
+  submitAudit: (data) => api.post('/purchase/audit/submit', data),
+
+  // Reorder Suggestions
+  getReorderSuggestions: (params) => api.get('/purchase/stock/reorder-suggestions', { params }),
+  createPOFromSuggestions: (data) => api.post('/purchase/stock/create-po-from-suggestions', data),
 
   // Purchase Returns (Debit Notes)
   getReturns: (params) => api.get('/purchase-returns', { params }),

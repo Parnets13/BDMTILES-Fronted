@@ -26,7 +26,7 @@ const LoansAdvances = () => {
   const fetchEmployeeList = async () => {
     try {
       const res = await hrmsService.getEmployees({ limit: 200, status: 'active' });
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
     } catch {}
   };
@@ -36,7 +36,7 @@ const LoansAdvances = () => {
     try {
       const params = { search, type: typeFilter, status: statusFilter };
       const res = await hrmsService.getLoans(params);
-      const data = res.data?.data || res.data || [];
+      const data = res.data || [];
       const records = Array.isArray(data) ? data : [];
       setLoans(records);
 
@@ -55,17 +55,17 @@ const LoansAdvances = () => {
     try {
       const values = await createForm.validateFields();
       const res = await hrmsService.createLoan(values);
-      if (res.data?.success !== false) {
+      if (res.success) {
         message.success('Loan/Advance created successfully');
         setCreateModal(false);
         createForm.resetFields();
         fetchLoans();
       } else {
-        message.error(res.data?.message || 'Failed');
+        message.error(res.message || 'Failed');
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || err.message || 'Failed');
+      message.error(err.message || 'Failed');
     }
   };
 
@@ -87,7 +87,7 @@ const LoansAdvances = () => {
       title: 'Employee', key: 'employee', width: 180,
       render: (_, r) => (
         <div>
-          <div className="text-sm font-medium text-gray-900">{r.employeeName || (r.employee?.firstName + ' ' + r.employee?.lastName) || '-'}</div>
+          <div className="text-sm font-medium text-gray-900">{r.employeeName || r.employee?.name || '-'}</div>
           <span className="text-xs text-gray-400">{r.department || r.employee?.department || ''}</span>
         </div>
       ),
@@ -158,9 +158,9 @@ const LoansAdvances = () => {
       <Modal title="New Loan / Advance" open={createModal} onCancel={() => { setCreateModal(false); createForm.resetFields(); }}
         onOk={handleCreateLoan} okText="Create" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={500}>
         <Form form={createForm} layout="vertical" className="mt-4">
-          <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
+          <Form.Item name="employee" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"
-              options={employees.map(e => ({ value: e._id, label: `${e.firstName} ${e.lastName}` }))} />
+              options={employees.map(e => ({ value: e._id, label: e.name }))} />
           </Form.Item>
           <Form.Item name="loanType" label="Type" rules={[{ required: true }]}>
             <Select placeholder="Select type" options={LOAN_TYPES.map(t => ({ value: t, label: t }))} />

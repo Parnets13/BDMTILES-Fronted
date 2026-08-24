@@ -56,7 +56,7 @@ const CustomerMaster = () => {
   const fetchStats = useCallback(async () => {
     try {
       const res = await api.get('/customers/stats');
-      if (res.data?.success) setStats(res.data.data);
+      if (res.success) setStats(res.data);
     } catch { /* ignore */ }
   }, []);
 
@@ -70,12 +70,12 @@ const CustomerMaster = () => {
         ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
       };
       const res = await api.get('/customers', { params });
-      if (res.data?.success) {
-        setCustomers(res.data.data);
-        setPagination(p => ({ ...p, total: res.data.pagination?.totalItems || 0 }));
+      if (res.success) {
+        setCustomers(res.data);
+        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) {
-      message.error(err.response?.data?.message || 'Failed to fetch customers');
+      message.error(err.message || 'Failed to fetch customers');
     } finally {
       setLoading(false);
     }
@@ -104,7 +104,7 @@ const CustomerMaster = () => {
       const res = editingCustomer
         ? await api.put(`/customers/${editingCustomer._id}`, values)
         : await api.post('/customers', values);
-      if (res.data?.success) {
+      if (res.success) {
         message.success(editingCustomer ? 'Customer updated' : 'Customer created');
         setModalOpen(false);
         form.resetFields();
@@ -114,7 +114,7 @@ const CustomerMaster = () => {
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || 'Save failed');
+      message.error(err.message || 'Save failed');
     } finally {
       setLoading(false);
     }
@@ -123,13 +123,13 @@ const CustomerMaster = () => {
   const handleDelete = async (id) => {
     try {
       const res = await api.delete(`/customers/${id}`);
-      if (res.data?.success) {
-        message.success('Customer deleted');
+      if (res.success) {
+        message.success(res.message || 'Customer deleted');
         fetchCustomers();
         fetchStats();
       }
     } catch (err) {
-      message.error(err.response?.data?.message || 'Delete failed');
+      message.error(err.message || 'Delete failed');
     }
   };
 
@@ -156,9 +156,9 @@ const CustomerMaster = () => {
       title: 'Source', dataIndex: 'source', key: 'source', width: 110,
       render: v => v ? <Tag>{v.replace('_', ' ')}</Tag> : '-',
     },
-    { title: 'Assigned SE', dataIndex: 'assignedSalesExecutive', key: 'se', width: 120, render: v => v || '-' },
+    { title: 'Assigned SE', key: 'se', width: 120, render: (_, r) => r.assignedSalesExecutive?.name || '-' },
     {
-      title: 'Outstanding', dataIndex: 'outstanding', key: 'outstanding', width: 110,
+      title: 'Outstanding', dataIndex: 'currentOutstanding', key: 'outstanding', width: 110,
       render: v => <span className={`text-sm font-medium ${(v || 0) > 0 ? 'text-red-600' : 'text-green-600'}`}>₹{(v || 0).toLocaleString()}</span>,
     },
     {

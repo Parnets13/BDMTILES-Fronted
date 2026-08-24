@@ -5,6 +5,7 @@ import productService from '../../services/productService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const TILE_SIZES = ['200x200','200x300','250x375','300x300','300x450','300x600','400x400','600x600','600x1200','800x800','800x1200','800x1600','1000x1000','1200x1200','1200x1800','1200x2400','1600x3200'];
 const FINISHES = ['Glossy','Matt','Sugar','Carving','Satin','Rustic','Polished','Lapato','High Gloss','Anti-Skid','Rocker','Book Match'];
@@ -671,7 +672,7 @@ const ViewProductModal = ({ product, onClose }) => {
           {product.images?.length > 0 && (
             <div className="flex gap-3 mb-4">
               {product.images.map((src, i) => (
-                <img key={i} src={getImageUrl(src)} alt="" className="w-24 h-24 rounded-lg object-cover border" />
+                <ProductImage key={i} src={src} size="xl" />
               ))}
             </div>
           )}

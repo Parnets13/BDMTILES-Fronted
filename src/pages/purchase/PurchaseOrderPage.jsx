@@ -29,6 +29,7 @@ const PurchaseOrderPage = () => {
   const [filters, setFilters] = useState({ status: undefined });
   const [stats, setStats] = useState({});
   const [showCreatePO, setShowCreatePO] = useState(false);
+  const [viewPO, setViewPO] = useState(null);
 
   useEffect(() => {
     purchaseService.getPOStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
@@ -60,7 +61,7 @@ const PurchaseOrderPage = () => {
     { title: 'PO #', dataIndex: 'poNumber', width: 120, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'poDate', width: 100, render: v => <span className="text-xs">{v ? new Date(v).toLocaleDateString('en-IN') : '-'}</span> },
     { title: 'Supplier', key: 'supplier', width: 180, render: (_, r) => (
-      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.supplierName || r.supplier?.businessName || '-'}</div>
+      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.supplierName || r.supplier?.companyName || '-'}</div>
         <div className="text-xs text-gray-400">{r.supplierCode || r.supplier?.supplierCode}</div></div>
     )},
     { title: 'Items', key: 'items', width: 60, render: (_, r) => <span className="text-sm">{r.items?.length || 0}</span> },
@@ -71,7 +72,7 @@ const PurchaseOrderPage = () => {
     )},
     { title: 'Actions', width: 110, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewPO(r)} /></Tooltip>
         {r.status === 'draft' && (
           <>
             <Tooltip title="Edit"><Button type="text" size="small" icon={<EditOutlined />} className="text-orange-500" /></Tooltip>
@@ -128,6 +129,100 @@ const PurchaseOrderPage = () => {
           onSuccess={() => { fetchOrders(); purchaseService.getPOStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {}); }}
         />
       )}
+
+      {/* View PO Detail Modal */}
+      {viewPO && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={() => setViewPO(null)}>
+          <div className="fixed inset-0 bg-black/40" />
+          <div className="relative bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b px-6 py-4 flex justify-between items-center z-10">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800">Purchase Order Details</h2>
+                <p className="text-sm text-gray-500 mt-0.5">{viewPO.poNumber}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <Tag color={STATUS_COLORS[viewPO.status]} className="text-sm px-3 py-0.5">{viewPO.status?.replace(/_/g, ' ')}</Tag>
+                <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl" onClick={() => setViewPO(null)}>✕</span>
+              </div>
+            </div>
+            <div className="p-6 space-y-5">
+              {/* Supplier Info */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Supplier</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-gray-500">Name:</span> <span className="font-medium">{viewPO.supplierName || viewPO.supplier?.companyName || '-'}</span></div>
+                  <div><span className="text-gray-500">Code:</span> <span className="font-medium">{viewPO.supplierCode || viewPO.supplier?.supplierCode || '-'}</span></div>
+                  <div><span className="text-gray-500">GSTIN:</span> <span className="font-medium">{viewPO.supplier?.gstin || '-'}</span></div>
+                  <div><span className="text-gray-500">Contact:</span> <span className="font-medium">{viewPO.supplier?.mobile || '-'}</span></div>
+                </div>
+              </div>
+              {/* Order Info */}
+              <div className="grid grid-cols-3 gap-4 text-sm">
+                <div className="bg-blue-50 rounded-lg p-3"><span className="text-gray-500 block text-xs">PO Date</span><span className="font-semibold">{viewPO.poDate ? new Date(viewPO.poDate).toLocaleDateString('en-IN') : '-'}</span></div>
+                <div className="bg-blue-50 rounded-lg p-3"><span className="text-gray-500 block text-xs">Expected Delivery</span><span className="font-semibold">{viewPO.expectedDeliveryDate ? new Date(viewPO.expectedDeliveryDate).toLocaleDateString('en-IN') : '-'}</span></div>
+                <div className="bg-blue-50 rounded-lg p-3"><span className="text-gray-500 block text-xs">Payment Terms</span><span className="font-semibold">{viewPO.paymentTerms || '-'}</span></div>
+              </div>
+              {/* Items Table */}
+              <div>
+                <h3 className="text-sm font-semibold text-gray-600 mb-2">Items ({viewPO.items?.length || 0})</h3>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-100"><tr>
+                      <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Product</th>
+                      <th className="px-3 py-2 text-right">Qty</th>
+                      <th className="px-3 py-2 text-right">Rate</th>
+                      <th className="px-3 py-2 text-right">Discount</th>
+                      <th className="px-3 py-2 text-right">GST%</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                    </tr></thead>
+                    <tbody>
+                      {viewPO.items?.map((item, idx) => {
+                        const base = (item.quantity || 0) * (item.rate || 0);
+                        const disc = item.discountType === 'percentage' ? (base * (item.discount || 0) / 100) : ((item.discount || 0) * (item.quantity || 0));
+                        const taxable = base - disc;
+                        const gst = (taxable * (item.gstPercentage || 0)) / 100;
+                        return (
+                          <tr key={idx} className="border-t">
+                            <td className="px-3 py-2">{idx + 1}</td>
+                            <td className="px-3 py-2"><div className="font-medium">{item.productName}</div><div className="text-gray-400">{item.productCode}</div></td>
+                            <td className="px-3 py-2 text-right">{item.quantity} {item.unit}</td>
+                            <td className="px-3 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right">{item.discount > 0 ? `${item.discount}${item.discountType === 'percentage' ? '%' : ' ₹'}` : '-'}</td>
+                            <td className="px-3 py-2 text-right">{item.gstPercentage}%</td>
+                            <td className="px-3 py-2 text-right font-semibold">₹{(taxable + gst).toFixed(0)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              {/* Totals */}
+              <div className="bg-orange-50 rounded-lg p-4">
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="flex justify-between"><span className="text-gray-600">Subtotal:</span><span className="font-medium">₹{(viewPO.subtotal || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Total Discount:</span><span className="text-green-600">-₹{(viewPO.totalDiscount || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Tax (GST):</span><span className="font-medium">₹{(viewPO.totalTax || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Freight:</span><span>₹{(viewPO.freight || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Loading:</span><span>₹{(viewPO.loading || 0).toLocaleString()}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-600">Insurance:</span><span>₹{(viewPO.insurance || 0).toLocaleString()}</span></div>
+                  <div className="col-span-2 border-t pt-2 mt-1 flex justify-between text-base font-bold"><span>Grand Total:</span><span className="text-[#FF5F03]">₹{(viewPO.grandTotal || 0).toLocaleString()}</span></div>
+                </div>
+              </div>
+              {/* Remarks */}
+              {viewPO.remarks && (
+                <div className="bg-yellow-50 rounded-lg p-3"><span className="text-xs font-semibold text-gray-600">Remarks:</span><p className="text-sm mt-1">{viewPO.remarks}</p></div>
+              )}
+              {/* Meta */}
+              <div className="text-xs text-gray-400 flex gap-4">
+                <span>Created: {viewPO.createdAt ? new Date(viewPO.createdAt).toLocaleDateString('en-IN') : '-'}</span>
+                <span>By: {viewPO.createdBy?.name || '-'}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -150,9 +245,9 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
   const [orderData, setOrderData] = useState({
     poDate: new Date().toISOString().split('T')[0],
     expectedDeliveryDate: '',
-    freightCharges: 0,
-    loadingCharges: 0,
-    otherCharges: 0,
+    freight: 0,
+    loading: 0,
+    insurance: 0,
     remarks: '',
     status: 'draft',
   });
@@ -229,7 +324,7 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
   const subtotal = items.reduce((s, i) => s + calcLine(i).taxable, 0);
   const totalDiscount = items.reduce((s, i) => s + calcLine(i).disc, 0);
   const totalTax = items.reduce((s, i) => s + calcLine(i).gst, 0);
-  const charges = (orderData.freightCharges || 0) + (orderData.loadingCharges || 0) + (orderData.otherCharges || 0);
+  const charges = (orderData.freight || 0) + (orderData.loading || 0) + (orderData.insurance || 0);
   const grandTotal = Math.round(subtotal + totalTax + charges);
 
   const handleSubmit = async (status = 'draft') => {
@@ -247,9 +342,9 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
           quantity: i.quantity, unit: i.unit, rate: i.rate,
           discount: i.discount, discountType: i.discountType, gstPercentage: i.gstPercentage,
         })),
-        freightCharges: orderData.freightCharges,
-        loadingCharges: orderData.loadingCharges,
-        otherCharges: orderData.otherCharges,
+        freight: orderData.freight,
+        loading: orderData.loading,
+        insurance: orderData.insurance,
         remarks: orderData.remarks,
       };
       const res = await purchaseService.createPO(payload);
@@ -315,7 +410,7 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
                       <div key={s._id} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex justify-between items-center"
                         onClick={() => handleSelectSupplier(s)}>
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{s.businessName}</div>
+                          <div className="text-sm font-medium text-gray-900">{s.companyName}</div>
                           <div className="text-xs text-gray-400">{s.supplierCode} · {s.contactPerson} · {s.mobile} · {s.city}</div>
                         </div>
                         <div className="text-right">
@@ -331,7 +426,7 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
                 <div className="grid grid-cols-3 gap-3 mt-3">
                   <div className="bg-gray-50 rounded-lg p-3 border">
                     <div className="text-[10px] text-gray-400 uppercase">Supplier</div>
-                    <div className="text-sm font-semibold mt-0.5">{selectedSupplier.businessName}</div>
+                    <div className="text-sm font-semibold mt-0.5">{selectedSupplier.companyName}</div>
                     <div className="text-xs text-gray-500">{selectedSupplier.supplierCode} · {selectedSupplier.city}</div>
                   </div>
                   <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
@@ -434,9 +529,9 @@ const CreatePurchaseOrder = ({ onClose, onSuccess }) => {
                   <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
                   {totalDiscount > 0 && <div className="flex justify-between"><span className="text-gray-500">Discount</span><span className="text-green-600">-₹{totalDiscount.toFixed(2)}</span></div>}
                   <div className="flex justify-between"><span className="text-gray-500">GST</span><span>₹{totalTax.toFixed(2)}</span></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Freight</span><InputNumber size="small" min={0} value={orderData.freightCharges} onChange={v => setOrderData(p => ({ ...p, freightCharges: v || 0 }))} className="w-20" /></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Loading</span><InputNumber size="small" min={0} value={orderData.loadingCharges} onChange={v => setOrderData(p => ({ ...p, loadingCharges: v || 0 }))} className="w-20" /></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Other</span><InputNumber size="small" min={0} value={orderData.otherCharges} onChange={v => setOrderData(p => ({ ...p, otherCharges: v || 0 }))} className="w-20" /></div>
+                  <div className="flex justify-between items-center"><span className="text-gray-500">Freight</span><InputNumber size="small" min={0} value={orderData.freight} onChange={v => setOrderData(p => ({ ...p, freight: v || 0 }))} className="w-20" /></div>
+                  <div className="flex justify-between items-center"><span className="text-gray-500">Loading</span><InputNumber size="small" min={0} value={orderData.loading} onChange={v => setOrderData(p => ({ ...p, loading: v || 0 }))} className="w-20" /></div>
+                  <div className="flex justify-between items-center"><span className="text-gray-500">Insurance</span><InputNumber size="small" min={0} value={orderData.insurance} onChange={v => setOrderData(p => ({ ...p, insurance: v || 0 }))} className="w-20" /></div>
                   <Divider className="my-1" />
                   <div className="flex justify-between text-base font-bold"><span>Grand Total</span><span className="text-[#FF5F03]">₹{grandTotal.toLocaleString()}</span></div>
                 </div>

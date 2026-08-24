@@ -5,6 +5,7 @@ import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import getImageUrl from '../../utils/imageUrl.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const CreateSalesOrder = ({ onClose, onSuccess }) => {
   // Customer Type
@@ -281,7 +282,7 @@ const CreateSalesOrder = ({ onClose, onSuccess }) => {
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
     { title: 'Product', width: 200, render: (_, r) => (
       <div className="flex items-center gap-1.5">
-        {r.productImage && <img src={getImageUrl(r.productImage)} alt="" className="w-7 h-7 rounded object-cover shrink-0 border border-gray-100" />}
+        {r.productImage && <ProductImage src={r.productImage} size="sm" />}
         <div><div className="text-xs font-medium truncate max-w-[150px]">{r.productName}</div>
         <div className="text-[10px] text-gray-400">{r.productCode} · {r.brandName} · {r.tileSize} · {r.finish}</div></div>
       </div>

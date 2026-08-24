@@ -1,362 +1,527 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Alert
+  Table, Button, Input, Select, Tag, Space, message, Modal, Form, InputNumber, DatePicker,
+  Row, Col, Card, Statistic, Tooltip, Badge, Divider, Timeline
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, TeamOutlined, PhoneOutlined, WarningOutlined, RiseOutlined } from '@ant-design/icons';
+import {
+  PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, TeamOutlined,
+  PhoneOutlined, UserAddOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  ClockCircleOutlined, FireOutlined
+} from '@ant-design/icons';
+import { HiOutlineUser, HiOutlinePhone, HiOutlineMail, HiOutlineLocationMarker, HiOutlineOfficeBuilding, HiOutlineClock, HiOutlineCalendar, HiOutlineCurrencyRupee, HiOutlineTag, HiOutlineClipboardList } from 'react-icons/hi';
+import { BsPersonCheck, BsPersonX, BsLightning, BsChatDots } from 'react-icons/bs';
+import { FiTarget, FiTrendingUp } from 'react-icons/fi';
+import dayjs from 'dayjs';
 import crmService from '../../services/crmService.js';
-import masterService from '../../services/masterService.js';
+import api from '../../config/api.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { useConfirm } from '../../components/ConfirmModal.jsx';
 
-const STATUS_COLORS = {
-  new: 'blue', contacted: 'cyan', qualified: 'green', proposal_sent: 'orange',
-  negotiation: 'purple', won: 'geekblue', lost: 'red', on_hold: 'default',
-};
-const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', hot: 'red' };
-const OUTCOME_OPTIONS = [
-  { value: 'interested', label: 'Interested' },
-  { value: 'not_interested', label: 'Not Interested' },
-  { value: 'callback', label: 'Callback' },
-  { value: 'converted', label: 'Converted' },
-  { value: 'no_response', label: 'No Response' },
+// Customer types — how the lead came to us
+const CUSTOMER_TYPES = [
+  { value: 'walk_in', label: 'Walk-in (Store Visit)', color: 'blue' },
+  { value: 'phone_enquiry', label: 'Phone Enquiry', color: 'cyan' },
+  { value: 'referral', label: 'Referral', color: 'green' },
+  { value: 'online_enquiry', label: 'Online Enquiry', color: 'purple' },
+  { value: 'whatsapp', label: 'WhatsApp', color: 'lime' },
+  { value: 'exhibition', label: 'Exhibition', color: 'orange' },
+  { value: 'architect_referral', label: 'Architect Referral', color: 'geekblue' },
+  { value: 'dealer_referral', label: 'Dealer Referral', color: 'volcano' },
+  { value: 'google_ads', label: 'Google Ads', color: 'red' },
+  { value: 'facebook', label: 'Facebook/Instagram', color: 'magenta' },
+  { value: 'existing_customer', label: 'Existing Customer', color: 'gold' },
+  { value: 'other', label: 'Other', color: 'default' },
 ];
-const SOURCE_OPTIONS = ['direct', 'referral', 'website', 'social_media', 'exhibition', 'cold_call', 'dealer', 'other'];
+
+const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', hot: 'red' };
+const STATUS_COLORS = {
+  new: 'default', assigned: 'cyan', accepted: 'blue', contacted: 'geekblue',
+  qualified: 'purple', proposal_sent: 'orange', negotiation: 'gold',
+  site_visit: 'lime', won: 'green', lost: 'red', on_hold: 'volcano',
+};
+const ASSIGNMENT_COLORS = { unassigned: 'red', pending: 'orange', accepted: 'green', declined: 'volcano', reassigned: 'purple' };
 
 const LeadManagement = () => {
+  const { confirm, alertModal } = useConfirm();
+
+  // Core state
   const [leads, setLeads] = useState([]);
-  const [dueToday, setDueToday] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [stats, setStats] = useState({});
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
-  const [priorityFilter, setPriorityFilter] = useState(undefined);
-  const [activeTab, setActiveTab] = useState('all');
-  const [users, setUsers] = useState([]);
+  const [customerTypeFilter, setCustomerTypeFilter] = useState(undefined);
+  const [assignmentFilter, setAssignmentFilter] = useState(undefined);
 
+  // SE Status panel
+  const [salesExecutives, setSalesExecutives] = useState([]);
+
+  // Modals
   const [showCreate, setShowCreate] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
-  const [form, setForm] = useState({
-    name: '', phone: '', email: '', businessName: '', city: '',
-    source: '', priority: 'medium', estimatedValue: '',
-    assignedTo: '', nextFollowupDate: '', remarks: '',
-  });
-
   const [viewLead, setViewLead] = useState(null);
-  const [viewLoading, setViewLoading] = useState(false);
-  const [followupForm, setFollowupForm] = useState({ notes: '', outcome: '', nextFollowupDate: '' });
-  const [followupLoading, setFollowupLoading] = useState(false);
+  const [assignModal, setAssignModal] = useState(null); // lead to assign
+  const [selectedSE, setSelectedSE] = useState('');
 
-  const [statusModal, setStatusModal] = useState(null);
+  // Polling for real-time updates
+  const pollingRef = useRef(null);
 
-  useEffect(() => {
-    crmService.getLeadStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
-    crmService.getDueToday().then(r => { if (r.success) setDueToday(r.data || []); }).catch(() => {});
-    masterService.getDealers({ limit: 100, status: 'active' }).then(r => {
-      if (r.success) setUsers(r.data || []);
-    }).catch(() => {});
-  }, []);
+  // ═══════════════════════════════════
+  // DATA FETCHING
+  // ═══════════════════════════════════
 
   const fetchLeads = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {
+      const res = await crmService.getLeads({
         page: pagination.current, limit: pagination.pageSize,
-        search, status: statusFilter, priority: priorityFilter,
-      };
-      const res = await crmService.getLeads(params);
+        search, status: statusFilter, customerType: customerTypeFilter,
+        assignmentStatus: assignmentFilter, sortBy: 'queue',
+      });
       if (res.success) {
         setLeads(res.data || []);
         setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, statusFilter, priorityFilter]);
+  }, [pagination.current, pagination.pageSize, search, statusFilter, customerTypeFilter, assignmentFilter]);
+
+  const fetchStats = async () => {
+    try {
+      const res = await crmService.getLeadStats();
+      if (res.success) setStats(res.data || {});
+    } catch {}
+  };
+
+  const fetchSEStatus = async () => {
+    try {
+      const res = await crmService.getSEStatus();
+      if (res.success) setSalesExecutives(res.data || []);
+    } catch {}
+  };
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
+  useEffect(() => { fetchStats(); fetchSEStatus(); }, []);
 
-  const handleCreate = async () => {
-    if (!form.name) { message.error('Enter lead name'); return; }
-    if (!form.phone) { message.error('Enter phone number'); return; }
-    setCreateLoading(true);
+  // Poll every 15 seconds for real-time updates (SE accept/decline)
+  useEffect(() => {
+    pollingRef.current = setInterval(() => {
+      fetchStats();
+      fetchSEStatus();
+      // Silently refresh leads without loading spinner
+      crmService.getLeads({
+        page: pagination.current, limit: pagination.pageSize,
+        search, status: statusFilter, customerType: customerTypeFilter,
+        assignmentStatus: assignmentFilter, sortBy: 'queue',
+      }).then(res => {
+        if (res.success) {
+          setLeads(res.data || []);
+          setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
+        }
+      }).catch(() => {});
+    }, 15000);
+    return () => clearInterval(pollingRef.current);
+  }, [pagination.current, search, statusFilter, customerTypeFilter, assignmentFilter]);
+
+  // ═══════════════════════════════════
+  // ACTIONS
+  // ═══════════════════════════════════
+
+  const handleAssign = async () => {
+    if (!selectedSE || !assignModal) return;
     try {
-      const res = await crmService.createLead(form);
+      const res = await crmService.assignLead(assignModal._id, { assignedTo: selectedSE });
       if (res.success) {
-        message.success('Lead created');
-        setShowCreate(false);
-        setForm({ name: '', phone: '', email: '', businessName: '', city: '', source: '', priority: 'medium', estimatedValue: '', assignedTo: '', nextFollowupDate: '', remarks: '' });
-        fetchLeads();
-        crmService.getLeadStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+        message.success(res.message || 'Lead assigned!');
+        setAssignModal(null); setSelectedSE('');
+        fetchLeads(); fetchStats(); fetchSEStatus();
       }
-    } catch (err) { message.error(err.message); }
-    finally { setCreateLoading(false); }
-  };
-
-  const openView = async (leadId) => {
-    setViewLoading(true);
-    setViewLead({ _id: leadId });
-    try {
-      const res = await crmService.getLead(leadId);
-      if (res.success) setViewLead(res.data);
-    } catch (err) { message.error(err.message); }
-    finally { setViewLoading(false); }
-  };
-
-  const handleAddFollowup = async () => {
-    if (!followupForm.notes) { message.error('Enter follow-up notes'); return; }
-    if (!followupForm.outcome) { message.error('Select outcome'); return; }
-    setFollowupLoading(true);
-    try {
-      const res = await crmService.addFollowup(viewLead._id, followupForm);
-      if (res.success) {
-        message.success('Follow-up added');
-        setFollowupForm({ notes: '', outcome: '', nextFollowupDate: '' });
-        openView(viewLead._id);
-        fetchLeads();
-      }
-    } catch (err) { message.error(err.message); }
-    finally { setFollowupLoading(false); }
+    } catch (err) { alertModal('Assign Failed', err.message, 'error'); }
   };
 
   const handleStatusUpdate = async (id, status) => {
     try {
       const res = await crmService.updateLeadStatus(id, { status });
-      if (res.success) {
-        message.success('Status updated');
-        setStatusModal(null);
-        fetchLeads();
-      }
+      if (res.success) { message.success(`Status → ${status}`); fetchLeads(); fetchStats(); }
     } catch (err) { message.error(err.message); }
   };
 
-  const isOverdue = (date) => date && new Date(date) < new Date();
+  const handleDelete = async (id) => {
+    const proceed = await confirm('Delete this lead?', { type: 'danger', okText: 'Delete', content: 'Lead will be moved to Recycle Bin.' });
+    if (!proceed) return;
+    try {
+      const res = await api.delete(`/leads/${id}`);
+      if (res.success) { message.success(res.message); fetchLeads(); fetchStats(); }
+    } catch (err) { alertModal('Delete Failed', err.message, 'error'); }
+  };
+
+  // ═══════════════════════════════════
+  // TABLE COLUMNS
+  // ═══════════════════════════════════
 
   const columns = [
-    { title: 'Lead #', dataIndex: 'leadNumber', width: 110,
-      render: v => <span className="font-mono text-xs text-blue-600 font-medium">{v}</span> },
-    { title: 'Name', key: 'name', width: 150,
-      render: (_, r) => (
-        <div>
-          <div className="font-medium text-sm">{r.name}</div>
-          <div className="text-xs text-gray-400 flex items-center gap-1"><PhoneOutlined style={{fontSize: 10}} />{r.phone}</div>
-        </div>
-      )},
-    { title: 'Business', dataIndex: 'businessName', width: 140,
-      render: v => <span className="text-sm">{v || '—'}</span> },
-    { title: 'City', dataIndex: 'city', width: 90 },
-    { title: 'Source', dataIndex: 'source', width: 90,
-      render: v => <Tag color="default" className="text-xs">{v || '—'}</Tag> },
-    { title: 'Priority', dataIndex: 'priority', width: 80,
-      render: v => <Tag color={PRIORITY_COLORS[v] || 'default'}>{v}</Tag> },
-    { title: 'Status', dataIndex: 'status', width: 120,
-      render: s => <Tag color={STATUS_COLORS[s] || 'default'}>{s?.replace(/_/g, ' ')}</Tag> },
-    { title: 'Next Followup', dataIndex: 'nextFollowupDate', width: 120,
-      render: v => v ? (
-        <span className={`text-xs ${isOverdue(v) ? 'text-red-600 font-semibold' : 'text-gray-600'}`}>
-          {new Date(v).toLocaleDateString('en-IN')}
-          {isOverdue(v) && ' ⚠'}
-        </span>
-      ) : <span className="text-gray-300">—</span> },
-    { title: 'Assigned', dataIndex: 'assignedToName', width: 120,
-      render: v => <span className="text-xs">{v || '—'}</span> },
-    { title: 'Actions', width: 100,
-      render: (_, r) => (
-        <Space size="small">
-          <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500"
-            onClick={() => openView(r._id)} />
-          <Select size="small" placeholder="Status" className="w-28"
-            value={undefined} onChange={v => handleStatusUpdate(r._id, v)}
-            options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
-        </Space>
-      )},
-  ];
-
-  const dueTodayColumns = [
-    ...columns.slice(0, 7),
-    { title: 'Actions', width: 80, render: (_, r) => (
-      <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500" onClick={() => openView(r._id)} />
+    { title: 'Lead #', dataIndex: 'leadNumber', width: 90, render: v => <span className="text-xs font-mono text-blue-600">{v}</span> },
+    { title: 'Customer', key: 'customer', width: 160, render: (_, r) => (
+      <div>
+        <div className="text-sm font-medium">{r.name}</div>
+        <div className="text-[10px] text-gray-400">{r.phone} · {r.city || ''}</div>
+      </div>
+    )},
+    { title: 'Type', dataIndex: 'customerType', width: 120, render: v => {
+      const t = CUSTOMER_TYPES.find(ct => ct.value === v);
+      return <Tag color={t?.color || 'default'} className="text-[9px]">{t?.label || v || '—'}</Tag>;
+    }},
+    { title: 'Priority', dataIndex: 'priority', width: 75, render: v => (
+      <Tag color={PRIORITY_COLORS[v]} icon={v === 'hot' ? <FireOutlined /> : null}>{v}</Tag>
+    )},
+    { title: 'Status', dataIndex: 'status', width: 100, render: v => <Tag color={STATUS_COLORS[v]}>{v?.replace(/_/g, ' ')}</Tag> },
+    { title: 'Assignment', key: 'assignment', width: 140, render: (_, r) => (
+      <div>
+        <Tag color={ASSIGNMENT_COLORS[r.assignmentStatus]} className="text-[9px]">{r.assignmentStatus}</Tag>
+        {r.assignedToName && <div className="text-[10px] text-gray-500 mt-0.5">{r.assignedToName}</div>}
+      </div>
+    )},
+    { title: 'Value', dataIndex: 'estimatedValue', width: 80, render: v => v ? <span className="text-xs font-medium">₹{v.toLocaleString()}</span> : '—' },
+    { title: 'Created', dataIndex: 'createdAt', width: 85, render: v => <span className="text-[10px]">{dayjs(v).format('DD/MM/YY')}</span> },
+    { title: 'Actions', width: 150, fixed: 'right', render: (_, r) => (
+      <Space size="small">
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500" onClick={() => loadLeadDetail(r._id)} /></Tooltip>
+        {(r.assignmentStatus === 'unassigned' || r.assignmentStatus === 'declined') && (
+          <Tooltip title="Assign to SE"><Button type="text" size="small" icon={<UserAddOutlined />} className="text-orange-500" onClick={() => { setAssignModal(r); setSelectedSE(''); }} /></Tooltip>
+        )}
+        <Tooltip title="Delete"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleDelete(r._id)} /></Tooltip>
+      </Space>
     )},
   ];
 
-  const tabItems = [
-    { key: 'all', label: 'All Leads',
-      children: (
-        <Table columns={columns} dataSource={leads} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1100 }}
-          pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }}
-          onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
-      )},
-    { key: 'due', label: <span>Due Today <Badge count={dueToday.length} size="small" /></span>,
-      children: (
-        <Table columns={dueTodayColumns} dataSource={dueToday} rowKey="_id" size="middle" scroll={{ x: 1100 }}
-          pagination={{ pageSize: 20, showTotal: t => `${t} leads due today` }} />
-      )},
-  ];
+  const loadLeadDetail = async (id) => {
+    try {
+      const res = await crmService.getLead(id);
+      if (res.success) setViewLead(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
+  // ═══════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <TeamOutlined className="text-blue-600 text-xl" /> Lead Management
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track and manage sales leads and follow-ups</p>
+          <h1 className="text-2xl font-bold text-gray-800">Lead Management</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Assign leads to Sales Executives, track conversions & incentives</p>
         </div>
         <Space>
           <ModuleRecycleBin module="lead" title="Deleted Leads" onRestore={fetchLeads} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
-            New Lead
-          </Button>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Lead</Button>
         </Space>
       </div>
 
-      {(stats.overdueFollowups > 0) && (
-        <Alert type="warning" showIcon className="mb-4"
-          message={`${stats.overdueFollowups} leads have overdue follow-ups`}
-          icon={<WarningOutlined />} />
-      )}
-
-      <Row gutter={[12, 12]} className="mb-4">
-        {[
-          ['Total', stats.total, '#1890ff'], ['New', stats.new, '#096dd9'],
-          ['Contacted', stats.contacted, '#08979c'], ['Hot', stats.hot, '#f5222d'],
-          ['Won', stats.won, '#52c41a'], ['Lost', stats.lost, '#cf1322'],
-        ].map(([label, val, color]) => (
-          <Col key={label} span={4}>
-            <Card size="small"><Statistic title={label} value={val || 0} valueStyle={{ color, fontSize: 18 }} /></Card>
-          </Col>
-        ))}
-      </Row>
-      <Row gutter={16} className="mb-4">
-        <Col span={8}>
-          <Card size="small" className="border-red-100">
-            <Statistic title="Overdue Followups" value={stats.overdueFollowups || 0} valueStyle={{ color: '#f5222d' }} />
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small" className="border-green-100">
-            <Statistic title="Pipeline Value" value={`₹${(stats.pipelineValue || 0).toLocaleString()}`} valueStyle={{ color: '#52c41a' }} />
-          </Card>
-        </Col>
+      {/* Stats Row */}
+      <Row gutter={12} className="mb-4">
+        <Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<TeamOutlined />} /></Card></Col>
+        <Col span={3}><Card size="small" className="border-red-100"><Statistic title="Unassigned" value={stats.unassigned || 0} valueStyle={{ color: '#dc2626' }} /></Card></Col>
+        <Col span={3}><Card size="small" className="border-orange-100"><Statistic title="Pending Accept" value={stats.pending || 0} valueStyle={{ color: '#ea580c' }} /></Card></Col>
+        <Col span={3}><Card size="small" className="border-green-100"><Statistic title="Accepted" value={stats.accepted || 0} valueStyle={{ color: '#16a34a' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="Won" value={stats.won || 0} valueStyle={{ color: '#059669' }} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="Lost" value={stats.lost || 0} valueStyle={{ color: '#dc2626' }} /></Card></Col>
+        <Col span={3}><Card size="small" className="border-red-200"><Statistic title="Hot Leads" value={stats.hotLeads || 0} valueStyle={{ color: '#dc2626' }} prefix={<FireOutlined />} /></Card></Col>
+        <Col span={3}><Card size="small"><Statistic title="Today" value={stats.todayLeads || 0} valueStyle={{ color: '#2563eb' }} /></Card></Col>
       </Row>
 
+      {/* SE Availability Panel */}
+      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
+        <div className="flex items-center gap-2 mb-2">
+          <TeamOutlined className="text-blue-500" />
+          <span className="text-sm font-semibold text-gray-700">Sales Executive Status</span>
+          <Badge status="processing" text={<span className="text-[10px] text-gray-400">Live — updates every 15s</span>} />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {salesExecutives.map(se => (
+            <div key={se._id} className={`px-3 py-1.5 rounded-lg border text-xs ${se.isBusy ? 'bg-red-50 border-red-200' : se.pendingResponse > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="font-medium">{se.name}</div>
+              <div className="text-[10px] text-gray-500">
+                {se.activeLeads} active · {se.pendingResponse} pending
+                {se.isBusy && <span className="text-red-600 ml-1 font-semibold">BUSY</span>}
+              </div>
+            </div>
+          ))}
+          {salesExecutives.length === 0 && <span className="text-gray-400 text-xs">No sales executives found</span>}
+        </div>
+      </div>
+
+      {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex gap-3 flex-wrap">
-          <Input placeholder="Search lead name, phone, business..."
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }}
-            className="w-64" allowClear />
-          <Select placeholder="Status" allowClear value={statusFilter} onChange={v => setStatusFilter(v)} className="w-36"
+        <div className="flex flex-wrap gap-3">
+          <Input placeholder="Search name, phone, lead #..." prefix={<SearchOutlined className="text-gray-400" />}
+            value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-56" allowClear />
+          <Select placeholder="Assignment" value={assignmentFilter} onChange={v => setAssignmentFilter(v)} allowClear className="w-32"
+            options={[{ value: 'unassigned', label: 'Unassigned' }, { value: 'pending', label: 'Pending Accept' }, { value: 'accepted', label: 'Accepted' }, { value: 'declined', label: 'Declined' }]} />
+          <Select placeholder="Customer Type" value={customerTypeFilter} onChange={v => setCustomerTypeFilter(v)} allowClear className="w-36"
+            options={CUSTOMER_TYPES} />
+          <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-28"
             options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
-          <Select placeholder="Priority" allowClear value={priorityFilter} onChange={v => setPriorityFilter(v)} className="w-32"
-            options={Object.keys(PRIORITY_COLORS).map(p => ({ value: p, label: p }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setPriorityFilter(undefined); }}>Reset</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setCustomerTypeFilter(undefined); setAssignmentFilter(undefined); }}>Reset</Button>
         </div>
       </div>
 
+      {/* Leads Table */}
       <div className="bg-white rounded-lg border border-gray-200">
-        <Tabs activeKey={activeTab} onChange={setActiveTab} items={tabItems} className="px-4 pt-2" />
+        <Table columns={columns} dataSource={leads} rowKey="_id" loading={loading} size="middle" scroll={{ x: 1000 }}
+          pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }}
+          onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))}
+          rowClassName={r => r.assignmentStatus === 'unassigned' ? 'bg-red-50/50' : r.assignmentStatus === 'pending' ? 'bg-orange-50/30' : ''} />
       </div>
 
-      {/* Create Lead Modal */}
-      <Modal title="New Lead" open={showCreate} onCancel={() => setShowCreate(false)}
-        onOk={handleCreate} confirmLoading={createLoading} okText="Create Lead" width={640} destroyOnHidden>
-        <div className="space-y-3 mt-4">
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 block mb-1">Name *</label>
-              <Input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Full name" /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Phone *</label>
-              <Input value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} placeholder="10-digit mobile" /></div>
+      {/* ═══════════════════════════════ ASSIGN MODAL ═══════════════════════════════ */}
+      <Modal title={`Assign Lead — ${assignModal?.leadNumber || ''}`} open={!!assignModal} onCancel={() => setAssignModal(null)}
+        onOk={handleAssign} okText="Assign" okButtonProps={{ disabled: !selectedSE }} width={500}>
+        {assignModal && (
+          <div className="space-y-3 mt-3">
+            <div className="bg-gray-50 p-3 rounded border">
+              <div className="font-medium">{assignModal.name} — {assignModal.phone}</div>
+              <div className="text-xs text-gray-500">{CUSTOMER_TYPES.find(t => t.value === assignModal.customerType)?.label || assignModal.customerType} · {assignModal.city || ''} · Est. ₹{assignModal.estimatedValue || 0}</div>
+            </div>
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Select Sales Executive *</label>
+              <Select showSearch className="w-full" size="large" value={selectedSE || undefined}
+                placeholder="Choose SE to assign..." optionFilterProp="label"
+                onChange={v => setSelectedSE(v)}
+                options={salesExecutives.map(se => ({
+                  value: se._id,
+                  label: `${se.name} (${se.activeLeads} active${se.isBusy ? ' — BUSY' : ''})`,
+                  disabled: se.isBusy,
+                }))} />
+            </div>
+            {selectedSE && (
+              <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
+                SE will receive a push notification. They must accept within the app to proceed.
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 block mb-1">Email</label>
-              <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="Email address" /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Business Name</label>
-              <Input value={form.businessName} onChange={e => setForm(f => ({ ...f, businessName: e.target.value }))} placeholder="Company / shop name" /></div>
-          </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div><label className="text-xs text-gray-500 block mb-1">City</label>
-              <Input value={form.city} onChange={e => setForm(f => ({ ...f, city: e.target.value }))} /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Source</label>
-              <Select className="w-full" value={form.source || undefined} onChange={v => setForm(f => ({ ...f, source: v }))}
-                placeholder="Select source"
-                options={SOURCE_OPTIONS.map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Priority</label>
-              <Select className="w-full" value={form.priority} onChange={v => setForm(f => ({ ...f, priority: v }))}
-                options={Object.keys(PRIORITY_COLORS).map(p => ({ value: p, label: p }))} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><label className="text-xs text-gray-500 block mb-1">Estimated Value (₹)</label>
-              <Input type="number" value={form.estimatedValue} onChange={e => setForm(f => ({ ...f, estimatedValue: e.target.value }))} placeholder="0" /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Next Followup Date</label>
-              <Input type="date" value={form.nextFollowupDate} onChange={e => setForm(f => ({ ...f, nextFollowupDate: e.target.value }))} /></div>
-          </div>
-          <div><label className="text-xs text-gray-500 block mb-1">Remarks</label>
-            <Input.TextArea rows={2} value={form.remarks} onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} /></div>
-        </div>
+        )}
       </Modal>
 
-      {/* View Lead Modal */}
+      {/* ═══════════════════════════════ CREATE LEAD MODAL ═══════════════════════════════ */}
+      <CreateLeadModal open={showCreate} onClose={() => setShowCreate(false)}
+        onSuccess={() => { fetchLeads(); fetchStats(); }} salesExecutives={salesExecutives} />
+
+      {/* ═══════════════════════════════ VIEW LEAD DETAIL ═══════════════════════════════ */}
       {viewLead && (
-        <Modal title={`Lead: ${viewLead.name || '...'}`} open
-          onCancel={() => setViewLead(null)}
-          footer={<Button onClick={() => setViewLead(null)}>Close</Button>}
-          width={680}>
-          <div className="space-y-3 mt-3 text-sm">
-            {viewLoading ? <div className="py-8 text-center text-gray-400">Loading...</div> : (
-              <>
-                <div className="grid grid-cols-2 gap-x-6 gap-y-1">
-                  {[['Lead #', viewLead.leadNumber],['Name', viewLead.name],['Phone', viewLead.phone],
-                    ['Email', viewLead.email || '—'],['Business', viewLead.businessName || '—'],['City', viewLead.city || '—'],
-                    ['Source', viewLead.source || '—'],['Assigned To', viewLead.assignedToName || '—'],
-                  ].map(([k, v]) => (
-                    <div key={k} className="flex justify-between py-1 border-b border-gray-50">
-                      <span className="text-gray-400">{k}</span><span className="font-medium">{v}</span>
+        <Modal title={null} open onCancel={() => setViewLead(null)} width={800}
+          footer={
+            <div className="flex justify-between items-center">
+              <div className="text-xs text-gray-400">Created {dayjs(viewLead.createdAt).format('DD MMM YYYY, hh:mm A')} by {viewLead.createdByName || '—'}</div>
+              <Button onClick={() => setViewLead(null)}>Close</Button>
+            </div>
+          }>
+          <div className="space-y-5">
+            {/* Header with lead number and status badges */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <div>
+                <div className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                  <span className="text-[#FF5F03]">{viewLead.leadNumber}</span>
+                  <Tag color={PRIORITY_COLORS[viewLead.priority]} icon={viewLead.priority === 'hot' ? <FireOutlined /> : null}>{viewLead.priority}</Tag>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <Tag color={STATUS_COLORS[viewLead.status]}>{viewLead.status?.replace(/_/g, ' ')}</Tag>
+                  <Tag color={CUSTOMER_TYPES.find(t => t.value === viewLead.customerType)?.color}>
+                    {CUSTOMER_TYPES.find(t => t.value === viewLead.customerType)?.label || viewLead.customerType}
+                  </Tag>
+                </div>
+              </div>
+              {viewLead.incentiveEligible && (
+                <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2 text-center">
+                  <div className="text-[10px] text-green-600 uppercase font-semibold">Incentive</div>
+                  <div className="text-lg font-bold text-green-700">₹{viewLead.incentiveAmount?.toLocaleString()}</div>
+                  <div className="text-[9px] text-green-500">{viewLead.incentivePaid ? 'PAID' : 'Pending'}</div>
+                </div>
+              )}
+            </div>
+
+            {/* Customer Information Card */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-100">
+              <div className="text-xs font-semibold text-blue-700 uppercase mb-3 flex items-center gap-1"><HiOutlineUser className="text-base" /> Customer Information</div>
+              <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                <div className="flex items-center gap-2 text-sm"><HiOutlineUser className="text-gray-400" /><span className="text-gray-500">Name:</span><span className="font-medium">{viewLead.name}</span></div>
+                <div className="flex items-center gap-2 text-sm"><HiOutlinePhone className="text-gray-400" /><span className="text-gray-500">Phone:</span><span className="font-medium">{viewLead.phone}</span>{viewLead.alternatePhone && <span className="text-xs text-gray-400">/ {viewLead.alternatePhone}</span>}</div>
+                <div className="flex items-center gap-2 text-sm"><HiOutlineMail className="text-gray-400" /><span className="text-gray-500">Email:</span><span className="font-medium">{viewLead.email || '—'}</span></div>
+                <div className="flex items-center gap-2 text-sm"><HiOutlineOfficeBuilding className="text-gray-400" /><span className="text-gray-500">Business:</span><span className="font-medium">{viewLead.businessName || '—'}</span></div>
+                <div className="flex items-center gap-2 text-sm"><HiOutlineLocationMarker className="text-gray-400" /><span className="text-gray-500">City:</span><span className="font-medium">{viewLead.city || '—'}{viewLead.state ? `, ${viewLead.state}` : ''}{viewLead.pinCode ? ` - ${viewLead.pinCode}` : ''}</span></div>
+                <div className="flex items-center gap-2 text-sm"><HiOutlineTag className="text-gray-400" /><span className="text-gray-500">Referred By:</span><span className="font-medium">{viewLead.referredBy || '—'}</span></div>
+              </div>
+            </div>
+
+            {/* Project & Interest Card */}
+            <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-4 border border-amber-100">
+              <div className="text-xs font-semibold text-amber-700 uppercase mb-3 flex items-center gap-1"><FiTarget className="text-base" /> Project & Interest</div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><div className="text-[10px] text-gray-400 uppercase">Project Type</div><div className="text-sm font-medium capitalize">{viewLead.projectType || '—'}</div></div>
+                <div><div className="text-[10px] text-gray-400 uppercase">Estimated Value</div><div className="text-sm font-bold text-[#FF5F03]">₹{(viewLead.estimatedValue || 0).toLocaleString()}</div></div>
+                <div><div className="text-[10px] text-gray-400 uppercase">Area (sqft)</div><div className="text-sm font-medium">{viewLead.estimatedArea || '—'} sqft</div></div>
+              </div>
+              {viewLead.interestedIn?.length > 0 && (
+                <div className="mt-3"><span className="text-[10px] text-gray-400 uppercase">Interested In: </span>{viewLead.interestedIn.map((item, i) => <Tag key={i} className="text-[9px]">{item}</Tag>)}</div>
+              )}
+              {viewLead.remarks && <div className="mt-2 text-xs text-gray-600 bg-white/60 p-2 rounded italic">"{viewLead.remarks}"</div>}
+            </div>
+
+            {/* Assignment Card */}
+            <div className={`rounded-xl p-4 border ${viewLead.assignmentStatus === 'accepted' ? 'bg-green-50 border-green-200' : viewLead.assignmentStatus === 'pending' ? 'bg-orange-50 border-orange-200' : viewLead.assignmentStatus === 'declined' ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-200'}`}>
+              <div className="text-xs font-semibold text-gray-700 uppercase mb-3 flex items-center gap-1"><BsPersonCheck className="text-base" /> Assignment Status</div>
+              <div className="flex items-center gap-4">
+                <Tag color={ASSIGNMENT_COLORS[viewLead.assignmentStatus]} className="text-sm px-3 py-0.5">{viewLead.assignmentStatus}</Tag>
+                {viewLead.assignedTo?.name && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">{viewLead.assignedTo.name.charAt(0)}</div>
+                    <div>
+                      <div className="text-sm font-medium">{viewLead.assignedTo.name}</div>
+                      <div className="text-[10px] text-gray-400">{viewLead.assignedTo.phone || ''} · {viewLead.assignedTo.role}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {viewLead.acceptedAt && <div className="text-[10px] text-green-600 mt-2 flex items-center gap-1"><HiOutlineClock /> Accepted: {dayjs(viewLead.acceptedAt).format('DD MMM YYYY, hh:mm A')}</div>}
+              {viewLead.declineReason && <div className="text-[10px] text-red-600 mt-2 flex items-center gap-1"><BsPersonX /> Decline Reason: {viewLead.declineReason}</div>}
+            </div>
+
+            {/* Assignment History */}
+            {viewLead.assignmentHistory?.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border">
+                <div className="text-xs font-semibold text-gray-700 uppercase mb-3 flex items-center gap-1"><HiOutlineClipboardList className="text-base" /> Assignment History</div>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {viewLead.assignmentHistory.map((h, i) => (
+                    <div key={i} className={`flex items-center gap-3 p-2 rounded-lg text-xs ${h.response === 'accepted' ? 'bg-green-50' : h.response === 'declined' ? 'bg-red-50' : 'bg-blue-50'}`}>
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-[10px] ${h.response === 'accepted' ? 'bg-green-500' : h.response === 'declined' ? 'bg-red-500' : 'bg-blue-500'}`}>
+                        {h.response === 'accepted' ? '✓' : h.response === 'declined' ? '✗' : '→'}
+                      </div>
+                      <div className="flex-1">
+                        <span className="font-medium">{h.assignedToName}</span>
+                        <span className="text-gray-400 mx-1">—</span>
+                        <span className={h.response === 'accepted' ? 'text-green-600' : h.response === 'declined' ? 'text-red-600' : 'text-blue-600'}>{h.response}</span>
+                        {h.declineReason && <span className="text-red-400 ml-1">({h.declineReason})</span>}
+                      </div>
+                      <div className="text-[10px] text-gray-400 shrink-0">{dayjs(h.assignedAt).format('DD/MM HH:mm')}</div>
                     </div>
                   ))}
                 </div>
-                <div className="flex gap-4 py-1">
-                  <span>Status: <Tag color={STATUS_COLORS[viewLead.status]}>{viewLead.status?.replace(/_/g, ' ')}</Tag></span>
-                  <span>Priority: <Tag color={PRIORITY_COLORS[viewLead.priority]}>{viewLead.priority}</Tag></span>
-                </div>
-                {viewLead.followups?.length > 0 && (
-                  <>
-                    <Divider className="my-2">Follow-up History</Divider>
-                    <div className="space-y-2 max-h-40 overflow-y-auto">
-                      {viewLead.followups.map((f, i) => (
-                        <div key={i} className="bg-gray-50 rounded px-3 py-2 text-xs border-l-2 border-blue-400">
-                          <div className="flex justify-between mb-1">
-                            <Tag color="blue" className="text-xs">{f.outcome?.replace(/_/g, ' ')}</Tag>
-                            <span className="text-gray-400">{new Date(f.followupDate || f.createdAt).toLocaleDateString('en-IN')}</span>
-                          </div>
-                          <div>{f.notes}</div>
-                          {f.nextFollowupDate && <div className="text-gray-400 mt-1">Next: {new Date(f.nextFollowupDate).toLocaleDateString('en-IN')}</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-                <Divider className="my-2">Add Follow-up</Divider>
-                <div className="space-y-2">
-                  <div><label className="text-xs text-gray-500 block mb-1">Notes *</label>
-                    <Input.TextArea rows={2} value={followupForm.notes} onChange={e => setFollowupForm(f => ({ ...f, notes: e.target.value }))} placeholder="Follow-up notes..." /></div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div><label className="text-xs text-gray-500 block mb-1">Outcome *</label>
-                      <Select className="w-full" value={followupForm.outcome || undefined} onChange={v => setFollowupForm(f => ({ ...f, outcome: v }))}
-                        placeholder="Select outcome" options={OUTCOME_OPTIONS} /></div>
-                    <div><label className="text-xs text-gray-500 block mb-1">Next Followup</label>
-                      <Input type="date" value={followupForm.nextFollowupDate} onChange={e => setFollowupForm(f => ({ ...f, nextFollowupDate: e.target.value }))} /></div>
-                  </div>
-                  <Button type="primary" size="small" loading={followupLoading} onClick={handleAddFollowup}>
-                    Add Follow-up
-                  </Button>
-                </div>
-              </>
+              </div>
             )}
+
+            {/* Follow-ups */}
+            {viewLead.followups?.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border">
+                <div className="text-xs font-semibold text-gray-700 uppercase mb-3 flex items-center gap-1"><BsChatDots className="text-base" /> Follow-up History ({viewLead.totalFollowups || viewLead.followups.length})</div>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {viewLead.followups.slice().reverse().map((f, i) => (
+                    <div key={i} className="flex gap-3 p-2 bg-gray-50 rounded-lg">
+                      <div className="w-1 rounded-full bg-blue-300 shrink-0"></div>
+                      <div className="flex-1">
+                        <div className="flex justify-between items-center">
+                          <Tag color={f.outcome === 'interested' ? 'green' : f.outcome === 'not_interested' ? 'red' : f.outcome === 'converted' ? 'purple' : 'blue'} className="text-[9px]">{f.outcome?.replace(/_/g, ' ')}</Tag>
+                          <span className="text-[10px] text-gray-400">{dayjs(f.date).format('DD MMM YYYY')}</span>
+                        </div>
+                        {f.notes && <div className="text-xs text-gray-600 mt-1">{f.notes}</div>}
+                        <div className="text-[10px] text-gray-400 mt-0.5">By: {f.doneByName || '—'}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Key Dates */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-gray-50 rounded-lg p-3 text-center border">
+                <HiOutlineCalendar className="text-lg text-gray-400 mx-auto" />
+                <div className="text-[10px] text-gray-400 mt-1">Created</div>
+                <div className="text-xs font-medium">{dayjs(viewLead.createdAt).format('DD MMM YY')}</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-center border">
+                <HiOutlineClock className="text-lg text-gray-400 mx-auto" />
+                <div className="text-[10px] text-gray-400 mt-1">Last Contact</div>
+                <div className="text-xs font-medium">{viewLead.lastContactDate ? dayjs(viewLead.lastContactDate).format('DD MMM YY') : '—'}</div>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-3 text-center border">
+                <FiTrendingUp className="text-lg text-gray-400 mx-auto" />
+                <div className="text-[10px] text-gray-400 mt-1">Next Follow-up</div>
+                <div className="text-xs font-medium">{viewLead.nextFollowupDate ? dayjs(viewLead.nextFollowupDate).format('DD MMM YY') : '—'}</div>
+              </div>
+            </div>
           </div>
         </Modal>
       )}
     </div>
+  );
+};
+
+// ═══════════════════════════════════════════════
+// CREATE LEAD MODAL
+// ═══════════════════════════════════════════════
+const CreateLeadModal = ({ open, onClose, onSuccess, salesExecutives }) => {
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    try {
+      const values = await form.validateFields();
+      if (values.nextFollowupDate) values.nextFollowupDate = values.nextFollowupDate.format('YYYY-MM-DD');
+      setLoading(true);
+      const res = await crmService.createLead(values);
+      if (res.success) {
+        message.success(res.message || 'Lead created!');
+        form.resetFields();
+        onSuccess?.();
+        onClose();
+      }
+    } catch (err) {
+      if (err.errorFields) return;
+      message.error(err.message || 'Failed');
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <Modal title="New Lead" open={open} onCancel={onClose} width={700} footer={null} destroyOnHidden>
+      <Form form={form} layout="vertical" className="mt-4">
+        <Row gutter={16}>
+          <Col span={8}><Form.Item name="name" label="Customer Name" rules={[{ required: true }]}><Input placeholder="Full name" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="phone" label="Phone" rules={[{ required: true }]}><Input placeholder="Mobile number" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="customerType" label="How They Came" rules={[{ required: true }]}>
+            <Select placeholder="Select type..." options={CUSTOMER_TYPES} />
+          </Form.Item></Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={8}><Form.Item name="email" label="Email"><Input placeholder="Email (optional)" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="businessName" label="Business Name"><Input placeholder="Company/Shop" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="city" label="City"><Input placeholder="City" /></Form.Item></Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={6}><Form.Item name="priority" label="Priority" initialValue="medium">
+            <Select options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }, { value: 'hot', label: '🔥 Hot' }]} />
+          </Form.Item></Col>
+          <Col span={6}><Form.Item name="projectType" label="Project Type" initialValue="residential">
+            <Select options={[{ value: 'residential', label: 'Residential' }, { value: 'commercial', label: 'Commercial' }, { value: 'hospitality', label: 'Hospitality' }, { value: 'renovation', label: 'Renovation' }, { value: 'other', label: 'Other' }]} />
+          </Form.Item></Col>
+          <Col span={6}><Form.Item name="estimatedValue" label="Est. Value ₹"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+          <Col span={6}><Form.Item name="estimatedArea" label="Area (sqft)"><InputNumber min={0} className="w-full" /></Form.Item></Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={8}><Form.Item name="referredBy" label="Referred By"><Input placeholder="Referral name (if any)" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="nextFollowupDate" label="Next Follow-up"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
+          <Col span={8}><Form.Item name="assignedTo" label="Assign to SE (optional)">
+            <Select allowClear placeholder="Assign later..." options={salesExecutives.map(se => ({ value: se._id, label: `${se.name} (${se.activeLeads} leads)` }))} />
+          </Form.Item></Col>
+        </Row>
+        <Form.Item name="remarks" label="Remarks / Interest"><Input.TextArea rows={2} placeholder="What are they looking for? Any specific products/brands?" /></Form.Item>
+
+        <div className="flex justify-end gap-2 pt-3 border-t">
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="primary" onClick={handleSubmit} loading={loading}>Create Lead</Button>
+        </div>
+      </Form>
+    </Modal>
   );
 };
 

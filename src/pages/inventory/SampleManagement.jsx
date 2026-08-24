@@ -48,7 +48,7 @@ const SampleManagement = () => {
   const fetchStats = useCallback(async () => {
     try {
       const res = await api.get('/samples/stats');
-      if (res.data?.success) setStats(res.data.data);
+      if (res.success) setStats(res.data);
     } catch { /* ignore */ }
   }, []);
 
@@ -62,12 +62,12 @@ const SampleManagement = () => {
         status: statusFilter || undefined,
       };
       const res = await api.get('/samples', { params });
-      if (res.data?.success) {
-        setSamples(res.data.data);
-        setPagination(p => ({ ...p, total: res.data.pagination?.totalItems || 0 }));
+      if (res.success) {
+        setSamples(res.data);
+        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) {
-      message.error(err.response?.data?.message || 'Failed to fetch samples');
+      message.error(err.message || 'Failed to fetch samples');
     } finally {
       setLoading(false);
     }
@@ -80,7 +80,7 @@ const SampleManagement = () => {
     if (!val || val.length < 2) { setProducts([]); return; }
     try {
       const res = await api.get('/products', { params: { search: val, limit: 20 } });
-      if (res.data?.success) setProducts(res.data.data || []);
+      if (res.success) setProducts(res.data || []);
     } catch { /* ignore */ }
   }, []);
 
@@ -95,7 +95,7 @@ const SampleManagement = () => {
       if (values.expectedReturnDate) values.expectedReturnDate = values.expectedReturnDate.format('YYYY-MM-DD');
       setLoading(true);
       const res = await api.post('/samples', values);
-      if (res.data?.success) {
+      if (res.success) {
         message.success('Sample issued');
         setModalOpen(false);
         form.resetFields();
@@ -104,7 +104,7 @@ const SampleManagement = () => {
       }
     } catch (err) {
       if (err.errorFields) return;
-      message.error(err.response?.data?.message || 'Issue failed');
+      message.error(err.message || 'Issue failed');
     } finally {
       setLoading(false);
     }
@@ -116,7 +116,7 @@ const SampleManagement = () => {
         condition: returnCondition,
         damageNotes: returnCondition === 'damaged' ? returnNotes : undefined,
       });
-      if (res.data?.success) {
+      if (res.success) {
         message.success('Sample marked as returned');
         setReturnModalOpen(false);
         setReturningId(null);
@@ -126,7 +126,7 @@ const SampleManagement = () => {
         fetchStats();
       }
     } catch (err) {
-      message.error(err.response?.data?.message || 'Return failed');
+      message.error(err.message || 'Return failed');
     }
   };
 

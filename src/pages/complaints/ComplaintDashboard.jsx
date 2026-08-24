@@ -10,11 +10,13 @@ import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const CATEGORY_COLORS = {
   damaged_goods: 'red', wrong_product: 'orange', quality_issue: 'volcano',
-  short_delivery: 'gold', billing_error: 'blue', delivery_delay: 'purple', other: 'default',
+  shade_mismatch: 'magenta', size_issue: 'purple', short_delivery: 'gold',
+  billing_error: 'blue', delivery_delay: 'purple', packing_issue: 'cyan', other: 'default',
 };
 const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', critical: 'red' };
 const STATUS_COLORS = {
-  open: 'red', acknowledged: 'orange', in_progress: 'blue',
+  open: 'red', acknowledged: 'orange', warehouse_pending: 'gold',
+  warehouse_verified: 'lime', finance_review: 'geekblue', in_progress: 'blue',
   resolved: 'green', closed: 'default', rejected: 'volcano',
 };
 
@@ -276,6 +278,81 @@ const ComplaintDashboard = () => {
                 <span>Priority: <Tag color={PRIORITY_COLORS[viewComplaint.priority]}>{viewComplaint.priority}</Tag></span>
               </div>
               <div className="bg-gray-50 rounded p-3 text-sm">{viewComplaint.description}</div>
+
+              {/* Products */}
+              {viewComplaint.products?.length > 0 && (
+                <>
+                  <Divider className="my-2">Products Affected</Divider>
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-100"><tr>
+                        <th className="px-3 py-1.5 text-left">Product</th>
+                        <th className="px-3 py-1.5 text-right">Qty</th>
+                        <th className="px-3 py-1.5 text-left">Shade</th>
+                        <th className="px-3 py-1.5 text-left">Batch</th>
+                      </tr></thead>
+                      <tbody>{viewComplaint.products.map((p, i) => (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-1.5 font-medium">{p.productName || '-'}</td>
+                          <td className="px-3 py-1.5 text-right">{p.quantity || 0}</td>
+                          <td className="px-3 py-1.5">{p.shade || '-'}</td>
+                          <td className="px-3 py-1.5">{p.batch || '-'}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* Warehouse Verification */}
+              {viewComplaint.warehouseVerification?.verifiedBy && (
+                <>
+                  <Divider className="my-2">Warehouse Verification</Divider>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><span className="text-gray-500">Problem Confirmed:</span> <Tag color={viewComplaint.warehouseVerification.problemConfirmed ? 'green' : 'red'}>{viewComplaint.warehouseVerification.problemConfirmed ? 'Yes' : 'No'}</Tag></div>
+                      <div><span className="text-gray-500">Severity:</span> <span className="font-medium capitalize">{viewComplaint.warehouseVerification.severity || '-'}</span></div>
+                      <div><span className="text-gray-500">Product Condition:</span> <span className="font-medium capitalize">{viewComplaint.warehouseVerification.productCondition?.replace(/_/g, ' ') || '-'}</span></div>
+                      <div><span className="text-gray-500">Resaleable:</span> <Tag color={viewComplaint.warehouseVerification.isResaleable ? 'green' : 'red'}>{viewComplaint.warehouseVerification.isResaleable ? 'Yes' : 'No'}</Tag></div>
+                      <div><span className="text-gray-500">Qty Received:</span> <span className="font-medium">{viewComplaint.warehouseVerification.quantityReceived || 0}</span></div>
+                      <div><span className="text-gray-500">Qty Damaged:</span> <span className="font-medium text-red-600">{viewComplaint.warehouseVerification.quantityDamaged || 0}</span></div>
+                    </div>
+                    {viewComplaint.warehouseVerification.problemDescription && (
+                      <div className="mt-1"><span className="text-gray-500 block">Description:</span><span>{viewComplaint.warehouseVerification.problemDescription}</span></div>
+                    )}
+                    {viewComplaint.warehouseVerification.recommendation && (
+                      <div className="mt-1 bg-white p-2 rounded border">
+                        <span className="text-gray-500 block text-[10px]">Recommendation:</span>
+                        <span className="capitalize">{viewComplaint.warehouseVerification.recommendation.action?.replace(/_/g, ' ')}</span>
+                        {viewComplaint.warehouseVerification.recommendation.amount > 0 && <span className="ml-2 text-blue-600">₹{viewComplaint.warehouseVerification.recommendation.amount.toLocaleString()}</span>}
+                      </div>
+                    )}
+                    {viewComplaint.warehouseVerification.photos?.length > 0 && (
+                      <div className="flex gap-2 mt-1 flex-wrap">
+                        {viewComplaint.warehouseVerification.photos.map((photo, i) => (
+                          <img key={i} src={photo.url} alt={photo.caption || 'Evidence'} className="w-16 h-16 object-cover rounded border cursor-pointer" />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {/* Accountant Review */}
+              {viewComplaint.accountantReview?.reviewedBy && (
+                <>
+                  <Divider className="my-2">Finance Review</Divider>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 space-y-1 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><span className="text-gray-500">Decision:</span> <Tag color={viewComplaint.accountantReview.decision === 'approved' ? 'green' : viewComplaint.accountantReview.decision === 'rejected' ? 'red' : 'orange'}>{viewComplaint.accountantReview.decision}</Tag></div>
+                      <div><span className="text-gray-500">Approved Amount:</span> <span className="font-semibold text-green-700">₹{(viewComplaint.accountantReview.approvedAmount || 0).toLocaleString()}</span></div>
+                      <div><span className="text-gray-500">Adjustment Type:</span> <span className="font-medium capitalize">{viewComplaint.accountantReview.adjustmentType?.replace(/_/g, ' ') || '-'}</span></div>
+                      <div><span className="text-gray-500">Reviewed:</span> <span>{viewComplaint.accountantReview.reviewedAt ? new Date(viewComplaint.accountantReview.reviewedAt).toLocaleDateString('en-IN') : '-'}</span></div>
+                    </div>
+                    {viewComplaint.accountantReview.remarks && <div className="mt-1 text-gray-600">Remarks: {viewComplaint.accountantReview.remarks}</div>}
+                  </div>
+                </>
+              )}
 
               {viewComplaint.resolutionHistory?.length > 0 && (
                 <>
