@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Modal, Card, Statistic, Row, Col, message, DatePicker } from 'antd';
-import { SearchOutlined, ReloadOutlined, DollarOutlined, FileTextOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Modal, Card, Statistic, Row, Col, message } from 'antd';
+import { SearchOutlined, ReloadOutlined, DollarOutlined, FileTextOutlined } from '@ant-design/icons';
 import hrmsService from '../../services/hrmsService.js';
 import dayjs from 'dayjs';
 
@@ -47,29 +47,15 @@ const SalaryProcessing = () => {
 
   useEffect(() => { fetchSlips(); }, [fetchSlips]);
 
-  const handleGenerateSlip = async (employeeId) => {
-    try {
-      setGenerateLoading(true);
-      const res = await hrmsService.generateSalarySlip({ employeeId, month: selectedMonth, year: selectedYear });
-      if (res.success) {
-        message.success('Salary slip generated');
-        fetchSlips();
-      } else {
-        message.error(res.message || 'Failed');
-      }
-    } catch (err) { message.error(err.message || 'Failed'); }
-    finally { setGenerateLoading(false); }
-  };
-
   const handleBulkGenerate = async () => {
     try {
       setGenerateLoading(true);
-      const res = await hrmsService.generateSalarySlip({ month: selectedMonth, year: selectedYear, bulk: true });
+      const res = await hrmsService.generateSalarySlipsBulk({ month: selectedMonth, year: selectedYear });
       if (res.success) {
-        message.success('Bulk salary slips generated');
+        const created = res.data?.createdCount ?? 0;
+        const skipped = res.data?.skippedCount ?? 0;
+        message.success(`Draft slips: ${created} created, ${skipped} skipped`);
         fetchSlips();
-      } else {
-        message.error(res.message || 'Failed');
       }
     } catch (err) { message.error(err.message || 'Failed'); }
     finally { setGenerateLoading(false); }
@@ -92,20 +78,14 @@ const SalaryProcessing = () => {
     {
       title: 'Status', dataIndex: 'status', key: 'status', width: 100,
       render: s => {
-        const map = { Approved: 'green', Paid: 'blue', Draft: 'orange' };
+        const map = { Approved: 'green', Paid: 'blue', Draft: 'orange', Cancelled: 'red' };
         return <Tag color={map[s] || 'default'}>{s || 'Draft'}</Tag>;
       },
     },
     {
       title: 'Actions', key: 'actions', width: 140, fixed: 'right',
       render: (_, r) => (
-        <Space size="small">
-          <Button type="text" size="small" icon={<FileTextOutlined />} onClick={() => { setViewSlip(r); setViewModal(true); }} className="text-blue-600" />
-          {(!r.status || r.status === 'pending') && (
-            <Button type="text" size="small" icon={<DollarOutlined />} onClick={() => handleGenerateSlip(r.employeeId || r.employee?._id)}
-              loading={generateLoading} className="text-green-600" />
-          )}
-        </Space>
+        <Button type="text" size="small" icon={<FileTextOutlined />} onClick={() => { setViewSlip(r); setViewModal(true); }} className="text-blue-600" />
       ),
     },
   ];
@@ -121,7 +101,7 @@ const SalaryProcessing = () => {
           <p className="text-sm text-gray-500 mt-0.5">Generate & manage monthly salary slips</p>
         </div>
         <Button type="primary" icon={<DollarOutlined />} onClick={handleBulkGenerate} loading={generateLoading} size="large" style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-          Generate All Slips
+          Generate Draft Slips
         </Button>
       </div>
 
@@ -141,7 +121,8 @@ const SalaryProcessing = () => {
           <Input placeholder="Search employee..." prefix={<SearchOutlined className="text-gray-400" />}
             value={search} onChange={e => setSearch(e.target.value)} className="w-60" allowClear />
           <Select placeholder="Status" options={[
-            { value: 'generated', label: 'Generated' }, { value: 'paid', label: 'Paid' }, { value: 'pending', label: 'Pending' },
+            { value: 'Draft', label: 'Draft' }, { value: 'Approved', label: 'Approved' },
+            { value: 'Paid', label: 'Paid' }, { value: 'Cancelled', label: 'Cancelled' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
           <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
         </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Descriptions, Table, Tag, Button, Space, message, Modal, Input, Divider, Timeline, Spin } from 'antd';
 import { PrinterOutlined, EditOutlined, CloseCircleOutlined, CheckCircleOutlined, CarOutlined, ArrowLeftOutlined, FileTextOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
-import api from '../../config/api.js';
+import api, { createIdempotencyKey } from '../../config/api.js';
 import getImageUrl from '../../utils/imageUrl.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
@@ -18,8 +18,12 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
   const [cancelModal, setCancelModal] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const printRef = useRef(null);
+  const invoiceGenerationKey = useRef(createIdempotencyKey());
+  const pickListGenerationKey = useRef(createIdempotencyKey());
 
   useEffect(() => {
+    invoiceGenerationKey.current = createIdempotencyKey();
+    pickListGenerationKey.current = createIdempotencyKey();
     if (orderId) fetchOrder();
   }, [orderId]);
 
@@ -147,32 +151,33 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
               {order.status === 'draft' && (
                 <Button type="primary" icon={<CheckCircleOutlined />} onClick={() => handleStatusUpdate('confirmed')}>Confirm</Button>
               )}
-              {order.status === 'confirmed' && (
-                <Button icon={<CheckCircleOutlined />} onClick={() => handleStatusUpdate('processing')} style={{ borderColor: '#fa8c16', color: '#fa8c16' }}>Start Processing</Button>
-              )}
-              {order.status === 'processing' && (
-                <Button icon={<CarOutlined />} onClick={() => handleStatusUpdate('dispatched')} style={{ borderColor: '#722ed1', color: '#722ed1' }}>Mark Dispatched</Button>
-              )}
-              {order.status === 'dispatched' && (
-                <Button type="primary" style={{ background: '#52c41a' }} icon={<CheckCircleOutlined />} onClick={() => handleStatusUpdate('delivered')}>Mark Delivered</Button>
-              )}
-              {!['cancelled', 'delivered'].includes(order.status) && (
+              {!['cancelled', 'delivered', 'dispatched', 'partial_dispatch'].includes(order.status) && (
                 <Button danger icon={<CloseCircleOutlined />} onClick={() => setCancelModal(true)}>Cancel</Button>
               )}
               <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Invoice</Button>
               {['confirmed', 'processing', 'dispatched', 'delivered'].includes(order.status) && (
                 <Button type="primary" icon={<FileTextOutlined />} onClick={async () => {
                   try {
-                    const res = await api.post(`/invoices/generate-from-so/${order._id}`);
-                    if (res.success) { message.success(`${res.data.invoiceNumber} generated!`); }
+                    const res = await api.post(`/invoices/generate-from-so/${order._id}`, undefined, {
+                      headers: { 'Idempotency-Key': invoiceGenerationKey.current },
+                    });
+                    if (res.success) {
+                      invoiceGenerationKey.current = createIdempotencyKey();
+                      message.success(`${res.data.invoiceNumber} generated!`);
+                    }
                   } catch (err) { message.error(err.message); }
                 }}>Generate GST Invoice</Button>
               )}
-              {order.status === 'confirmed' && (
+              {['confirmed', 'approved'].includes(order.status) && (
                 <Button icon={<FileTextOutlined />} onClick={async () => {
                   try {
-                    const res = await api.post(`/pick-lists/generate/${order._id}`);
-                    if (res.success) { message.success(`${res.data.pickListNumber} generated!`); }
+                    const res = await api.post(`/pick-lists/generate/${order._id}`, undefined, {
+                      headers: { 'Idempotency-Key': pickListGenerationKey.current },
+                    });
+                    if (res.success) {
+                      pickListGenerationKey.current = createIdempotencyKey();
+                      message.success(`${res.data.pickListNumber} generated!`);
+                    }
                   } catch (err) { message.error(err.message); }
                 }}>Generate Pick List</Button>
               )}

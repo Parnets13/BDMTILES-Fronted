@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Tooltip } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, WalletOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = { pending: 'orange', confirmed: 'green', bounced: 'red', cancelled: 'default' };
 const MODE_COLORS = { cash: 'green', cheque: 'blue', upi: 'purple', neft: 'cyan', rtgs: 'geekblue', card: 'magenta', adjustment: 'default' };
 
 const SupplierPaymentsPage = () => {
+  const paymentSubmissionKey = useRef(createIdempotencyKey());
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -63,8 +65,9 @@ const SupplierPaymentsPage = () => {
         transactionRef: paymentForm.transactionRef,
         remarks: paymentForm.remarks,
       };
-      const res = await salesService.createPayment(payload);
+      const res = await salesService.createPayment(payload, paymentSubmissionKey.current);
       if (res.success) {
+        paymentSubmissionKey.current = createIdempotencyKey();
         message.success(`Payment ${res.data.paymentNumber} recorded!`);
         setShowCreate(false);
         resetForm();
@@ -77,6 +80,18 @@ const SupplierPaymentsPage = () => {
   const resetForm = () => {
     setSelectedSupplier(null);
     setPaymentForm({ amount: 0, paymentMode: 'neft', bankName: '', chequeNumber: '', chequeDate: '', transactionRef: '', remarks: '' });
+  };
+
+  const startNewPayment = () => {
+    paymentSubmissionKey.current = createIdempotencyKey();
+    resetForm();
+    setShowCreate(true);
+  };
+
+  const cancelNewPayment = () => {
+    paymentSubmissionKey.current = createIdempotencyKey();
+    setShowCreate(false);
+    resetForm();
   };
 
   const columns = [
@@ -96,7 +111,7 @@ const SupplierPaymentsPage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Supplier Payments</h1><p className="text-sm text-gray-500 mt-0.5">Record and track payments made to suppliers</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Record Payment</Button>
+        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={startNewPayment}>Record Payment</Button>
       </div>
 
       {/* Filters */}
@@ -120,7 +135,7 @@ const SupplierPaymentsPage = () => {
       </div>
 
       {/* Create Payment Modal */}
-      <Modal title="Record Supplier Payment" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
+      <Modal title="Record Supplier Payment" open={showCreate} onCancel={cancelNewPayment}
         width={650} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div>
@@ -163,7 +178,7 @@ const SupplierPaymentsPage = () => {
               <div><label className="text-xs text-gray-500 block mb-1">Remarks</label><Input value={paymentForm.remarks} onChange={e => setPaymentForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Payment remarks..." /></div>
 
               <div className="flex justify-end gap-2 pt-3 border-t">
-                <Button onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
+                <Button onClick={cancelNewPayment}>Cancel</Button>
                 <Button type="primary" danger onClick={handleCreatePayment} loading={createLoading}>Record Payment (₹{(paymentForm.amount || 0).toLocaleString()})</Button>
               </div>
             </>

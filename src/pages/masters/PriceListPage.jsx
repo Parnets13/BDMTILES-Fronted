@@ -1,183 +1,185 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic } from 'antd';
-import { SearchOutlined, ReloadOutlined, PrinterOutlined, TagOutlined, DownloadOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag, message } from 'antd';
+import { DownloadOutlined, PrinterOutlined, ReloadOutlined, SearchOutlined, SettingOutlined, TagOutlined } from '@ant-design/icons';
+import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
 
+const money = (value) => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+const activeType = (item) => item?.isActive !== false && item?.status !== 'inactive';
+const escapeHtml = (value) => String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
 const PriceListPage = () => {
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
+  const [dealerTypes, setDealerTypes] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 50, total: 0 });
-  const [search, setSearch] = useState('');
-  const [brandFilter, setBrandFilter] = useState(undefined);
-  const [categoryFilter, setCategoryFilter] = useState(undefined);
+  const [filters, setFilters] = useState({ search: '', brand: undefined, category: undefined, subcategory: undefined });
   const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
 
   useEffect(() => {
-    productService.getFilterOptions().then(r => { if (r.success) setFilterOptions(r.data); }).catch(() => {});
+    Promise.all([masterService.getDealerTypes({ limit: 200 }), productService.getFilterOptions()])
+      .then(([typesResponse, filterResponse]) => {
+        if (typesResponse.success) setDealerTypes((typesResponse.data || []).filter(activeType));
+        if (filterResponse.success) setFilterOptions(filterResponse.data || { brands: [], categories: [], subcategories: [] });
+      })
+      .catch((error) => message.error(error.message || 'Failed to load rate-card configuration'));
   }, []);
+
+  const tierGroups = useMemo(() => {
+    const grouped = new Map();
+    dealerTypes.forEach((type) => {
+      if (!type.pricingTier) return;
+      const current = grouped.get(type.pricingTier) || [];
+      grouped.set(type.pricingTier, [...current, type]);
+    });
+    if (!grouped.has('projectRate')) grouped.set('projectRate', []);
+    return [...grouped.entries()].map(([field, types]) => ({
+      field,
+      types,
+      label: types.length ? types.map((type) => type.name).join(' / ') : 'Project Rate',
+    }));
+  }, [dealerTypes]);
+
+  const requestParams = useCallback((page, limit) => ({
+    page, limit,
+    status: 'active',
+    search: filters.search || undefined,
+    brand: filters.brand,
+    category: filters.category,
+    subcategory: filters.subcategory,
+  }), [filters]);
 
   const fetchProducts = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { page: pagination.current, limit: pagination.pageSize, search };
-      if (brandFilter) params.brand = brandFilter;
-      if (categoryFilter) params.category = categoryFilter;
-      const res = await productService.getProducts(params);
-      if (res.success) {
-        setProducts(res.data);
-        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
+      const response = await productService.getProducts(requestParams(pagination.current, pagination.pageSize));
+      if (response.success) {
+        setProducts(response.data || []);
+        setPagination((current) => ({ ...current, total: response.pagination?.totalItems || 0 }));
       }
-    } catch (err) { message.error(err.message); }
+    } catch (error) { message.error(error.message || 'Failed to load Price List'); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, brandFilter, categoryFilter]);
+  }, [requestParams, pagination.current, pagination.pageSize]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
 
-  const handlePrint = () => {
-    const rows = products.map((p, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td><strong>${p.itemName}</strong><br/><span style="font-size:9px;color:#888">${p.productCode} | ${p.tileSize || ''} | ${p.finish || ''}</span></td>
-        <td>${p.brand?.name || ''}</td>
-        <td>${p.unit || 'Box'}</td>
-        <td>₹${(p.basicPrice || 0).toLocaleString()}</td>
-        <td>₹${((p.basicPrice || 0) + (p.excessPrice || 0)).toLocaleString()}</td>
-        <td><strong>₹${(p.mrp || 0).toLocaleString()}</strong></td>
-        <td>₹${(p.dealerRate || 0).toLocaleString()}</td>
-        <td>₹${(p.wholesaleRate || 0).toLocaleString()}</td>
-        <td>₹${(p.retailRate || 0).toLocaleString()}</td>
-        <td>₹${(p.distributorRate || 0).toLocaleString()}</td>
-        <td>₹${(p.builderRate || 0).toLocaleString()}</td>
-        <td>₹${(p.minimumSellingRate || 0).toLocaleString()}</td>
-      </tr>`).join('');
-
-    const w = window.open('', '_blank');
-    w.document.write(`<html><head><title>BDM Tiles - Price List</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:16px;font-size:11px;color:#333}
-      h2{margin-bottom:4px;color:#FF5F03}
-      .meta{color:#888;font-size:10px;margin-bottom:12px}
-      table{width:100%;border-collapse:collapse}
-      th{background:#f8f8f8;padding:6px 8px;text-align:left;font-size:9px;text-transform:uppercase;border-bottom:2px solid #ddd;color:#555}
-      td{padding:5px 8px;border-bottom:1px solid #f0f0f0;font-size:10px}
-      tr:nth-child(even){background:#fafafa}
-      .footer{margin-top:12px;text-align:center;font-size:9px;color:#aaa}
-      @media print{body{padding:0}}
-    </style></head><body>
-    <h2>BDM TILES — Rate Card</h2>
-    <div class="meta">Generated: ${new Date().toLocaleDateString('en-IN')} | ${brandFilter ? 'Brand: ' + filterOptions.brands.find(b=>b._id===brandFilter)?.name : 'All Brands'} | Products: ${products.length}</div>
-    <table>
-      <thead><tr><th>#</th><th>Product</th><th>Brand</th><th>Unit</th><th>Basic</th><th>Max Purchase</th><th>MRP</th><th>Dealer</th><th>Wholesale</th><th>Retail</th><th>Distributor</th><th>Builder</th><th>Min Sell</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
-    <div class="footer">Confidential — BDM GRANIMARMO PRIVATE LIMITED | Prices subject to change without notice</div>
-    </body></html>`);
-    w.document.close();
-    setTimeout(() => { w.print(); w.close(); }, 400);
+  const loadAllFilteredProducts = async () => {
+    const batchSize = 100;
+    const first = await productService.getProducts(requestParams(1, batchSize));
+    if (!first.success) throw new Error(first.message || 'Could not load the filtered Price List');
+    const all = [...(first.data || [])];
+    const total = first.pagination?.totalItems || all.length;
+    const effectivePageSize = first.pagination?.itemsPerPage || first.data?.length || batchSize;
+    const totalPages = Math.max(1, first.pagination?.totalPages || Math.ceil(total / effectivePageSize));
+    for (let page = 2; page <= totalPages; page += 1) {
+      const response = await productService.getProducts(requestParams(page, batchSize));
+      if (!response.success) throw new Error(response.message || `Could not load Price List page ${page}`);
+      all.push(...(response.data || []));
+    }
+    return all.slice(0, total || all.length);
   };
 
-  const columns = [
-    { title: '#', key: 'idx', width: 40, fixed: 'left',
-      render: (_, __, i) => <span className="text-xs text-gray-400">{(pagination.current - 1) * pagination.pageSize + i + 1}</span> },
-    { title: 'Product', key: 'product', width: 220, fixed: 'left',
-      render: (_, r) => (
-        <div>
-          <div className="text-sm font-medium truncate max-w-[200px]">{r.itemName}</div>
-          <div className="text-[10px] text-gray-400">{r.productCode} · {r.brand?.name} · {r.tileSize} · {r.finish}</div>
-        </div>
-      )},
-    { title: 'Unit', dataIndex: 'unit', width: 50, render: v => <span className="text-xs">{v || 'Box'}</span> },
-    { title: <span className="text-[10px] text-orange-600 font-semibold">Basic</span>, dataIndex: 'basicPrice', width: 80,
-      render: v => v ? <span className="text-xs text-orange-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-orange-500 font-semibold">Max Purchase</span>, key: 'maxPurch', width: 90,
-      render: (_, r) => {
-        const max = (r.basicPrice || 0) + (r.excessPrice || 0);
-        return max > 0 ? <span className="text-xs text-orange-500 font-medium">₹{max.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span>;
-      }},
-    { title: <span className="text-[10px] font-bold">MRP</span>, dataIndex: 'mrp', width: 80,
-      render: v => v ? <span className="text-xs font-bold">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-[#FF5F03] font-semibold">Dealer</span>, dataIndex: 'dealerRate', width: 80,
-      render: v => v ? <span className="text-xs text-[#FF5F03] font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-blue-600 font-semibold">Wholesale</span>, dataIndex: 'wholesaleRate', width: 85,
-      render: v => v ? <span className="text-xs text-blue-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-green-600 font-semibold">Retail</span>, dataIndex: 'retailRate', width: 75,
-      render: v => v ? <span className="text-xs text-green-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-purple-600 font-semibold">Distributor</span>, dataIndex: 'distributorRate', width: 85,
-      render: v => v ? <span className="text-xs text-purple-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-teal-600 font-semibold">Builder</span>, dataIndex: 'builderRate', width: 75,
-      render: v => v ? <span className="text-xs text-teal-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: <span className="text-[10px] text-red-600 font-semibold">Min Sell</span>, dataIndex: 'minimumSellingRate', width: 80,
-      render: v => v ? <span className="text-xs text-red-600 font-medium">₹{v.toLocaleString()}</span> : <span className="text-gray-300 text-xs">—</span> },
-    { title: 'Margin', key: 'margin', width: 65,
-      render: (_, r) => {
-        if (!r.dealerRate || !r.basicPrice) return <span className="text-gray-300 text-xs">—</span>;
-        const m = ((r.dealerRate - r.basicPrice) / r.basicPrice * 100).toFixed(0);
-        return <Tag color={m >= 20 ? 'green' : m >= 10 ? 'orange' : 'red'} className="text-[10px]">{m}%</Tag>;
-      }},
+  const columnHeaders = ['#', 'Product', 'Code', 'Brand', 'Category', 'Unit', 'Basic', 'Max Purchase', 'MRP', ...tierGroups.map((tier) => tier.label), 'Minimum Selling'];
+  const productValues = (product, index) => [
+    index + 1, product.itemName, product.productCode, product.brand?.name || '', product.category?.name || '',
+    product.unit || 'Box', product.basicPrice || 0, Number(product.basicPrice || 0) + Number(product.excessPrice || 0),
+    product.mrp || 0, ...tierGroups.map((tier) => product[tier.field] || 0), product.minimumSellingRate || 0,
   ];
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const allProducts = await loadAllFilteredProducts();
+      const csv = [columnHeaders.map(csvCell).join(','), ...allProducts.map((product, index) => productValues(product, index).map(csvCell).join(','))].join('\r\n');
+      const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `bdm-price-list-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      message.success(`Exported ${allProducts.length} filtered products`);
+    } catch (error) { message.error(error.message || 'Export failed'); }
+    finally { setExporting(false); }
+  };
+
+  const handlePrint = async () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) { message.warning('Allow pop-ups to print the Price List'); return; }
+    printWindow.document.write('<p style="font-family:Arial;padding:20px">Loading the complete filtered Price List…</p>');
+    setExporting(true);
+    try {
+      const allProducts = await loadAllFilteredProducts();
+      const headers = columnHeaders.map((header) => `<th>${escapeHtml(header)}</th>`).join('');
+      const body = allProducts.map((product, index) => `<tr>${productValues(product, index).map((value, valueIndex) => `<td>${valueIndex >= 6 ? `₹${money(value)}` : escapeHtml(value)}</td>`).join('')}</tr>`).join('');
+      printWindow.document.open();
+      printWindow.document.write(`<!doctype html><html><head><title>BDM Tiles Price List</title><style>body{font-family:Arial,sans-serif;padding:14px;color:#222}h2{margin:0;color:#f05a00}.meta{font-size:10px;color:#666;margin:5px 0 12px}table{width:100%;border-collapse:collapse;font-size:9px}th{background:#f3f4f6;text-align:left;padding:5px;border:1px solid #ddd}td{padding:5px;border:1px solid #e5e7eb;white-space:nowrap}tr:nth-child(even){background:#fafafa}.note{font-size:9px;color:#777;margin-top:10px}@media print{body{padding:0}@page{size:landscape;margin:8mm}}</style></head><body><h2>BDM TILES — Read-only Price List</h2><div class="meta">Generated ${new Date().toLocaleString('en-IN')} · ${allProducts.length} filtered active products · Tier columns follow active Dealer Type configuration</div><table><thead><tr>${headers}</tr></thead><tbody>${body}</tbody></table><div class="note">Reference only. Product master tier values are not individual-dealer overrides. Configure target-specific overrides in Dealer Product Pricing.</div></body></html>`);
+      printWindow.document.close();
+      setTimeout(() => { printWindow.focus(); printWindow.print(); }, 350);
+    } catch (error) { printWindow.close(); message.error(error.message || 'Print failed'); }
+    finally { setExporting(false); }
+  };
+
+  const openPricing = (product) => {
+    const configuredType = dealerTypes.find((type) => type.pricingTier);
+    const params = new URLSearchParams({ scope: configuredType ? 'dealer_type' : 'walk_in', product: product.productCode || product.itemName || '' });
+    if (configuredType) params.set('dealerType', configuredType._id);
+    navigate(`/masters/dealer-product-pricing?${params.toString()}`);
+  };
+
+  const rateColumn = (title, field, color) => ({
+    title: <TooltipTitle title={title} detail={field} color={color} />,
+    dataIndex: field,
+    width: Math.max(100, Math.min(180, title.length * 7)),
+    render: (value) => Number(value || 0) > 0 ? <span className="text-xs font-medium" style={{ color }}>₹{money(value)}</span> : <span className="text-xs text-gray-300">—</span>,
+  });
+
+  const columns = [
+    { title: '#', width: 45, fixed: 'left', render: (_, __, index) => <span className="text-xs text-gray-400">{(pagination.current - 1) * pagination.pageSize + index + 1}</span> },
+    { title: 'Product', width: 250, fixed: 'left', render: (_, product) => <div><div className="font-medium text-sm">{product.itemName}</div><div className="text-[10px] text-gray-400">{product.productCode} · {product.brand?.name || ''} · {product.category?.name || ''}</div><div className="text-[10px] text-gray-400">{product.tileSize || ''} · {product.finish || ''}</div></div> },
+    { title: 'Unit', dataIndex: 'unit', width: 65, render: (value) => <span className="text-xs">{value || 'Box'}</span> },
+    rateColumn('Basic', 'basicPrice', '#ea580c'),
+    { title: <TooltipTitle title="Max Purchase" detail="basicPrice + excessPrice" color="#f97316" />, width: 115, render: (_, product) => <span className="text-xs font-medium text-orange-500">₹{money(Number(product.basicPrice || 0) + Number(product.excessPrice || 0))}</span> },
+    rateColumn('MRP', 'mrp', '#111827'),
+    ...tierGroups.map((tier, index) => rateColumn(tier.label, tier.field, ['#ea580c', '#2563eb', '#16a34a', '#7c3aed', '#0f766e'][index % 5])),
+    rateColumn('Minimum Selling', 'minimumSellingRate', '#dc2626'),
+    { title: 'Override setup', width: 135, fixed: 'right', render: (_, product) => <Button type="link" size="small" icon={<SettingOutlined />} onClick={() => openPricing(product)}>Configure target</Button> },
+  ];
+
+  const resetFilters = () => setFilters({ search: '', brand: undefined, category: undefined, subcategory: undefined });
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Price List</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Master rate card — view all customer rates at a glance. For editing use "Dealer Product Pricing" page.</p>
-        </div>
-        <Space>
-          <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Rate Card</Button>
-          <Button icon={<ReloadOutlined />} onClick={fetchProducts}>Refresh</Button>
-        </Space>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-4">
+        <div><div className="flex items-center gap-2"><h1 className="text-2xl font-bold text-gray-800">Price List</h1><Tag color="blue">Read only</Tag></div><p className="text-sm text-gray-500">Master rate-card reference. Tier columns come from active Dealer Types; duplicate pricing tiers are grouped.</p></div>
+        <Space wrap><Button icon={<DownloadOutlined />} onClick={handleExport} loading={exporting}>Export all filtered</Button><Button icon={<PrinterOutlined />} onClick={handlePrint} loading={exporting}>Print all filtered</Button><Button icon={<ReloadOutlined />} onClick={fetchProducts} loading={loading}>Refresh</Button></Space>
       </div>
 
-      <Row gutter={12} className="mb-4">
-        <Col span={4}><Card size="small"><Statistic title="Products" value={pagination.total} prefix={<TagOutlined />} valueStyle={{fontSize:16}} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="Brands" value={filterOptions.brands?.length || 0} valueStyle={{fontSize:16}} /></Card></Col>
-        <Col span={4}><Card size="small"><Statistic title="Categories" value={filterOptions.categories?.length || 0} valueStyle={{fontSize:16}} /></Card></Col>
-        <Col span={12}>
-          <Card size="small" className="border-blue-100">
-            <div className="text-[10px] text-gray-400 mb-1">Rate Tiers Shown</div>
-            <div className="flex flex-wrap gap-1">
-              {['Basic','Max Purchase','MRP','Dealer','Wholesale','Retail','Distributor','Builder','Min Sell'].map(t => (
-                <Tag key={t} className="text-[9px] m-0">{t}</Tag>
-              ))}
-            </div>
-          </Card>
-        </Col>
+      <Row gutter={[12, 12]} className="mb-4">
+        <Col xs={12} md={5}><Card size="small"><Statistic title="Active products" value={pagination.total} prefix={<TagOutlined />} valueStyle={{ fontSize: 17 }} /></Card></Col>
+        <Col xs={12} md={5}><Card size="small"><Statistic title="Active Dealer Types" value={dealerTypes.length} valueStyle={{ fontSize: 17 }} /></Card></Col>
+        <Col xs={24} md={14}><Card size="small"><div className="text-[10px] text-gray-400 mb-1">Configured rate columns</div><Space size={[4, 4]} wrap>{tierGroups.map((tier) => <Tag key={tier.field}>{tier.label} · {tier.field}</Tag>)}<Tag color="red">Minimum Selling</Tag></Space></Card></Col>
       </Row>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex flex-wrap gap-3 items-center">
-          <Input placeholder="Search product name, code..." prefix={<SearchOutlined className="text-gray-400" />}
-            value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }}
-            className="w-56" allowClear />
-          <Select placeholder="Brand" allowClear value={brandFilter} onChange={v => setBrandFilter(v)}
-            options={(filterOptions.brands||[]).map(b => ({value:b._id, label:b.name}))} className="w-40" showSearch optionFilterProp="label" />
-          <Select placeholder="Category" allowClear value={categoryFilter} onChange={v => setCategoryFilter(v)}
-            options={(filterOptions.categories||[]).map(c => ({value:c._id, label:c.name}))} className="w-40" showSearch optionFilterProp="label" />
-          <Button onClick={() => { setSearch(''); setBrandFilter(undefined); setCategoryFilter(undefined); }}>Clear</Button>
-          <span className="ml-auto text-xs text-gray-400">Read-only view. Edit from "Dealer Product Pricing" page.</span>
+      <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
+          <Input prefix={<SearchOutlined />} placeholder="Product name or code" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} allowClear />
+          <Select placeholder="All brands" value={filters.brand} onChange={(value) => setFilters((current) => ({ ...current, brand: value, category: undefined, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.brands || []).map((item) => ({ value: item._id, label: item.name }))} />
+          <Select placeholder="All categories" value={filters.category} onChange={(value) => setFilters((current) => ({ ...current, category: value, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.categories || []).filter((item) => !filters.brand || (item.brand?._id || item.brand) === filters.brand).map((item) => ({ value: item._id, label: item.name }))} />
+          <Select placeholder="All subcategories" value={filters.subcategory} onChange={(value) => setFilters((current) => ({ ...current, subcategory: value }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.subcategories || []).filter((item) => !filters.category || (item.category?._id || item.category) === filters.category).map((item) => ({ value: item._id, label: item.name }))} />
+          <Button onClick={resetFilters}>Clear filters</Button>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg border border-gray-200">
-        <Table
-          columns={columns}
-          dataSource={products}
-          rowKey="_id"
-          loading={loading}
-          size="small"
-          scroll={{ x: 1300 }}
-          pagination={{
-            ...pagination,
-            showSizeChanger: true,
-            pageSizeOptions: ['20','50','100'],
-            showTotal: (t, r) => <span className="text-xs text-gray-500">{r[0]}–{r[1]} of {t}</span>,
-            onChange: (page, pageSize) => setPagination(p => ({...p, current: page, pageSize})),
-          }}
-        />
-      </div>
+      <Card size="small" className="mb-3"><span className="text-xs text-gray-500"><strong>Important:</strong> These are product-level tier references. “Configure target” opens Dealer Product Pricing for Dealer Type/dealer/walk-in overrides; it does not edit a global tier as an individual dealer price.</span></Card>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden"><Table columns={columns} dataSource={products} rowKey="_id" loading={loading} size="small" scroll={{ x: Math.max(1300, columns.length * 115) }} pagination={{ ...pagination, showSizeChanger: true, pageSizeOptions: ['20', '50', '100'], showTotal: (total, range) => `${range[0]}–${range[1]} of ${total}` }} onChange={(next) => setPagination((current) => ({ ...current, current: next.current, pageSize: next.pageSize }))} /></div>
     </div>
   );
 };
+
+const TooltipTitle = ({ title, detail, color }) => <div><div className="text-[10px] font-semibold" style={{ color }}>{title}</div><div className="text-[9px] text-gray-400 font-normal">{detail}</div></div>;
 
 export default PriceListPage;

@@ -99,7 +99,11 @@ const SupplierInvoicePage = () => {
   const handleVerify = async (id) => {
     try {
       const res = await supplierInvoiceService.verify(id);
-      if (res.success) { message.success(res.message); fetchInvoices(); }
+      if (res.success) {
+        message.success(res.message);
+        const [, statsRes] = await Promise.all([fetchInvoices(), supplierInvoiceService.getStats()]);
+        if (statsRes.success) setStats(statsRes.data);
+      }
     } catch (err) { message.error(err.message); }
   };
 
@@ -125,7 +129,7 @@ const SupplierInvoicePage = () => {
     { title: 'Actions', width: 90, render: (_, r) => (
       <Space size="small">
         <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewInvoice(r)} />
-        {r.status === 'draft' && <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleVerify(r._id)} />}
+        {r.status === 'pending_verification' && <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleVerify(r._id)} />}
       </Space>
     )},
   ];

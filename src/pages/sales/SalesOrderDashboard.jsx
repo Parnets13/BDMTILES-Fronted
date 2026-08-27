@@ -4,6 +4,7 @@ import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, C
 import { PlusOutlined, SearchOutlined, EyeOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, ShoppingCartOutlined, RiseOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import SalesOrderView from './SalesOrderView.jsx';
+import CreateSalesOrder from './CreateSalesOrder.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const STATUS_COLORS = {
@@ -22,6 +23,7 @@ const SalesOrderDashboard = () => {
   const [stats, setStats] = useState({});
 
   const [viewOrderId, setViewOrderId] = useState(null);
+  const [showCreateOrder, setShowCreateOrder] = useState(false);
 
   useEffect(() => {
     salesService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
@@ -85,7 +87,8 @@ const SalesOrderDashboard = () => {
         <div><h1 className="text-2xl font-bold text-gray-800">Sales Order Dashboard</h1><p className="text-sm text-gray-500 mt-0.5">Manage all dealer and retail sales orders</p></div>
         <Space>
           <ModuleRecycleBin module="sales_order" title="Deleted Sales Orders" onRestore={fetchOrders} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => navigate('/sales-purchase/quotation-manager')}>Create Quotation</Button>
+          <Button icon={<PlusOutlined />} size="large" onClick={() => navigate('/sales-purchase/quotation-manager')}>Create Quotation</Button>
+          <Button type="primary" icon={<ShoppingCartOutlined />} size="large" onClick={() => setShowCreateOrder(true)}>Create Sales Order</Button>
         </Space>
       </div>
 
@@ -120,6 +123,18 @@ const SalesOrderDashboard = () => {
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t,r) => `${r[0]}-${r[1]} of ${t} orders` }}
           onChange={pag => setPagination(p => ({...p, current: pag.current, pageSize: pag.pageSize}))} />
       </div>
+
+      {/* Create Sales Order */}
+      {showCreateOrder && (
+        <CreateSalesOrder
+          onClose={() => setShowCreateOrder(false)}
+          onSuccess={() => {
+            setShowCreateOrder(false);
+            fetchOrders();
+            salesService.getStats().then(r => { if (r.success) setStats(r.data); });
+          }}
+        />
+      )}
 
       {/* View Order Detail */}
       {viewOrderId && (

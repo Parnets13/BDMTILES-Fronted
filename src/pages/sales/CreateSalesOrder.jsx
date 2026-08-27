@@ -1,581 +1,331 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { Input, Select, InputNumber, Button, message, Divider, Table, DatePicker, Modal } from 'antd';
-import { PlusOutlined, DeleteOutlined, SearchOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, message } from 'antd';
+import { DeleteOutlined, ReloadOutlined, SearchOutlined, WarningOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
+import { createIdempotencyKey } from '../../config/api.js';
 import masterService from '../../services/masterService.js';
-import getImageUrl from '../../utils/imageUrl.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
+const activeType = (item) => item?.isActive !== false && item?.status !== 'inactive';
+const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const previewRows = (response) => {
+  if (Array.isArray(response?.data)) return response.data;
+  return response?.data?.items || response?.data?.rows || response?.data?.products || [];
+};
+const previewSummary = (response) => {
+  const data = response?.data || {};
+  return data.summary || response?.summary || data.totals || data;
+};
+const productIdOf = (item) => item.product?._id || item.product || item.productId;
+
 const CreateSalesOrder = ({ onClose, onSuccess }) => {
-  // Customer Type
-  const [customerType, setCustomerType] = useState('dealer'); // dealer, wholesaler, retail, distributor, builder
-
-  // Dealer/Customer
+  const [dealerTypes, setDealerTypes] = useState([]);
+  const [dealerType, setDealerType] = useState(undefined);
+  const [scope, setScope] = useState('dealer');
+  const [dealers, setDealers] = useState([]);
   const [dealerSearch, setDealerSearch] = useState('');
-  const [dealerResults, setDealerResults] = useState([]);
   const [selectedDealer, setSelectedDealer] = useState(null);
-  const [showDealerDropdown, setShowDealerDropdown] = useState(false);
-  const [dealerPage, setDealerPage] = useState(1);
-  const [dealerHasMore, setDealerHasMore] = useState(true);
   const [dealerLoading, setDealerLoading] = useState(false);
-  const dealerDropdownRef = useRef(null);
-
-  // Products
+  const [warehouses, setWarehouses] = useState([]);
+  const [walkIn, setWalkIn] = useState({ name: '', phone: '' });
   const [productSearch, setProductSearch] = useState('');
   const [productResults, setProductResults] = useState([]);
-  const [showProductDropdown, setShowProductDropdown] = useState(false);
+  const [productLoading, setProductLoading] = useState(false);
   const [items, setItems] = useState([]);
-
-  // Warehouses
-  const [warehouses, setWarehouses] = useState([]);
-
-  // Order details
+  const [summary, setSummary] = useState({});
+  const [pricing, setPricing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [orderData, setOrderData] = useState({
-    orderType: 'dealer',
-    orderDate: dayjs().format('YYYY-MM-DD'),
-    creditDays: 0,
-    dueDate: '',
-    deliveryAddress: '',
-    expectedDeliveryDate: null,
-    deliveryPriority: 'normal',
-    freightCharges: 0,
-    loadingCharges: 0,
-    otherCharges: 0,
-    advanceAmount: 0,
-    remarks: '',
-    status: 'draft',
+    orderDate: dayjs().format('YYYY-MM-DD'), expectedDeliveryDate: '', deliveryPriority: 'normal',
+    deliveryAddress: '', freightCharges: 0, loadingCharges: 0, otherCharges: 0,
+    advanceAmount: 0, remarks: '',
   });
+  const priceTimer = useRef(null);
+  const previewRequest = useRef(0);
+  const productRequest = useRef(0);
+  const createAttempt = useRef({ fingerprint: null, key: null });
 
-  const [loading, setLoading] = useState(false);
-  const dealerInputRef = useRef(null);
-  const productInputRef = useRef(null);
+  const selectedType = dealerTypes.find((type) => type._id === dealerType);
+  const targetReady = scope === 'walk_in' || Boolean(selectedDealer?._id);
+  const target = useMemo(() => ({
+    scope,
+    ...(dealerType ? { dealerType } : {}),
+    ...(selectedDealer?._id ? { dealer: selectedDealer._id } : {}),
+  }), [scope, dealerType, selectedDealer]);
 
-  // Load warehouses on mount
   useEffect(() => {
-    masterService.getWarehouses({ limit: 50 }).then(r => {
-      if (r.success) setWarehouses(r.data);
-    }).catch(() => {});
+    Promise.all([
+      masterService.getDealerTypes({ limit: 200 }),
+      masterService.getWarehouses({ limit: 100, status: 'active' }),
+    ]).then(([typeResponse, warehouseResponse]) => {
+      if (typeResponse.success) {
+        const types = (typeResponse.data || []).filter(activeType);
+        setDealerTypes(types);
+        setDealerType(types[0]?._id);
+      }
+      if (warehouseResponse.success) setWarehouses(warehouseResponse.data || []);
+    }).catch((error) => message.error(error.message || 'Failed to load order configuration'));
   }, []);
 
-  // Search dealers (debounced + paginated)
-  const loadDealers = useCallback(async (searchText, page, append = false) => {
-    setDealerLoading(true);
-    try {
-      const q = searchText || '';
-      const TIER_MAP = { dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate', distributor: 'distributorRate', builder: 'builderRate' };
-      const pricingTier = TIER_MAP[customerType] || 'dealerRate';
-      const res = await salesService.searchDealers(q.length >= 2 ? q : '', page, pricingTier);
-      if (res.success) {
-        const newData = res.data || [];
-        if (append) {
-          setDealerResults(prev => [...prev, ...newData]);
-        } else {
-          setDealerResults(newData);
+  useEffect(() => {
+    if (scope !== 'dealer' || !dealerType) { setDealers([]); return undefined; }
+    const timer = setTimeout(async () => {
+      setDealerLoading(true);
+      try {
+        const response = await salesService.searchDealers({
+          q: dealerSearch || '', page: 1, limit: 50,
+          dealerType, pricingTier: selectedType?.pricingTier,
+        });
+        if (response.success) {
+          const rows = response.data || [];
+          setDealers(rows.filter((item) => (item.dealerType?._id || item.dealerType) === dealerType));
         }
-        setDealerHasMore(newData.length >= 20);
-      }
-    } catch (err) { console.error('Dealer search error:', err.message); }
-    finally { setDealerLoading(false); }
-  }, [customerType]);
-
-  useEffect(() => {
-    setDealerPage(1);
-    const timer = setTimeout(() => {
-      loadDealers(dealerSearch, 1, false);
-    }, dealerSearch.length >= 2 ? 300 : 0);
+      } catch (error) { message.error(error.message || 'Dealer search failed'); }
+      finally { setDealerLoading(false); }
+    }, dealerSearch ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [dealerSearch, loadDealers]);
+  }, [scope, dealerType, selectedType?.pricingTier, dealerSearch]);
 
-  // Close dealer dropdown on click outside
   useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (dealerDropdownRef.current && !dealerDropdownRef.current.contains(e.target) &&
-          dealerInputRef.current && !dealerInputRef.current.input?.contains(e.target)) {
-        setShowDealerDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Load initial dealers on focus (first 20)
-  const handleDealerFocus = () => {
-    setShowDealerDropdown(true);
-    if (dealerResults.length === 0) {
-      loadDealers('', 1, false);
-    }
-  };
-
-  // Infinite scroll in dealer dropdown
-  const handleDealerScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    if (scrollHeight - scrollTop - clientHeight < 50 && dealerHasMore && !dealerLoading) {
-      const nextPage = dealerPage + 1;
-      setDealerPage(nextPage);
-      loadDealers(dealerSearch, nextPage, true);
-    }
-  };
-
-  // Search products (debounced)
-  useEffect(() => {
-    if (productSearch.length < 2) { setProductResults([]); return; }
-    const timer = setTimeout(() => {
-      salesService.searchProducts(productSearch, 1, undefined, undefined, customerType || 'dealer').then(r => {
-        if (r.success) setProductResults(r.data);
-        else console.warn('Product search failed:', r);
-      }).catch(err => { console.error('Product search error:', err.message); });
+    if (!targetReady || productSearch.trim().length < 2) { setProductResults([]); return undefined; }
+    const timer = setTimeout(async () => {
+      const requestId = ++productRequest.current;
+      setProductLoading(true);
+      try {
+        const response = await salesService.searchProducts({
+          q: productSearch.trim(), page: 1, limit: 30, quantity: 1,
+          ...target,
+        });
+        if (requestId === productRequest.current && response.success) setProductResults(response.data || []);
+      } catch (error) { if (requestId === productRequest.current) message.error(error.message || 'Product search failed'); }
+      finally { if (requestId === productRequest.current) setProductLoading(false); }
     }, 300);
     return () => clearTimeout(timer);
-  }, [productSearch, customerType]);
+  }, [productSearch, targetReady, target]);
 
-  // Select dealer
-  const handleSelectDealer = (dealer) => {
-    setSelectedDealer(dealer);
-    setDealerSearch('');
-    setShowDealerDropdown(false);
-    setDealerResults([]);
+  const minimalPreviewItems = (sourceItems) => sourceItems.map((item) => ({
+    product: productIdOf(item),
+    quantity: Number(item.quantity || 1),
+    warehouse: item.warehouse || undefined,
+    ...(item.manualRate != null ? { manualRate: Number(item.manualRate) } : {}),
+  }));
 
-    // Auto-detect customer type from dealer's dealerType.pricingTier
-    if (dealer.dealerType?.pricingTier) {
-      const tierToType = {
-        dealerRate: 'dealer', wholesaleRate: 'wholesaler', retailRate: 'retail',
-        distributorRate: 'distributor', builderRate: 'builder', projectRate: 'builder',
+  const mergePreview = (sourceItems, response) => {
+    const rows = previewRows(response);
+    return sourceItems.map((item, index) => {
+      const resolved = rows.find((row) => productIdOf(row) === productIdOf(item)) || rows[index] || {};
+      const pricingSnapshot = resolved.pricingSnapshot || {};
+      return {
+        ...item,
+        baseRate: Number(resolved.baseRate ?? pricingSnapshot.baseRate ?? resolved.configuredRate ?? item.baseRate ?? 0),
+        effectiveRate: Number(resolved.effectiveRate ?? pricingSnapshot.effectiveRate ?? resolved.finalRate ?? resolved.rate ?? item.effectiveRate ?? 0),
+        minimumSellingRate: Number(resolved.minimumSellingRate ?? pricingSnapshot.minimumSellingRate ?? item.minimumSellingRate ?? 0),
+        belowMinimum: Boolean(resolved.belowMinimum ?? pricingSnapshot.belowMinimum),
+        source: resolved.source || pricingSnapshot.source || resolved.priceSource || item.source || 'Server pricing',
+        lineSubtotal: Number(resolved.lineSubtotal ?? resolved.taxableAmount ?? resolved.subtotal ?? item.lineSubtotal ?? 0),
+        taxAmount: Number(resolved.taxAmount ?? resolved.gstAmount ?? item.taxAmount ?? 0),
+        lineTotal: Number(resolved.lineTotal ?? resolved.totalAmount ?? resolved.total ?? item.lineTotal ?? 0),
+        pricingMessage: resolved.message || resolved.validationMessage || '',
+        pricingPending: false,
       };
-      setCustomerType(tierToType[dealer.dealerType.pricingTier] || 'dealer');
-    }
-
-    // Auto-fill from dealer
-    const creditDays = dealer.creditDays || 30;
-    const dueDate = dayjs(orderData.orderDate).add(creditDays, 'day').format('YYYY-MM-DD');
-    setOrderData(prev => ({
-      ...prev,
-      deliveryAddress: dealer.address || '',
-      creditDays,
-      dueDate,
-    }));
+    });
   };
 
-  // Add product to items
+  const previewAll = useCallback(async (sourceItems, showErrors = true) => {
+    if (!sourceItems.length) { setSummary({}); return sourceItems; }
+    const requestId = ++previewRequest.current;
+    setPricing(true);
+    setItems((current) => current.map((item) => ({ ...item, pricingPending: true })));
+    try {
+      const response = await salesService.previewPricing({
+        ...target,
+        customerName: scope === 'walk_in' ? walkIn.name || undefined : undefined,
+        customerPhone: scope === 'walk_in' ? walkIn.phone || undefined : undefined,
+        orderDate: orderData.orderDate,
+        freightCharges: Number(orderData.freightCharges || 0),
+        loadingCharges: Number(orderData.loadingCharges || 0),
+        otherCharges: Number(orderData.otherCharges || 0),
+        advanceAmount: Number(orderData.advanceAmount || 0),
+        items: minimalPreviewItems(sourceItems),
+      });
+      if (!response.success) throw new Error(response.message || 'Pricing preview failed');
+      const merged = mergePreview(sourceItems, response);
+      if (requestId !== previewRequest.current) return sourceItems;
+      setItems(merged);
+      setSummary(previewSummary(response));
+      return merged;
+    } catch (error) {
+      if (requestId === previewRequest.current) {
+        setItems((current) => current.map((item) => ({ ...item, pricingPending: false })));
+        if (showErrors) message.error(error.message || 'Could not resolve authoritative prices');
+      }
+      throw error;
+    } finally { if (requestId === previewRequest.current) setPricing(false); }
+  }, [target, scope, walkIn.name, walkIn.phone, orderData.orderDate, orderData.freightCharges, orderData.loadingCharges, orderData.otherCharges, orderData.advanceAmount]);
+
+  const queuePreview = (nextItems) => {
+    clearTimeout(priceTimer.current);
+    priceTimer.current = setTimeout(() => previewAll(nextItems).catch(() => {}), 350);
+  };
+
+  useEffect(() => () => clearTimeout(priceTimer.current), []);
+  useEffect(() => {
+    if (items.length) queuePreview(items);
+  }, [orderData.orderDate, orderData.freightCharges, orderData.loadingCharges, orderData.otherCharges, orderData.advanceAmount, walkIn.name, walkIn.phone]);
+
+  const changeTargetType = (value) => {
+    previewRequest.current += 1;
+    productRequest.current += 1;
+    setPricing(false);
+    setProductLoading(false);
+    if (value === 'walk_in') {
+      setScope('walk_in');
+      setDealerType(undefined);
+    } else {
+      setScope('dealer');
+      setDealerType(value);
+    }
+    setSelectedDealer(null);
+    setDealerSearch('');
+    setProductSearch('');
+    setItems([]);
+    setSummary({});
+  };
+
+  const chooseDealer = (dealerId) => {
+    previewRequest.current += 1;
+    productRequest.current += 1;
+    setPricing(false);
+    setProductLoading(false);
+    const chosen = dealers.find((item) => item._id === dealerId) || null;
+    setSelectedDealer(chosen);
+    setItems([]);
+    setSummary({});
+    setProductSearch('');
+    if (chosen) {
+      setOrderData((current) => ({ ...current, deliveryAddress: chosen.address || current.deliveryAddress }));
+    }
+  };
+
   const addProduct = (product) => {
-    if (items.find(i => i.product === product._id && !i.shade)) {
-      message.warning('Product already added. Set shade/batch to add again.');
-      return;
-    }
-    // Rate based on customer type
-    const RATE_MAP = {
-      dealer: product.dealerRate || product.mrp,
-      wholesaler: product.wholesaleRate || product.dealerRate || product.mrp,
-      retail: product.retailRate || product.mrp,
-      distributor: product.distributorRate || product.dealerRate || product.mrp,
-      builder: product.builderRate || product.projectRate || product.dealerRate || product.mrp,
-    };
-    const rate = RATE_MAP[customerType] || product.dealerRate || product.mrp;
-
-    // Auto-apply discount from backend if available
-    let discount = 0, discountType = 'flat', discountRuleName = '';
-    if (product.discount) {
-      discount = product.discount.discountPercentage || 0;
-      discountType = 'percentage';
-      discountRuleName = product.discount.ruleName || '';
-    }
-
-    setItems(prev => [...prev, {
-      key: Date.now() + Math.random(),
+    if (items.some((item) => productIdOf(item) === product._id)) { message.warning('Product already added'); return; }
+    const nextItems = [...items, {
+      key: `${product._id}-${Date.now()}`,
       product: product._id,
-      productCode: product.productCode,
       productName: product.itemName,
+      productCode: product.productCode,
       productImage: product.images?.[0] || '',
       brandName: product.brand?.name || '',
-      tileSize: product.tileSize || '',
-      finish: product.finish || '',
-      shade: '',
-      batch: '',
-      quantity: 1,
       unit: product.unit || 'Box',
-      rate: rate || 0,
-      discount,
-      discountType,
-      discountRuleName,
-      schemeDiscount: 0,
-      gstPercentage: product.gst || 18,
-      piecesPerBox: product.piecesPerBox || 0,
-      sqftPerBox: product.sqftPerBox || 0,
-      minimumSellingRate: product.minimumSellingRate || 0,
+      quantity: 1,
       warehouse: warehouses[0]?._id || '',
-    }]);
+      manualRate: null,
+      baseRate: Number(product.baseRate || 0),
+      effectiveRate: Number(product.effectiveRate || 0),
+      minimumSellingRate: Number(product.minimumSellingRate || 0),
+      source: product.source || 'Resolving…',
+      pricingPending: true,
+    }];
+    setItems(nextItems);
     setProductSearch('');
     setProductResults([]);
-    setShowProductDropdown(false);
+    previewAll(nextItems).catch(() => {});
   };
 
-  // Update item
-  const updateItem = (key, field, value) => {
-    setItems(prev => prev.map(i => i.key === key ? { ...i, [field]: value } : i));
+  const updateItem = (key, changes, reprice = false) => {
+    const nextItems = items.map((item) => item.key === key ? { ...item, ...changes } : item);
+    setItems(nextItems);
+    if (reprice) queuePreview(nextItems);
   };
 
-  // Remove item
-  const removeItem = (key) => setItems(prev => prev.filter(i => i.key !== key));
-
-  // Calculate line total
-  const calcLine = (item) => {
-    const base = item.quantity * item.rate;
-    const disc = item.discountType === 'percentage' ? (base * item.discount / 100) : (item.discount * item.quantity);
-    const taxable = base - disc - (item.schemeDiscount || 0);
-    const gst = (taxable * item.gstPercentage) / 100;
-    return { taxable, gst, total: taxable + gst, disc };
+  const removeItem = (key) => {
+    const nextItems = items.filter((item) => item.key !== key);
+    setItems(nextItems);
+    if (nextItems.length) queuePreview(nextItems); else setSummary({});
   };
 
-  // Totals
-  const subtotal = items.reduce((s, i) => s + calcLine(i).taxable, 0);
-  const totalDiscount = items.reduce((s, i) => s + calcLine(i).disc, 0);
-  const totalTax = items.reduce((s, i) => s + calcLine(i).gst, 0);
-  const charges = (orderData.freightCharges || 0) + (orderData.loadingCharges || 0) + (orderData.otherCharges || 0);
-  const grandTotal = Math.round(subtotal + totalTax + charges);
-  const balanceAmount = grandTotal - (orderData.advanceAmount || 0);
-
-  // Credit check (skip for retail — no credit)
-  const creditExceeded = customerType !== 'retail' && selectedDealer?.creditLimit > 0 &&
-    ((selectedDealer.currentOutstanding || 0) + grandTotal) > selectedDealer.creditLimit;
-
-  // Below min rate check
-  const belowMinItems = items.filter(i => i.minimumSellingRate > 0 && i.rate < i.minimumSellingRate);
-
-  // Submit
-  const handleSubmit = async (status = 'draft') => {
-    if (!selectedDealer) { message.error(`Select a ${customerType === 'retail' ? 'customer' : customerType} first`); return; }
-    if (items.length === 0) { message.error('Add at least one product'); return; }
-    if (belowMinItems.length > 0 && status === 'confirmed') {
-      message.warning(`${belowMinItems.length} item(s) below minimum rate. Will need approval.`);
-    }
-    setLoading(true);
+  const handleSubmit = async (status) => {
+    if (scope === 'dealer' && !selectedDealer) { message.error('Select a registered dealer'); return; }
+    if (scope === 'walk_in' && !walkIn.name.trim()) { message.error('Enter the walk-in customer name'); return; }
+    if (!items.length) { message.error('Add at least one product'); return; }
+    if (items.some((item) => !item.warehouse)) { message.error('Select a warehouse for every product'); return; }
+    setSubmitting(true);
     try {
+      const pricedItems = await previewAll(items);
+      const belowMinimum = pricedItems.filter((item) => item.belowMinimum);
+      if (belowMinimum.length && status === 'confirmed') message.warning(`${belowMinimum.length} line(s) are below minimum selling rate and may require approval.`);
       const payload = {
-        dealer: selectedDealer._id,
-        orderType: customerType,
+        ...target,
         status,
-        items: items.map(i => ({
-          product: i.product, productCode: i.productCode, productName: i.productName,
-          shade: i.shade, batch: i.batch, quantity: i.quantity, unit: i.unit,
-          boxes: i.quantity, pieces: i.quantity * (i.piecesPerBox || 0), sqft: i.quantity * (i.sqftPerBox || 0),
-          rate: i.rate, discount: i.discount, discountType: i.discountType,
-          schemeDiscount: i.schemeDiscount, gstPercentage: i.gstPercentage,
-          warehouse: i.warehouse || undefined,
-        })),
-        freightCharges: orderData.freightCharges, loadingCharges: orderData.loadingCharges,
-        otherCharges: orderData.otherCharges, advanceAmount: orderData.advanceAmount,
-        deliveryAddress: orderData.deliveryAddress, deliveryPriority: orderData.deliveryPriority,
-        expectedDeliveryDate: orderData.expectedDeliveryDate, remarks: orderData.remarks,
+        orderType: scope === 'walk_in' ? 'retail' : 'dealer',
+        orderDate: orderData.orderDate,
+        expectedDeliveryDate: orderData.expectedDeliveryDate || undefined,
+        deliveryPriority: orderData.deliveryPriority,
+        deliveryAddress: orderData.deliveryAddress,
+        customerName: scope === 'walk_in' ? walkIn.name || undefined : undefined,
+        customerPhone: scope === 'walk_in' ? walkIn.phone || undefined : undefined,
+        items: minimalPreviewItems(pricedItems),
+        freightCharges: Number(orderData.freightCharges || 0),
+        loadingCharges: Number(orderData.loadingCharges || 0),
+        otherCharges: Number(orderData.otherCharges || 0),
+        advanceAmount: Number(orderData.advanceAmount || 0),
+        remarks: orderData.remarks || '',
       };
-      const res = await salesService.createOrder(payload);
-      if (res.success) {
-        message.success(`Order ${res.data.orderNumber} created!`);
-        onSuccess?.();
-        onClose();
+      const fingerprint = JSON.stringify(payload);
+      if (createAttempt.current.fingerprint !== fingerprint) {
+        createAttempt.current = { fingerprint, key: createIdempotencyKey() };
       }
-    } catch (err) { message.error(err.message || 'Failed'); }
-    finally { setLoading(false); }
+      const response = await salesService.createOrder(payload, createAttempt.current.key);
+      if (response.success) {
+        message.success(`Sales Order ${response.data?.orderNumber || ''} created`);
+        onSuccess?.();
+        onClose?.();
+      }
+    } catch (error) { message.error(error.message || 'Failed to create Sales Order'); }
+    finally { setSubmitting(false); }
   };
 
-  // Columns
   const columns = [
-    { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
-    { title: 'Product', width: 200, render: (_, r) => (
-      <div className="flex items-center gap-1.5">
-        {r.productImage && <ProductImage src={r.productImage} size="sm" />}
-        <div><div className="text-xs font-medium truncate max-w-[150px]">{r.productName}</div>
-        <div className="text-[10px] text-gray-400">{r.productCode} · {r.brandName} · {r.tileSize} · {r.finish}</div></div>
-      </div>
-    )},
-    { title: 'Shade', width: 70, render: (_, r) => <Input size="small" value={r.shade} onChange={e => updateItem(r.key, 'shade', e.target.value)} placeholder="—" className="text-xs" /> },
-    { title: 'Batch', width: 70, render: (_, r) => <Input size="small" value={r.batch} onChange={e => updateItem(r.key, 'batch', e.target.value)} placeholder="—" className="text-xs" /> },
-    { title: 'Qty', width: 65, render: (_, r) => <InputNumber size="small" min={1} value={r.quantity} onChange={v => updateItem(r.key, 'quantity', v)} className="w-full" /> },
-    { title: 'Rate ₹', width: 80, render: (_, r) => (
-      <InputNumber size="small" min={0} value={r.rate} onChange={v => updateItem(r.key, 'rate', v)} className="w-full"
-        status={r.minimumSellingRate > 0 && r.rate < r.minimumSellingRate ? 'warning' : ''} />
-    )},
-    { title: 'Disc', width: 60, render: (_, r) => <InputNumber size="small" min={0} value={r.discount} onChange={v => updateItem(r.key, 'discount', v)} className="w-full" /> },
-    { title: 'GST', width: 45, render: (_, r) => <span className="text-xs">{r.gstPercentage}%</span> },
-    { title: 'Warehouse', width: 110, render: (_, r) => (
-      <Select size="small" value={r.warehouse} onChange={v => updateItem(r.key, 'warehouse', v)} className="w-full"
-        options={warehouses.map(w => ({ value: w._id, label: w.name }))} placeholder="Select" allowClear />
-    )},
-    { title: 'Total', width: 85, render: (_, r) => <span className="text-xs font-semibold">₹{calcLine(r).total.toFixed(0)}</span> },
-    { title: '', width: 30, render: (_, r) => <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => removeItem(r.key)} /> },
+    { title: 'Product', width: 230, fixed: 'left', render: (_, item) => <div className="flex items-center gap-2">{item.productImage && <ProductImage src={item.productImage} size="sm" />}<div><div className="font-medium text-xs">{item.productName}</div><div className="text-[10px] text-gray-400">{item.productCode} · {item.brandName}</div></div></div> },
+    { title: 'Qty', width: 85, render: (_, item) => <InputNumber min={1} value={item.quantity} onChange={(value) => updateItem(item.key, { quantity: value || 1 }, true)} className="w-full" /> },
+    { title: 'Warehouse', width: 150, render: (_, item) => <Select value={item.warehouse} onChange={(value) => updateItem(item.key, { warehouse: value }, true)} className="w-full" options={warehouses.map((warehouse) => ({ value: warehouse._id, label: warehouse.name }))} placeholder="Required" /> },
+    { title: 'Server price', width: 155, render: (_, item) => <div><div className="font-semibold text-green-700">{item.pricingPending ? 'Resolving…' : money(item.effectiveRate)}</div><div className="text-[10px] text-gray-400">Base {money(item.baseRate)} · {item.source}</div></div> },
+    { title: 'Optional manual rate', width: 165, render: (_, item) => <Space.Compact className="w-full"><InputNumber min={0} value={item.manualRate} placeholder={String(item.effectiveRate || 0)} onChange={(value) => updateItem(item.key, { manualRate: value }, true)} prefix="₹" className="w-full" /><Button title="Use server rate" icon={<ReloadOutlined />} onClick={() => updateItem(item.key, { manualRate: null }, true)} /></Space.Compact> },
+    { title: 'Minimum / validation', width: 170, render: (_, item) => <div><div>{money(item.minimumSellingRate)}</div>{item.belowMinimum ? <Tag color="red"><WarningOutlined /> Below minimum</Tag> : <Tag color="green">Valid</Tag>}{item.pricingMessage && <div className="text-[10px] text-gray-500">{item.pricingMessage}</div>}</div> },
+    { title: 'Server total', width: 125, render: (_, item) => <div><strong>{money(item.lineTotal)}</strong>{item.taxAmount > 0 && <div className="text-[10px] text-gray-400">Tax {money(item.taxAmount)}</div>}</div> },
+    { title: '', width: 45, fixed: 'right', render: (_, item) => <Button danger type="text" icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} /> },
   ];
 
+  const summaryTotal = summary.grandTotal ?? summary.total ?? items.reduce((total, item) => total + Number(item.lineTotal || 0), 0);
+
   return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="shrink-0 border-b px-6 py-3 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">New Sales Order</h2>
-            <div className="flex gap-2">
-              <Button onClick={() => handleSubmit('draft')} loading={loading}>Save Draft</Button>
-              <Button type="primary" onClick={() => handleSubmit('confirmed')} loading={loading}>Confirm Order</Button>
-              <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl px-1 ml-2" onClick={onClose}>✕</span>
-            </div>
+    <Modal open onCancel={onClose} footer={null} width="min(1280px, 96vw)" style={{ top: 18 }} destroyOnHidden title="Create Sales Order — authoritative pricing">
+      <div className="space-y-4">
+        <Card size="small" title="1. Customer pricing target">
+          <div className="flex gap-2 flex-wrap mb-3">
+            {dealerTypes.map((type) => <Button key={type._id} type={scope === 'dealer' && dealerType === type._id ? 'primary' : 'default'} onClick={() => changeTargetType(type._id)}>{type.name}<span className="ml-1 text-[10px] opacity-70">{type.pricingTier}</span></Button>)}
+            <Button type={scope === 'walk_in' ? 'primary' : 'default'} onClick={() => changeTargetType('walk_in')}>Walk-in Retail</Button>
           </div>
+          {scope === 'dealer' ? <Row gutter={[12, 12]}><Col xs={24} md={12}><div className="text-xs text-gray-500 mb-1">Registered {selectedType?.name || 'dealer'} *</div><Select showSearch filterOption={false} onSearch={setDealerSearch} loading={dealerLoading} value={selectedDealer?._id} onChange={chooseDealer} className="w-full" placeholder="Search name, code, or phone" options={dealers.map((item) => ({ value: item._id, label: `${item.businessName} (${item.dealerCode || 'No code'})` }))} /></Col><Col xs={24} md={12}>{selectedDealer && <Alert type="info" showIcon message={selectedDealer.businessName} description={`Dealer Type: ${selectedDealer.dealerType?.name || selectedType?.name || '—'} · Tier: ${selectedDealer.dealerType?.pricingTier || selectedType?.pricingTier || '—'}`} />}</Col></Row> : <Row gutter={[12, 12]}><Col xs={24} md={12}><Input value={walkIn.name} onChange={(event) => setWalkIn((current) => ({ ...current, name: event.target.value }))} placeholder="Walk-in customer name *" /></Col><Col xs={24} md={12}><Input value={walkIn.phone} onChange={(event) => setWalkIn((current) => ({ ...current, phone: event.target.value }))} placeholder="Walk-in phone (optional)" /></Col></Row>}
+        </Card>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto p-6 space-y-5">
-
-            {/* === CUSTOMER TYPE SELECTOR === */}
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-1.5">Customer Type *</label>
-              <div className="flex gap-2">
-                {[
-                  { value: 'dealer', label: 'Dealer', color: '#FF5F03' },
-                  { value: 'wholesaler', label: 'Wholesaler', color: '#1890ff' },
-                  { value: 'retail', label: 'Retail', color: '#52c41a' },
-                  { value: 'distributor', label: 'Distributor', color: '#722ed1' },
-                  { value: 'builder', label: 'Builder / Architect', color: '#fa8c16' },
-                ].map(t => (
-                  <button key={t.value}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border-2 transition-all ${customerType === t.value
-                      ? 'text-white shadow-sm' : 'text-gray-500 border-gray-200 bg-white hover:border-gray-300'}`}
-                    style={customerType === t.value ? { background: t.color, borderColor: t.color } : {}}
-                    onClick={() => { setCustomerType(t.value); setSelectedDealer(null); setItems([]); }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-              {customerType === 'retail' && (
-                <div className="mt-2 text-xs text-green-600 bg-green-50 border border-green-100 rounded px-3 py-1.5">
-                  Retail orders: No credit limit check. Immediate payment required.
-                </div>
-              )}
-            </div>
-
-            {/* === DEALER/CUSTOMER SELECTION === */}
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-1.5">
-                Select {customerType === 'dealer' ? 'Dealer' : customerType === 'wholesaler' ? 'Wholesaler' : customerType === 'retail' ? 'Customer' : customerType === 'distributor' ? 'Distributor' : 'Builder/Architect'} *
-              </label>
-              <div className="relative">
-                <Input
-                  ref={dealerInputRef}
-                  prefix={<SearchOutlined className="text-gray-400" />}
-                  placeholder={`Search ${customerType === 'retail' ? 'customer' : customerType} by name, code, mobile...`}
-                  value={dealerSearch}
-                  onChange={e => { setDealerSearch(e.target.value); setShowDealerDropdown(true); }}
-                  onFocus={handleDealerFocus}
-                  size="large"
-                />
-                {showDealerDropdown && dealerResults.length > 0 && (
-                  <div
-                    ref={dealerDropdownRef}
-                    className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-56 overflow-y-auto"
-                    onScroll={handleDealerScroll}
-                  >
-                    {dealerResults.map(d => (
-                      <div key={d._id} className="px-4 py-2.5 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex justify-between items-center"
-                        onClick={() => handleSelectDealer(d)}>
-                        <div>
-                          <div className="text-sm font-medium text-gray-900">{d.businessName}</div>
-                          <div className="text-xs text-gray-400">{d.dealerCode} · {d.ownerName} · {d.mobile} · {d.city} {d.dealerType?.name ? `· ${d.dealerType.name}` : ''}</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-xs text-gray-500">Credit: ₹{(d.creditLimit || 0).toLocaleString()}</div>
-                          <div className="text-xs text-gray-400">O/S: ₹{(d.currentOutstanding || 0).toLocaleString()}</div>
-                        </div>
-                      </div>
-                    ))}
-                    {dealerLoading && (
-                      <div className="px-4 py-3 text-center text-xs text-gray-400">Loading more...</div>
-                    )}
-                    {!dealerHasMore && dealerResults.length > 0 && (
-                      <div className="px-4 py-2 text-center text-[10px] text-gray-300">— End of list —</div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Dealer info cards */}
-              {selectedDealer && (
-                <div className="grid grid-cols-4 gap-3 mt-3">
-                  <div className="bg-gray-50 rounded-lg p-3 border">
-                    <div className="text-[10px] text-gray-400 uppercase">Dealer</div>
-                    <div className="text-sm font-semibold mt-0.5">{selectedDealer.businessName}</div>
-                    <div className="text-xs text-gray-500">{selectedDealer.dealerCode} · {selectedDealer.city}</div>
-                  </div>
-                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <div className="text-[10px] text-gray-400 uppercase">Credit Limit</div>
-                    <div className="text-sm font-semibold mt-0.5">₹{(selectedDealer.creditLimit || 0).toLocaleString()}</div>
-                    <div className="text-xs text-gray-500">{selectedDealer.creditDays || 30} credit days</div>
-                  </div>
-                  <div className={`rounded-lg p-3 border ${creditExceeded ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-100'}`}>
-                    <div className="text-[10px] text-gray-400 uppercase">Outstanding</div>
-                    <div className={`text-sm font-semibold mt-0.5 ${creditExceeded ? 'text-red-600' : 'text-green-700'}`}>₹{(selectedDealer.currentOutstanding || 0).toLocaleString()}</div>
-                    {creditExceeded && <div className="text-[10px] text-red-600 font-semibold">⚠ LIMIT EXCEEDED</div>}
-                  </div>
-                  <div className="bg-gray-50 rounded-lg p-3 border">
-                    <div className="text-[10px] text-gray-400 uppercase">Price Tier</div>
-                    <div className="text-sm font-semibold mt-0.5">{selectedDealer.priceTier || 'Dealer'}</div>
-                    <div className="text-xs text-gray-500">{selectedDealer.mobile}</div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* === ORDER META === */}
-            <div className="grid grid-cols-5 gap-3">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Order Date</label>
-                <Input value={orderData.orderDate} onChange={e => {
-                  const od = e.target.value;
-                  setOrderData(p => ({...p, orderDate: od, dueDate: dayjs(od).add(p.creditDays, 'day').format('YYYY-MM-DD')}));
-                }} type="date" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Credit Days</label>
-                <InputNumber value={orderData.creditDays} min={0} className="w-full" onChange={v => {
-                  setOrderData(p => ({...p, creditDays: v, dueDate: dayjs(p.orderDate).add(v, 'day').format('YYYY-MM-DD')}));
-                }} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Due Date</label>
-                <Input value={orderData.dueDate} disabled className="bg-gray-50" />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Priority</label>
-                <Select value={orderData.deliveryPriority} onChange={v => setOrderData(p => ({...p, deliveryPriority: v}))} className="w-full"
-                  options={[{value:'normal',label:'Normal'},{value:'urgent',label:'Urgent'},{value:'vip',label:'VIP'}]} />
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Order Type</label>
-                <Select value={orderData.orderType} onChange={v => setOrderData(p => ({...p, orderType: v}))} className="w-full"
-                  options={[{value:'dealer',label:'Dealer'},{value:'retail',label:'Retail'},{value:'online',label:'Online'},{value:'project',label:'Project'}]} />
-              </div>
-            </div>
-
-            <Divider className="my-3" />
-
-            {/* === PRODUCT SEARCH & ADD === */}
-            <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-1.5">Add Products</label>
-              <div className="relative">
-                <Input
-                  ref={productInputRef}
-                  prefix={<SearchOutlined className="text-gray-400" />}
-                  placeholder="Search product by name, code, barcode..."
-                  value={productSearch}
-                  onChange={e => { setProductSearch(e.target.value); setShowProductDropdown(true); }}
-                  onFocus={() => setShowProductDropdown(true)}
-                  size="large"
-                  disabled={!selectedDealer}
-                />
-                {!selectedDealer && <div className="text-xs text-orange-500 mt-1">Select a dealer first to add products</div>}
-                {showProductDropdown && productResults.length > 0 && (
-                  <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-60 overflow-y-auto">
-                    {productResults.map(p => (
-                      <div key={p._id} className="px-4 py-3 hover:bg-orange-50 cursor-pointer border-b border-gray-50"
-                        onClick={() => addProduct(p)}>
-                        <div className="flex justify-between items-start">
-                          <div className="flex items-start gap-2 flex-1">
-                            {p.images?.[0] && <img src={getImageUrl(p.images[0])} alt="" className="w-10 h-10 rounded object-cover shrink-0 border border-gray-100 mt-0.5" />}
-                            <div className="flex-1">
-                              <div className="text-sm font-medium text-gray-900">{p.itemName}</div>
-                              <div className="text-xs text-gray-400 mt-0.5">
-                                {p.productCode} · {p.brand?.name} · {p.tileSize} · {p.finish} · {p.colour}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                Unit: {p.unit} · Pcs/Box: {p.piecesPerBox || '-'} · SqFt/Box: {p.sqftPerBox || '-'}
-                              </div>
-                              {p.discount && (
-                                <div className="text-[10px] text-green-600 font-medium mt-0.5">
-                                  {p.discount.discountPercentage}% discount · {p.discount.ruleName}
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0 ml-4">
-                            {p.discount ? (
-                              <>
-                                <div className="text-sm font-bold text-green-600">₹{p.discount.effectiveRate}/{p.unit || 'Box'}</div>
-                                <div className="text-[10px] text-gray-400 line-through">₹{p.dealerRate || p.mrp || 0}</div>
-                              </>
-                            ) : (
-                              <div className="text-sm font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}/{p.unit || 'Box'}</div>
-                            )}
-                            <div className="text-[10px] text-gray-400">MRP ₹{p.mrp} · GST {p.gst}%</div>
-                            {p.minimumSellingRate > 0 && <div className="text-[10px] text-red-400">Min: ₹{p.minimumSellingRate}</div>}
-                            <div className={`text-[10px] font-semibold mt-0.5 ${(p.stockAvailable || 0) > 0 ? 'text-green-600' : 'text-red-500'}`}>
-                              Stock: {p.stockAvailable || 0} {p.unit || 'Box'}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* === ITEMS TABLE === */}
-            {items.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <Table columns={columns} dataSource={items} rowKey="key" size="small" pagination={false} scroll={{ x: 950 }} />
-              </div>
-            )}
-
-            {items.length === 0 && selectedDealer && (
-              <div className="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg">
-                <SearchOutlined className="text-3xl mb-2" />
-                <p>Search and add products above</p>
-              </div>
-            )}
-
-            <Divider className="my-3" />
-
-            {/* === BOTTOM: Summary === */}
-            <div className="grid grid-cols-12 gap-5">
-              {/* Left: Remarks only (no delivery address — comes from dealer) */}
-              <div className="col-span-7 space-y-3">
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Delivery Date</label>
-                  <Input type="date" value={orderData.expectedDeliveryDate || ''} onChange={e => setOrderData(p => ({...p, expectedDeliveryDate: e.target.value}))} />
-                </div>
-                <div>
-                  <label className="text-xs text-gray-500 block mb-1">Remarks / Special Instructions</label>
-                  <Input.TextArea rows={3} value={orderData.remarks} onChange={e => setOrderData(p => ({...p, remarks: e.target.value}))} placeholder="Any special instructions for this order..." />
-                </div>
-              </div>
-
-              {/* Right: Summary */}
-              <div className="col-span-5">
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2 text-sm border">
-                  <div className="flex justify-between"><span className="text-gray-500">Items</span><span className="font-medium">{items.length} products</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>₹{subtotal.toFixed(2)}</span></div>
-                  {totalDiscount > 0 && <div className="flex justify-between"><span className="text-gray-500">Discount</span><span className="text-green-600">-₹{totalDiscount.toFixed(2)}</span></div>}
-                  <div className="flex justify-between"><span className="text-gray-500">GST</span><span>₹{totalTax.toFixed(2)}</span></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Freight</span><InputNumber size="small" min={0} value={orderData.freightCharges} onChange={v => setOrderData(p => ({...p, freightCharges: v||0}))} className="w-20" /></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Loading</span><InputNumber size="small" min={0} value={orderData.loadingCharges} onChange={v => setOrderData(p => ({...p, loadingCharges: v||0}))} className="w-20" /></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Other</span><InputNumber size="small" min={0} value={orderData.otherCharges} onChange={v => setOrderData(p => ({...p, otherCharges: v||0}))} className="w-20" /></div>
-                  <Divider className="my-1" />
-                  <div className="flex justify-between text-base font-bold"><span>Grand Total</span><span className="text-[#FF5F03]">₹{grandTotal.toLocaleString()}</span></div>
-                  <div className="flex justify-between items-center"><span className="text-gray-500">Advance</span><InputNumber size="small" min={0} value={orderData.advanceAmount} onChange={v => setOrderData(p => ({...p, advanceAmount: v||0}))} className="w-20" /></div>
-                  <div className="flex justify-between font-semibold"><span>Balance</span><span className="text-red-600">₹{balanceAmount.toLocaleString()}</span></div>
-
-                  {creditExceeded && (
-                    <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                      ⚠️ Credit limit exceeded. Order requires management approval.
-                    </div>
-                  )}
-                  {belowMinItems.length > 0 && (
-                    <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs text-yellow-700">
-                      ⚠️ {belowMinItems.length} item(s) below minimum selling rate.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+        <Card size="small" title="2. Products and server pricing">
+          <div className="relative mb-3">
+            <Input prefix={<SearchOutlined />} value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder={targetReady ? 'Search product name, code, or barcode' : 'Select a registered dealer first'} disabled={!targetReady} suffix={productLoading ? 'Searching…' : null} />
+            {productResults.length > 0 && <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border rounded-lg shadow-xl max-h-64 overflow-y-auto">{productResults.filter((product) => !items.some((item) => productIdOf(item) === product._id)).map((product) => <button type="button" key={product._id} className="w-full text-left px-3 py-2 border-b hover:bg-orange-50 flex justify-between" onClick={() => addProduct(product)}><span><span className="block text-sm font-medium">{product.itemName}</span><span className="block text-xs text-gray-400">{product.productCode} · {product.brand?.name || ''}</span></span><span className="text-right"><span className="block font-semibold text-green-700">{money(product.effectiveRate ?? product.rate ?? product.baseRate)}</span><span className="block text-[10px] text-gray-400">{product.source || 'Preview on add'}</span></span></button>)}</div>}
           </div>
-        </div>
+          <Table rowKey="key" columns={columns} dataSource={items} pagination={false} loading={pricing} size="small" scroll={{ x: 1200 }} locale={{ emptyText: targetReady ? 'Search and add products.' : 'Choose a customer pricing target first.' }} />
+        </Card>
+
+        <Row gutter={[12, 12]}>
+          <Col xs={24} lg={15}><Card size="small" title="3. Order details"><div className="grid grid-cols-1 sm:grid-cols-3 gap-3"><label className="text-xs text-gray-500">Order date<Input type="date" value={orderData.orderDate} onChange={(event) => setOrderData((current) => ({ ...current, orderDate: event.target.value }))} /></label><label className="text-xs text-gray-500">Expected delivery<Input type="date" value={orderData.expectedDeliveryDate} onChange={(event) => setOrderData((current) => ({ ...current, expectedDeliveryDate: event.target.value }))} /></label><label className="text-xs text-gray-500">Priority<Select value={orderData.deliveryPriority} onChange={(value) => setOrderData((current) => ({ ...current, deliveryPriority: value }))} className="w-full" options={[{ value: 'normal', label: 'Normal' }, { value: 'urgent', label: 'Urgent' }, { value: 'vip', label: 'VIP' }]} /></label></div><Input.TextArea className="mt-3" value={orderData.deliveryAddress} onChange={(event) => setOrderData((current) => ({ ...current, deliveryAddress: event.target.value }))} rows={2} placeholder="Delivery address" /><Input.TextArea className="mt-3" value={orderData.remarks} onChange={(event) => setOrderData((current) => ({ ...current, remarks: event.target.value }))} rows={2} placeholder="Remarks" /></Card></Col>
+          <Col xs={24} lg={9}><Card size="small" title="Server preview summary"><div className="space-y-2 text-sm"><div className="flex justify-between"><span>Subtotal</span><strong>{money(summary.subtotal ?? summary.taxableAmount)}</strong></div><div className="flex justify-between"><span>Tax</span><strong>{money(summary.taxAmount ?? summary.totalTax)}</strong></div><div className="flex justify-between"><span>Discount</span><strong>{money(summary.discountAmount ?? summary.totalDiscount)}</strong></div><div className="flex justify-between border-t pt-2 text-base"><span>Total</span><strong className="text-green-700">{money(summaryTotal)}</strong></div><div className="grid grid-cols-2 gap-2 pt-2"><InputNumber min={0} value={orderData.freightCharges} onChange={(value) => setOrderData((current) => ({ ...current, freightCharges: value || 0 }))} addonBefore="Freight" className="w-full" /><InputNumber min={0} value={orderData.advanceAmount} onChange={(value) => setOrderData((current) => ({ ...current, advanceAmount: value || 0 }))} addonBefore="Advance" className="w-full" /></div></div></Card></Col>
+        </Row>
+        <Alert type="info" showIcon message="Product taxes, discounts, minimum-rate validation, and effective prices are resolved by the server. Only product, quantity, warehouse, and an explicit optional manual rate are submitted per line." />
+        <div className="flex justify-end gap-2"><Button onClick={onClose}>Cancel</Button><Button onClick={() => handleSubmit('draft')} loading={submitting}>Save draft</Button><Button type="primary" onClick={() => handleSubmit('confirmed')} loading={submitting}>Confirm order</Button></div>
       </div>
-    </>
+    </Modal>
   );
 };
 

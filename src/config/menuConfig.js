@@ -87,7 +87,7 @@ const menuConfig = {
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['master.management', 'product.master', 'dealer.master', 'supplier.master'],
+    modulePermissions: ['product.master', 'price.list', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master'],
     items: [
       {
         id: 'product-master',
@@ -101,7 +101,7 @@ const menuConfig = {
         title: 'Price List',
         icon: Tag,
         path: '/masters/price-list',
-        permission: 'product.master',
+        permission: 'price.list',
       },
       {
         id: 'dealer-product-pricing',
@@ -153,6 +153,13 @@ const menuConfig = {
         permission: 'route.master',
       },
       {
+        id: 'branch-master',
+        title: 'Branch Master',
+        icon: Building2,
+        path: '/masters/branch-master',
+        permission: 'branch.master',
+      },
+      {
         id: 'warehouse-master',
         title: 'Warehouse Master',
         icon: Warehouse,
@@ -185,7 +192,7 @@ const menuConfig = {
         title: 'Customer Master',
         icon: Users,
         path: '/masters/customers',
-        permission: 'dealer.master',
+        permission: 'customer.master',
       },
     ],
   },
@@ -194,7 +201,7 @@ const menuConfig = {
     title: 'Sales & Purchase',
     icon: ShoppingCart,
     hasSubmenu: true,
-    modulePermissions: ['sales.purchase.management', 'sales.order.dashboard', 'dealer.specific.discounts', 'po.management'],
+    modulePermissions: ['sales.purchase.management', 'sales.order.dashboard', 'sales.order.create', 'dealer.specific.discounts', 'po.management'],
     items: [
       {
         id: 'sales-order-dashboard',
@@ -352,35 +359,35 @@ const menuConfig = {
     title: 'Warehouse Operations',
     icon: PackageCheck,
     hasSubmenu: true,
-    modulePermissions: ['warehouse.operations', 'warehouse.manager'],
+    modulePermissions: ['picking.management', 'sorting.management', 'dispatch.management'],
     items: [
       {
         id: 'picking-list',
         title: 'Picking List',
         icon: ClipboardList,
         path: '/warehouse/picking-list',
-        permission: 'warehouse.manager',
+        permission: 'picking.management',
       },
       {
         id: 'sorting-list',
         title: 'Sorting List',
         icon: ClipboardList,
         path: '/warehouse/sorting-list',
-        permission: 'warehouse.manager',
+        permission: 'sorting.management',
       },
       {
         id: 'loading-verification',
         title: 'Loading Verification',
         icon: CheckCircle,
         path: '/warehouse/loading-verification',
-        permission: 'warehouse.manager',
+        permission: 'dispatch.management',
       },
       {
         id: 'dispatch-planning',
         title: 'Dispatch Planning',
         icon: Truck,
         path: '/warehouse/dispatch-planning',
-        permission: 'warehouse.manager',
+        permission: 'dispatch.management',
       },
     ],
   },
@@ -695,35 +702,35 @@ const menuConfig = {
     title: 'Reports & Logs',
     icon: BarChart2,
     hasSubmenu: true,
-    modulePermissions: ['reports.management', 'bill.wise.profit', 'activity.logs', 'balance.sheet'],
+    modulePermissions: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.finance', 'reports.profit', 'reports.gst', 'reports.hr', 'activity.logs', 'download.logs', 'audit.trail'],
     items: [
       {
         id: 'profit-analysis',
         title: 'Profit Analysis',
         icon: PieChart,
         hasSubmenu: true,
-        modulePermissions: ['bill.wise.profit', 'category.product.gross.margin'],
+        modulePermissions: ['reports.profit'],
         items: [
           {
             id: 'bill-wise-profit',
             title: 'Bill-wise Profit',
             icon: FileText,
             path: '/reports/advanced',
-            permission: 'bill.wise.profit',
+            permission: 'reports.profit',
           },
           {
             id: 'category-margin',
             title: 'Category Margin',
             icon: BarChart2,
             path: '/reports/profit-analysis/category-margin',
-            permission: 'category.product.gross.margin',
+            permission: 'reports.profit',
           },
           {
             id: 'deviation-report',
             title: 'Deviation Report',
             icon: TrendingDown,
             path: '/reports/profit-analysis/deviation-report',
-            permission: 'sale.vs.purchase.price.deviation',
+            permission: 'reports.profit',
           },
         ],
       },
@@ -732,98 +739,98 @@ const menuConfig = {
         title: 'Sales Reports',
         icon: TrendingUp,
         path: '/reports/sales-reports',
-        permission: 'reports.management',
+        permission: 'reports.sales',
       },
       {
         id: 'purchase-reports',
         title: 'Purchase Reports',
         icon: BarChart,
         path: '/reports/purchase-reports',
-        permission: 'reports.management',
+        permission: 'reports.purchase',
       },
       {
         id: 'inventory-reports',
         title: 'Inventory Reports',
         icon: Warehouse,
         path: '/reports/inventory-reports',
-        permission: 'reports.management',
+        permission: 'reports.inventory',
       },
       {
         id: 'hr-reports',
         title: 'HR Reports',
         icon: Users,
         path: '/reports/hr-reports',
-        permission: 'reports.management',
+        permission: 'reports.hr',
       },
       {
         id: 'dealer-performance',
         title: 'Dealer Performance',
         icon: LineChart,
         path: '/reports/dealer-performance',
-        permission: 'dealer.performance',
+        permission: 'reports.sales',
       },
       {
         id: 'se-performance',
         title: 'SE Performance',
         icon: Target,
         path: '/reports/se-performance',
-        permission: 'reports.management',
+        permission: 'reports.sales',
       },
       {
         id: 'gst-reports',
         title: 'GST Reports',
         icon: FileText,
         path: '/reports/gst-reports',
-        permission: 'balance.sheet',
+        permission: 'reports.gst',
       },
       {
         id: 'aging-report',
         title: 'Aging Report',
         icon: Clock,
         path: '/reports/aging-report',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'balance-sheet',
         title: 'Balance Sheet',
         icon: FileText,
         path: '/reports/balance-sheet',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'trial-balance',
         title: 'Trial Balance',
         icon: FileText,
         path: '/reports/trial-balance',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'profit-loss',
         title: 'Profit & Loss',
         icon: FileText,
         path: '/reports/profit-loss',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'cash-flow',
         title: 'Cash Flow',
         icon: Wallet,
         path: '/reports/cash-flow',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'bank-reconciliation',
         title: 'Bank Reconciliation',
         icon: RefreshCw,
         path: '/reports/bank-reconciliation',
-        permission: 'balance.sheet',
+        permission: 'reports.finance',
       },
       {
         id: 'audit-trail',
         title: 'Audit Trail',
         icon: FileText,
         path: '/reports/audit-trail',
-        permission: 'balance.sheet',
+        permission: 'audit.trail',
       },
       {
         id: 'activity-logs',
@@ -1097,7 +1104,7 @@ const menuConfig = {
  * Role-based section visibility
  * super_admin sees all, others see relevant sections
  */
-export const getRoleMenuSections = (role) => {
+export const getRoleMenuSections = () => {
   const allSections = [
     menuConfig.dashboard,
     menuConfig.system,
@@ -1121,63 +1128,7 @@ export const getRoleMenuSections = (role) => {
     menuConfig.deliveryExecutive,
   ];
 
-  const roleConfigs = {
-    super_admin: allSections,
-    admin: allSections,
-    sub_admin: allSections,
-    owner: allSections,
-    sales_executive: [
-      menuConfig.dashboard,
-      menuConfig.masters,
-      menuConfig.salesPurchase,
-      menuConfig.crm,
-      menuConfig.complaints,
-    ],
-    delivery_executive: [
-      menuConfig.dashboard,
-      menuConfig.dispatch,
-    ],
-    purchase_manager: [
-      menuConfig.dashboard,
-      menuConfig.masters,
-      menuConfig.salesPurchase,
-      menuConfig.inventory,
-      menuConfig.warehouse,
-      menuConfig.supplierIncentive,
-      menuConfig.reports,
-    ],
-    hr_manager: [
-      menuConfig.dashboard,
-      menuConfig.hrms,
-      menuConfig.assets,
-      menuConfig.reports,
-    ],
-    sales_manager: [
-      menuConfig.dashboard,
-      menuConfig.masters,
-      menuConfig.salesPurchase,
-      menuConfig.crm,
-      menuConfig.complaints,
-      menuConfig.salesExecutive,
-      menuConfig.dealerApp,
-      menuConfig.reports,
-    ],
-    finance_manager: [
-      menuConfig.dashboard,
-      menuConfig.finance,
-      menuConfig.reports,
-      // menuConfig.tally,
-    ],
-    warehouse_manager: [
-      menuConfig.dashboard,
-      menuConfig.inventory,
-      menuConfig.warehouse,
-      menuConfig.dispatch,
-      menuConfig.deliveryExecutive,
-    ],
-  };
-
-  return roleConfigs[role] || [menuConfig.dashboard];
+  return allSections;
 };
 
 export default menuConfig;

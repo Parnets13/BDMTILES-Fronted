@@ -143,6 +143,7 @@ const StockTransferPage = () => {
 const CreateTransferModal = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [warehouses, setWarehouses] = useState([]);
+  const [destinationWarehouses, setDestinationWarehouses] = useState([]);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
   const [form, setForm] = useState({ fromWarehouse: '', toWarehouse: '', priority: 'normal', reason: '', remarks: '' });
@@ -150,7 +151,13 @@ const CreateTransferModal = ({ open, onClose, onSuccess }) => {
 
   useEffect(() => {
     if (open) {
-      api.get('/masters/warehouses', { params: { limit: 50 } }).then(r => { if (r.success) setWarehouses(r.data || []); }).catch(() => {});
+      Promise.all([
+        api.get('/masters/warehouses', { params: { limit: 200, status: 'active' } }),
+        api.get('/stock-transfers/destinations'),
+      ]).then(([sourceResponse, destinationResponse]) => {
+        if (sourceResponse.success) setWarehouses(sourceResponse.data || []);
+        if (destinationResponse.success) setDestinationWarehouses(destinationResponse.data || []);
+      }).catch(() => {});
     }
   }, [open]);
 
@@ -204,7 +211,12 @@ const CreateTransferModal = ({ open, onClose, onSuccess }) => {
             <label className="text-xs text-gray-500 block mb-1">To Warehouse *</label>
             <Select className="w-full" size="large" value={form.toWarehouse || undefined} placeholder="Destination..."
               onChange={v => setForm(f => ({ ...f, toWarehouse: v }))}
-              options={warehouses.filter(w => w._id !== form.fromWarehouse).map(w => ({ value: w._id, label: w.name }))} />
+              options={destinationWarehouses
+                .filter(w => w._id !== form.fromWarehouse)
+                .map(w => ({
+                  value: w._id,
+                  label: `${w.name} — ${w.branch?.branchCode || w.branch?.name || 'Branch'}`,
+                }))} />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Priority</label>

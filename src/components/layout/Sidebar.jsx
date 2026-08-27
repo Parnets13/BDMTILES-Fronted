@@ -58,44 +58,24 @@ const Sidebar = ({ onClose }) => {
     if (!user) return [];
 
     return items
-      .filter((item) => {
-        if (item.hasSubmenu && item.items) {
-          const filtered = filterMenuItems(item.items);
-          return filtered.length > 0;
-        }
-        if (item.permission) return hasPermission(item.permission);
-        if (item.modulePermissions) return hasModuleAccess(item.modulePermissions);
-        return true;
-      })
       .map((item) => {
         if (item.hasSubmenu && item.items) {
           return { ...item, items: filterMenuItems(item.items) };
         }
         return item;
-      });
-  };
-
-  // Get sections filtered by role + permissions
-  const getFilteredSections = () => {
-    const roleSections = getRoleMenuSections(user?.role);
-
-    return roleSections
-      .filter((section) => {
-        if (section.permission) return hasPermission(section.permission);
-        if (section.modulePermissions) return hasModuleAccess(section.modulePermissions);
-        return true;
       })
-      .map((section) => {
-        if (section.hasSubmenu && section.items) {
-          return { ...section, items: filterMenuItems(section.items) };
-        }
-        return section;
-      })
-      .filter((section) => {
-        if (section.hasSubmenu) return section.items && section.items.length > 0;
+      .filter((item) => {
+        if (item.hasSubmenu) return item.items.length > 0;
+        if (item.permission) return hasPermission(item.permission);
+        if (item.permissions) return item.permissions.some((permission) => hasPermission(permission));
+        if (item.modulePermissions) return hasModuleAccess(item.modulePermissions);
         return true;
       });
   };
+
+  // Build submenu trees from authorized leaves first. A parent remains visible whenever
+  // at least one permitted child remains, regardless of role labels or parent hints.
+  const getFilteredSections = () => filterMenuItems(getRoleMenuSections(user?.role));
 
   const toggleSection = (sectionId) => {
     setExpandedSections((prev) => ({

@@ -11,7 +11,7 @@ import masterService from '../../services/masterService.js';
 
 const WAREHOUSE_TYPES = [
   { value: 'main',    label: 'Main Warehouse',  color: 'blue'    },
-  { value: 'branch',  label: 'Branch',          color: 'cyan'    },
+  { value: 'branch',  label: 'Branch Warehouse', color: 'cyan'    },
   { value: 'transit', label: 'Transit',         color: 'orange'  },
   { value: 'godown',  label: 'Godown',          color: 'purple'  },
 ];

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Modal, Form, DatePicker, Row, Col, Card, Statistic
+  Modal, Form, Row, Col, Card, Statistic
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
@@ -17,8 +17,23 @@ const vehicleService = {
   remove: (id) => api.delete(`/masters/vehicles/${id}`),
 };
 
-const VEHICLE_TYPES = ['Truck', 'Mini Truck', 'Tempo', 'Pickup', 'Van', 'Container', 'Trailer', 'Three Wheeler', 'Two Wheeler', 'Other'];
-const OWNERSHIP_TYPES = ['Own', 'Hired', 'Contracted'];
+const VEHICLE_TYPES = [
+  { value: 'truck', label: 'Truck' },
+  { value: 'mini_truck', label: 'Mini Truck' },
+  { value: 'tempo', label: 'Tempo' },
+  { value: 'van', label: 'Van' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'bike', label: 'Bike' },
+  { value: 'other', label: 'Other' },
+];
+const CAPACITY_UNITS = [
+  { value: 'tons', label: 'Tons' },
+  { value: 'kg', label: 'Kg' },
+  { value: 'boxes', label: 'Boxes' },
+];
+const VEHICLE_TYPE_LABELS = Object.fromEntries(VEHICLE_TYPES.map(type => [type.value, type.label]));
+const CAPACITY_UNIT_LABELS = Object.fromEntries(CAPACITY_UNITS.map(unit => [unit.value, unit.label]));
+const toDateInput = value => value ? new Date(value).toISOString().slice(0, 10) : undefined;
 
 const VehicleMaster = () => {
   const [vehicles, setVehicles] = useState([]);
@@ -44,12 +59,9 @@ const VehicleMaster = () => {
     try {
       const values = await form.validateFields();
       setFormLoading(true);
-      let res;
-      if (editRecord) {
-        res = await vehicleService.update(editRecord._id, values);
-      } else {
-        res = await vehicleService.create(values);
-      }
+      const res = editRecord
+        ? await vehicleService.update(editRecord._id, values)
+        : await vehicleService.create(values);
       if (res.success) {
         message.success(editRecord ? 'Vehicle updated' : 'Vehicle added');
         setShowForm(false); setEditRecord(null); form.resetFields();
@@ -61,7 +73,12 @@ const VehicleMaster = () => {
 
   const handleEdit = (record) => {
     setEditRecord(record);
-    form.setFieldsValue(record);
+    form.setFieldsValue({
+      ...record,
+      insuranceExpiry: toDateInput(record.insuranceExpiry),
+      fitnessExpiry: toDateInput(record.fitnessExpiry),
+      isActive: record.isActive ?? true,
+    });
     setShowForm(true);
   };
 
@@ -72,43 +89,40 @@ const VehicleMaster = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const renderExpiry = value => {
+    if (!value) return '—';
+    const date = new Date(value);
+    const isExpired = date < new Date();
+    return <span className={`text-xs ${isExpired ? 'text-red-600 font-semibold' : ''}`}>
+      {date.toLocaleDateString('en-IN')}{isExpired ? ' ⚠' : ''}
+    </span>;
+  };
+
   const columns = [
     { title: 'Vehicle No.', dataIndex: 'vehicleNumber', width: 130,
-      render: v => <span className="font-mono text-sm font-semibold text-blue-600">{v}</span> },
+      render: value => <span className="font-mono text-sm font-semibold text-blue-600">{value}</span> },
     { title: 'Type', dataIndex: 'vehicleType', width: 110,
-      render: v => <Tag>{v || '—'}</Tag> },
-    { title: 'Ownership', dataIndex: 'ownershipType', width: 100,
-      render: v => <Tag color={v === 'Own' ? 'green' : v === 'Hired' ? 'orange' : 'blue'}>{v || '—'}</Tag> },
-    { title: 'Driver', dataIndex: 'driverName', width: 130 },
-    { title: 'Driver Phone', dataIndex: 'driverMobile', width: 120,
-      render: v => <span className="text-xs">{v || '—'}</span> },
-    { title: 'Capacity', dataIndex: 'capacity', width: 90,
-      render: v => v ? `${v} Ton` : '—' },
-    { title: 'Route', dataIndex: 'assignedRoute', width: 120, render: v => v || '—' },
-    { title: 'Insurance Exp', dataIndex: 'insuranceExpiry', width: 110,
-      render: v => {
-        if (!v) return '—';
-        const d = new Date(v);
-        const isExpired = d < new Date();
-        return <span className={`text-xs ${isExpired ? 'text-red-600 font-semibold' : ''}`}>{d.toLocaleDateString('en-IN')}{isExpired ? ' ⚠' : ''}</span>;
-      }},
-    { title: 'Fitness Exp', dataIndex: 'fitnessExpiry', width: 110,
-      render: v => {
-        if (!v) return '—';
-        const d = new Date(v);
-        const isExpired = d < new Date();
-        return <span className={`text-xs ${isExpired ? 'text-red-600 font-semibold' : ''}`}>{d.toLocaleDateString('en-IN')}{isExpired ? ' ⚠' : ''}</span>;
-      }},
-    { title: 'Status', dataIndex: 'status', width: 80,
-      render: v => <Tag color={v === 'active' ? 'green' : 'default'}>{v || 'active'}</Tag> },
+      render: value => <Tag>{VEHICLE_TYPE_LABELS[value] || value || '—'}</Tag> },
+    { title: 'Make / Model', width: 140,
+      render: (_, record) => [record.make, record.model, record.year].filter(Boolean).join(' ') || '—' },
+    { title: 'Owner', dataIndex: 'ownerName', width: 120, render: value => value || '—' },
+    { title: 'Driver', dataIndex: 'driverName', width: 130, render: value => value || '—' },
+    { title: 'Driver Phone', dataIndex: 'driverPhone', width: 120,
+      render: value => <span className="text-xs">{value || '—'}</span> },
+    { title: 'Capacity', width: 100,
+      render: (_, record) => record.capacity ? `${record.capacity} ${CAPACITY_UNIT_LABELS[record.capacityUnit] || record.capacityUnit || ''}` : '—' },
+    { title: 'Insurance Exp', dataIndex: 'insuranceExpiry', width: 110, render: renderExpiry },
+    { title: 'Fitness Exp', dataIndex: 'fitnessExpiry', width: 110, render: renderExpiry },
+    { title: 'Status', dataIndex: 'isActive', width: 90,
+      render: value => <Tag color={value ? 'green' : 'default'}>{value ? 'Active' : 'Inactive'}</Tag> },
     { title: 'Actions', width: 90,
-      render: (_, r) => (
+      render: (_, record) => (
         <Space size="small">
-          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)} />
+          <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           <DoubleConfirmDelete
             title="Delete Vehicle"
-            recordName={r.vehicleNumber}
-            onConfirm={() => handleDelete(r._id)}
+            recordName={record.vehicleNumber}
+            onConfirm={() => handleDelete(record._id)}
             trigger={<Button type="text" size="small" danger icon={<DeleteOutlined />} />}
           />
         </Space>
@@ -122,59 +136,66 @@ const VehicleMaster = () => {
           <h1 className="text-2xl font-bold text-gray-800">Vehicle Master</h1>
           <p className="text-sm text-gray-500 mt-0.5">Manage vehicles for dispatch — number, driver, capacity, documents</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => { setEditRecord(null); form.resetFields(); setShowForm(true); }}>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => {
+          setEditRecord(null);
+          form.resetFields();
+          form.setFieldsValue({ vehicleType: 'truck', capacityUnit: 'tons', isActive: true });
+          setShowForm(true);
+        }}>
           Add Vehicle
         </Button>
       </div>
 
       <Row gutter={16} className="mb-4">
         <Col span={6}><Card size="small"><Statistic title="Total Vehicles" value={vehicles.length} prefix={<CarOutlined />} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Own" value={vehicles.filter(v => v.ownershipType === 'Own').length} valueStyle={{color:'#52c41a'}} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Hired" value={vehicles.filter(v => v.ownershipType === 'Hired').length} valueStyle={{color:'#fa8c16'}} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Expired Docs" value={vehicles.filter(v => (v.insuranceExpiry && new Date(v.insuranceExpiry) < new Date()) || (v.fitnessExpiry && new Date(v.fitnessExpiry) < new Date())).length} valueStyle={{color:'#f5222d'}} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Active" value={vehicles.filter(vehicle => vehicle.isActive).length} valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Inactive" value={vehicles.filter(vehicle => !vehicle.isActive).length} valueStyle={{ color: '#8c8c8c' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Expired Docs" value={vehicles.filter(vehicle =>
+          (vehicle.insuranceExpiry && new Date(vehicle.insuranceExpiry) < new Date()) ||
+          (vehicle.fitnessExpiry && new Date(vehicle.fitnessExpiry) < new Date())
+        ).length} valueStyle={{ color: '#f5222d' }} /></Card></Col>
       </Row>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="flex gap-3">
-          <Input placeholder="Search vehicle no, driver..." prefix={<SearchOutlined className="text-gray-400" />}
-            value={search} onChange={e => setSearch(e.target.value)} className="w-64" allowClear />
+          <Input placeholder="Search vehicle no, driver, make..." prefix={<SearchOutlined className="text-gray-400" />}
+            value={search} onChange={event => setSearch(event.target.value)} className="w-64" allowClear />
           <Button icon={<ReloadOutlined />} onClick={fetchVehicles}>Refresh</Button>
         </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={vehicles} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1200 }} pagination={{ pageSize: 20 }} />
+          size="middle" scroll={{ x: 1250 }} pagination={{ pageSize: 20 }} />
       </div>
 
-      {/* Add/Edit Modal */}
       <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
         onCancel={() => { setShowForm(false); setEditRecord(null); form.resetFields(); }}
-        onOk={handleSubmit} confirmLoading={formLoading} width={640} destroyOnHidden>
+        onOk={handleSubmit} confirmLoading={formLoading} width={720} destroyOnHidden>
         <Form form={form} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col span={8}><Form.Item name="vehicleNumber" label="Vehicle Number" rules={[{ required: true }]}>
               <Input placeholder="e.g. GJ01AB1234" /></Form.Item></Col>
             <Col span={8}><Form.Item name="vehicleType" label="Vehicle Type" rules={[{ required: true }]}>
-              <Select placeholder="Select type" options={VEHICLE_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
-            <Col span={8}><Form.Item name="ownershipType" label="Ownership">
-              <Select placeholder="Select" options={OWNERSHIP_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
+              <Select placeholder="Select type" options={VEHICLE_TYPES} /></Form.Item></Col>
+            <Col span={8}><Form.Item name="ownerName" label="Owner Name"><Input placeholder="Owner name" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
+            <Col span={8}><Form.Item name="make" label="Make"><Input placeholder="e.g. Tata" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="model" label="Model"><Input placeholder="e.g. Ace" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="year" label="Year"><Input placeholder="e.g. 2024" /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="driverName" label="Driver Name"><Input placeholder="Full name" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="driverMobile" label="Driver Mobile"><Input placeholder="10-digit" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="capacity" label="Capacity (Tons)"><Input type="number" placeholder="e.g. 5" /></Form.Item></Col>
+            <Col span={8}><Form.Item name="driverPhone" label="Driver Phone"><Input placeholder="10-digit number" /></Form.Item></Col>
+            <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>
+            <Col span={4}><Form.Item name="capacityUnit" label="Unit"><Select options={CAPACITY_UNITS} /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="insuranceExpiry" label="Insurance Expiry"><Input type="date" /></Form.Item></Col>
             <Col span={8}><Form.Item name="fitnessExpiry" label="Fitness Expiry"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="pollutionExpiry" label="Pollution Expiry"><Input type="date" /></Form.Item></Col>
-          </Row>
-          <Row gutter={16}>
-            <Col span={8}><Form.Item name="permitExpiry" label="Permit Expiry"><Input type="date" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="assignedRoute" label="Assigned Route"><Input placeholder="Route name" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="status" label="Status" initialValue="active">
-              <Select options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} /></Form.Item></Col>
+            <Col span={8}><Form.Item name="isActive" label="Status">
+              <Select options={[{ value: true, label: 'Active' }, { value: false, label: 'Inactive' }]} /></Form.Item></Col>
           </Row>
           <Form.Item name="remarks" label="Remarks"><Input.TextArea rows={2} placeholder="GPS device, service notes..." /></Form.Item>
         </Form>

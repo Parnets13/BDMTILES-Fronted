@@ -1,7 +1,7 @@
 import api from '../config/api.js';
 
 const reportService = {
-  getDashboard: () => api.get('/reports/dashboard'),
+  getDashboard: (params = {}) => api.get('/reports/dashboard', { params }),
   getSalesReport: (params) => api.get('/reports/sales', { params }),
   getPurchaseReport: (params) => api.get('/reports/purchase', { params }),
   getInventoryReport: (params) => api.get('/reports/inventory', { params }),
@@ -10,6 +10,7 @@ const reportService = {
   getProfitReport: (params) => api.get('/reports/profit', { params }),
   getHRReport: (params) => api.get('/reports/hr', { params }),
   getDealerPerformance: (params) => api.get('/reports/dealer-performance', { params }),
+  getSEPerformance: (params) => api.get('/reports/se-performance', { params }),
   getFinanceSummary: (params) => api.get('/reports/finance-summary', { params }),
 
   // Supplier Schemes

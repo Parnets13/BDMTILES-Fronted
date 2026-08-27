@@ -7,7 +7,7 @@ import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutline
 import crmService from '../../services/crmService.js';
 
 const TYPE_COLORS = {
-  sales_order: 'blue', purchase_order: 'orange', credit_limit: 'red',
+  sales_order: 'blue', quotation: 'cyan', purchase_order: 'orange', credit_limit: 'red',
   rate_override: 'purple', debit_note: 'volcano', credit_note: 'cyan',
   discount: 'geekblue', other: 'default',
 };

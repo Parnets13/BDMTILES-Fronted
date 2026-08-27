@@ -1,178 +1,143 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Switch, Divider
-} from 'antd';
-import { SearchOutlined, ReloadOutlined, PrinterOutlined, CheckOutlined, SwapOutlined, AppstoreOutlined } from '@ant-design/icons';
-import crmService from '../../services/crmService.js';
+import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal } from 'antd';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, CheckOutlined, SwapOutlined, InboxOutlined, CarOutlined } from '@ant-design/icons';
+import api from '../../config/api.js';
 
-const PRIORITY_COLORS = { normal: 'default', urgent: 'red', vip: 'gold' };
+const STATUS_COLORS = { verified: 'geekblue', sorted: 'purple', packed: 'lime', ready_for_dispatch: 'green' };
+const PRIORITY_COLORS = { normal: 'default', urgent: 'orange', vip: 'red' };
 
 const SortingList = () => {
-  const [orders, setOrders] = useState([]);
+  const [pickLists, setPickLists] = useState([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState(undefined);
-  const [groupByRoute, setGroupByRoute] = useState(false);
-  const [sortedIds, setSortedIds] = useState([]);
+  const [packRecord, setPackRecord] = useState(null);
+  const [packForm, setPackForm] = useState({ totalBoxes: 0, totalWeight: 0, deliveryRoute: '' });
+  const [saving, setSaving] = useState(false);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
-  const fetchOrders = useCallback(async () => {
+  const fetchPickLists = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await crmService.getPendingOrders();
+      const res = await api.get('/pick-lists', {
+        params: {
+          page: pagination.current,
+          limit: pagination.pageSize,
+          search,
+          priority: priorityFilter,
+          status: 'verified,sorted,packed,ready_for_dispatch',
+        },
+      });
       if (res.success) {
-        let data = res.data || [];
-        if (priorityFilter) data = data.filter(o => o.deliveryPriority === priorityFilter);
-        if (search) data = data.filter(o =>
-          (o.orderNumber || '').toLowerCase().includes(search.toLowerCase()) ||
-          (o.dealerName || o.dealer?.businessName || '').toLowerCase().includes(search.toLowerCase())
-        );
-        setOrders(data);
+        setPickLists(res.data || []);
+        setPagination(current => ({ ...current, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
-  }, [priorityFilter, search]);
+  }, [pagination.current, pagination.pageSize, priorityFilter, search]);
 
-  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+  useEffect(() => { fetchPickLists(); }, [fetchPickLists]);
 
-  const handleMarkSorted = (orderId, orderNumber) => {
-    setSortedIds(prev => [...prev, orderId]);
-    message.success(`Order ${orderNumber} marked as sorted`);
+  const handleAction = async (record, action, body = {}) => {
+    try {
+      const res = await api.patch(`/pick-lists/${record._id}/${action}`, body);
+      if (res.success) {
+        message.success(res.message);
+        fetchPickLists();
+      }
+    } catch (err) { message.error(err.message); }
   };
 
-  const getRoute = (order) => order.routeName || order.dealer?.route || order.region || 'Unassigned';
-
-  const groupedOrders = orders.reduce((acc, order) => {
-    const route = getRoute(order);
-    if (!acc[route]) acc[route] = [];
-    acc[route].push(order);
-    return acc;
-  }, {});
-
-  const printSortingSlip = (routeName, routeOrders) => {
-    const win = window.open('', '_blank');
-    win.document.write(`<html><head><title>Sorting Slip - ${routeName}</title>
-    <style>
-      body{font-family:Arial,sans-serif;padding:20px;font-size:12px}
-      h2{margin-bottom:4px}
-      .meta{color:#666;font-size:11px;margin-bottom:16px}
-      table{width:100%;border-collapse:collapse;margin-top:12px}
-      th{background:#f0f0f0;padding:7px 10px;text-align:left;font-size:10px;border-bottom:2px solid #ddd}
-      td{padding:7px 10px;border-bottom:1px solid #f0f0f0;font-size:11px}
-      .footer{margin-top:30px;border-top:1px solid #ccc;padding-top:16px}
-      @media print{body{padding:0}}
-    </style></head><body>
-    <h2>Sorting Slip — Route: ${routeName}</h2>
-    <div class="meta">Date: ${new Date().toLocaleDateString('en-IN')} | Orders: ${routeOrders.length}</div>
-    <table>
-      <thead><tr><th>#</th><th>Order #</th><th>Dealer</th><th>Delivery Address</th><th>Priority</th><th>Amount</th></tr></thead>
-      <tbody>
-        ${routeOrders.map((o, i) => `
-          <tr>
-            <td>${i + 1}</td>
-            <td>${o.orderNumber || '—'}</td>
-            <td>${o.dealerName || o.dealer?.businessName || '—'}</td>
-            <td>${o.deliveryAddress || '—'}</td>
-            <td>${o.deliveryPriority || 'normal'}</td>
-            <td>₹${(o.grandTotal || 0).toLocaleString()}</td>
-          </tr>`).join('')}
-      </tbody>
-    </table>
-    <div class="footer">
-      Sorted by: ___________________________ Date: _______________ Signature: _______________
-    </div>
-    </body></html>`);
-    win.document.close();
-    setTimeout(() => { win.print(); win.close(); }, 400);
+  const openPack = record => {
+    setPackRecord(record);
+    setPackForm({
+      totalBoxes: record.totalBoxes || record.totalPickedQty || 0,
+      totalWeight: record.totalWeight || 0,
+      deliveryRoute: record.deliveryRoute || '',
+    });
   };
 
+  const submitPack = async () => {
+    if (!(Number(packForm.totalBoxes) > 0)) {
+      message.error('Enter the physical number of packed boxes');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.patch(`/pick-lists/${packRecord._id}/pack`, packForm);
+      if (res.success) {
+        message.success(res.message);
+        setPackRecord(null);
+        fetchPickLists();
+      }
+    } catch (err) { message.error(err.message); }
+    finally { setSaving(false); }
+  };
+
+  const printSortingSlip = record => {
+    const popup = window.open('', '_blank');
+    if (!popup) return message.error('Allow pop-ups to print the sorting slip');
+    popup.document.write(`<html><head><title>Sorting Slip - ${record.pickListNumber}</title><style>body{font-family:Arial;padding:20px;font-size:12px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border-bottom:1px solid #ddd;text-align:left}th{background:#f3f4f6}.footer{margin-top:30px}</style></head><body><h2>Sorting Slip — ${record.pickListNumber}</h2><p>Sales Order: ${record.orderNumber} | Dealer: ${record.dealerName || '—'} | Route: ${record.deliveryRoute || 'Unassigned'}</p><table><thead><tr><th>#</th><th>Product</th><th>Shade</th><th>Batch</th><th>Picked</th></tr></thead><tbody>${(record.items || []).map((item, index) => `<tr><td>${index + 1}</td><td>${item.productName || item.productCode}</td><td>${item.shade || '—'}</td><td>${item.batch || '—'}</td><td>${item.pickedQty || 0} ${item.unit || ''}</td></tr>`).join('')}</tbody></table><div class="footer">Sorted by: __________________ Date: __________ Signature: __________</div></body></html>`);
+    popup.document.close();
+    setTimeout(() => { popup.print(); popup.close(); }, 300);
+  };
+
+  const counts = status => pickLists.filter(item => item.status === status).length;
   const columns = [
-    { title: 'Order #', dataIndex: 'orderNumber', width: 120,
-      render: v => <span className="font-mono text-xs text-blue-600 font-medium">{v}</span> },
-    { title: 'Dealer', key: 'dealer', width: 160,
-      render: (_, r) => <div className="text-sm font-medium">{r.dealerName || r.dealer?.businessName || '—'}</div> },
-    { title: 'Route', key: 'route', width: 130,
-      render: (_, r) => <Tag color="blue">{getRoute(r)}</Tag> },
-    { title: 'Delivery Address', dataIndex: 'deliveryAddress', width: 180,
-      render: v => <span className="text-xs text-gray-500">{v || '—'}</span> },
-    { title: 'Priority', dataIndex: 'deliveryPriority', width: 90,
-      render: v => <Tag color={PRIORITY_COLORS[v] || 'default'}>{v || 'normal'}</Tag> },
-    { title: 'Amount', dataIndex: 'grandTotal', width: 110,
-      render: v => <span className="text-sm font-semibold">₹{(v || 0).toLocaleString()}</span> },
-    { title: 'Actions', width: 120,
-      render: (_, r) => (
-        sortedIds.includes(r._id)
-          ? <Tag color="green" icon={<CheckOutlined />}>Sorted</Tag>
-          : <Button size="small" type="primary" ghost onClick={() => handleMarkSorted(r._id, r.orderNumber)}>
-              Mark Sorted
-            </Button>
-      )},
+    { title: 'Pick List #', dataIndex: 'pickListNumber', width: 115, render: value => <span className="font-mono text-xs text-blue-600 font-medium">{value}</span> },
+    { title: 'SO #', dataIndex: 'orderNumber', width: 105, render: value => <span className="font-mono text-xs">{value}</span> },
+    { title: 'Dealer', dataIndex: 'dealerName', width: 160 },
+    { title: 'Route', dataIndex: 'deliveryRoute', width: 130, render: value => value ? <Tag color="blue">{value}</Tag> : <span className="text-gray-400">Unassigned</span> },
+    { title: 'Priority', dataIndex: 'priority', width: 90, render: value => <Tag color={PRIORITY_COLORS[value]}>{value}</Tag> },
+    { title: 'Picked Qty', dataIndex: 'totalPickedQty', width: 90 },
+    { title: 'Boxes', dataIndex: 'totalBoxes', width: 70, render: value => value || '—' },
+    { title: 'Status', dataIndex: 'status', width: 125, render: value => <Tag color={STATUS_COLORS[value]}>{value.replace(/_/g, ' ')}</Tag> },
+    { title: 'Actions', width: 245, render: (_, record) => (
+      <Space size="small" wrap>
+        <Button size="small" icon={<PrinterOutlined />} onClick={() => printSortingSlip(record)}>Slip</Button>
+        {record.status === 'verified' && <Button size="small" type="primary" ghost icon={<CheckOutlined />} onClick={() => handleAction(record, 'sort')}>Mark Sorted</Button>}
+        {record.status === 'sorted' && <Button size="small" type="primary" icon={<InboxOutlined />} onClick={() => openPack(record)}>Pack</Button>}
+        {record.status === 'packed' && <Button size="small" type="primary" icon={<CarOutlined />} onClick={() => handleAction(record, 'ready')}>Ready</Button>}
+        {record.status === 'ready_for_dispatch' && <Tag color="green" icon={<CheckOutlined />}>Dispatch Ready</Tag>}
+      </Space>
+    ) },
   ];
 
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <SwapOutlined className="text-purple-600 text-xl" /> Sorting List
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">Sort picked goods by delivery route before loading</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-gray-500">Group by Route</span>
-          <Switch checked={groupByRoute} onChange={v => setGroupByRoute(v)} />
-          <Button icon={<ReloadOutlined />} onClick={fetchOrders}>Refresh</Button>
-        </div>
+        <div><h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><SwapOutlined className="text-purple-600 text-xl" /> Sorting List</h1><p className="text-sm text-gray-500 mt-0.5">Persist sorting, packing and dispatch-ready handoff for verified pick lists</p></div>
+        <Button icon={<ReloadOutlined />} onClick={fetchPickLists}>Refresh</Button>
       </div>
 
       <Row gutter={16} className="mb-4">
-        <Col span={6}><Card size="small"><Statistic title="Total Orders" value={orders.length} valueStyle={{ color: '#1890ff' }} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Routes" value={Object.keys(groupedOrders).length} valueStyle={{ color: '#722ed1' }} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Sorted" value={sortedIds.length} valueStyle={{ color: '#52c41a' }} /></Card></Col>
-        <Col span={6}><Card size="small"><Statistic title="Pending Sort" value={orders.length - sortedIds.length} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Awaiting Sort" value={counts('verified')} valueStyle={{ color: '#2f54eb' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Sorted" value={counts('sorted')} valueStyle={{ color: '#722ed1' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Packed" value={counts('packed')} valueStyle={{ color: '#a0d911' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Ready for Dispatch" value={counts('ready_for_dispatch')} valueStyle={{ color: '#52c41a' }} /></Card></Col>
       </Row>
 
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex gap-3 flex-wrap">
-          <Input placeholder="Search order or dealer..."
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={search} onChange={e => setSearch(e.target.value)} className="w-56" allowClear />
-          <Select placeholder="Priority" allowClear value={priorityFilter} onChange={v => setPriorityFilter(v)} className="w-32"
-            options={[{ value: 'normal', label: 'Normal' }, { value: 'urgent', label: 'Urgent' }, { value: 'vip', label: 'VIP' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setPriorityFilter(undefined); }}>Reset</Button>
-        </div>
+      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 flex gap-3">
+        <Input placeholder="Search pick list, order or dealer..." prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={event => setSearch(event.target.value)} className="w-64" allowClear />
+        <Select placeholder="Priority" allowClear value={priorityFilter} onChange={setPriorityFilter} className="w-32" options={Object.keys(PRIORITY_COLORS).map(value => ({ value, label: value }))} />
+        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setPriorityFilter(undefined); }}>Reset</Button>
       </div>
 
-      {groupByRoute ? (
-        <div className="space-y-4">
-          {Object.entries(groupedOrders).map(([routeName, routeOrders]) => (
-            <div key={routeName} className="bg-white rounded-lg border border-gray-200">
-              <div className="flex justify-between items-center px-4 py-3 border-b border-gray-100 bg-gray-50 rounded-t-lg">
-                <div className="flex items-center gap-2">
-                  <AppstoreOutlined className="text-purple-600" />
-                  <span className="font-semibold text-gray-700">Route: {routeName}</span>
-                  <Tag color="blue">{routeOrders.length} orders</Tag>
-                </div>
-                <Button size="small" icon={<PrinterOutlined />} onClick={() => printSortingSlip(routeName, routeOrders)}>
-                  Print Slip
-                </Button>
-              </div>
-              <Table columns={columns} dataSource={routeOrders} rowKey="_id" size="small"
-                pagination={false} scroll={{ x: 900 }} />
-            </div>
-          ))}
-          {Object.keys(groupedOrders).length === 0 && !loading && (
-            <div className="bg-white rounded-lg border border-gray-200 p-10 text-center text-gray-400">
-              No pending orders for sorting
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="bg-white rounded-lg border border-gray-200">
-          <Table columns={columns} dataSource={orders} rowKey="_id" loading={loading}
-            size="middle" scroll={{ x: 900 }}
-            pagination={{ pageSize: 20, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }} />
-        </div>
+      <div className="bg-white rounded-lg border border-gray-200">
+        <Table columns={columns} dataSource={pickLists} rowKey="_id" loading={loading} size="middle" scroll={{ x: 1050 }}
+          pagination={{ ...pagination, showSizeChanger: true, showTotal: (total, range) => `${range[0]}-${range[1]} of ${total}` }}
+          onChange={page => setPagination(current => ({ ...current, current: page.current, pageSize: page.pageSize }))}
+          locale={{ emptyText: 'No verified pick lists awaiting sorting' }} />
+      </div>
+
+      {packRecord && (
+        <Modal open title={`Pack ${packRecord.pickListNumber}`} onCancel={() => setPackRecord(null)} onOk={submitPack} confirmLoading={saving} okText="Confirm packing">
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div><label className="text-xs text-gray-500 block mb-1">Physical total boxes *</label><InputNumber min={1} value={packForm.totalBoxes} onChange={value => setPackForm(form => ({ ...form, totalBoxes: value || 0 }))} className="w-full" /></div>
+            <div><label className="text-xs text-gray-500 block mb-1">Total weight (kg)</label><InputNumber min={0} value={packForm.totalWeight} onChange={value => setPackForm(form => ({ ...form, totalWeight: value || 0 }))} className="w-full" /></div>
+            <div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Delivery route</label><Input value={packForm.deliveryRoute} onChange={event => setPackForm(form => ({ ...form, deliveryRoute: event.target.value }))} placeholder="e.g. Hubli-Dharwad" /></div>
+          </div>
+        </Modal>
       )}
     </div>
   );

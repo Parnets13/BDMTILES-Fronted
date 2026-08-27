@@ -1,8 +1,9 @@
 import { useAuth } from '../../context/AuthContext.jsx';
-import { Menu, Bell } from 'lucide-react';
+import { Menu, Bell, Building2 } from 'lucide-react';
 
 const Header = ({ onMenuToggle }) => {
-  const { user } = useAuth();
+  const { user, activeBranchId, setActiveBranch } = useAuth();
+  const branches = user?.assignedBranches || [];
 
   const getInitial = (name) => {
     if (!name) return 'U';
@@ -36,6 +37,30 @@ const Header = ({ onMenuToggle }) => {
             BDM<span className="text-[#FF5F03]">TILES</span>
           </span>
         </div>
+      </div>
+
+      {/* Active business branch */}
+      <div className="flex-1 flex justify-center px-3">
+        {branches.length > 0 ? (
+          <label className="flex items-center gap-2 text-sm text-gray-600 max-w-xs w-full">
+            <Building2 size={17} className="shrink-0 text-[#FF5F03]" />
+            <select
+              aria-label="Active branch"
+              value={activeBranchId}
+              onChange={(event) => setActiveBranch(event.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-[#FF5F03]"
+              disabled={branches.length === 1}
+            >
+              {branches.map((branch) => (
+                <option key={branch._id} value={branch._id}>
+                  {branch.branchCode ? `${branch.branchCode} — ` : ''}{branch.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span className="text-xs text-amber-700">Create or assign a business branch</span>
+        )}
       </div>
 
       {/* Right: Notifications + User Info */}

@@ -12,13 +12,14 @@ import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
 import ProductSelectionModal from '../../components/ProductSelectionModal.jsx';
+import AuthoritativeQuotationModal from './AuthoritativeQuotationModal.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
-  draft: 'default', sent: 'blue', accepted: 'green',
+  draft: 'default', pending_approval: 'orange', approved: 'cyan', sent: 'blue', accepted: 'green',
   converted: 'purple', expired: 'orange', cancelled: 'red',
 };
 
@@ -123,13 +124,13 @@ const QuotationManager = () => {
             <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600"
               onClick={() => setViewRecord(r)} />
           </Tooltip>
-          {r.status === 'draft' && (
+          {['draft', 'approved'].includes(r.status) && (
             <Tooltip title="Mark Sent">
               <Button type="text" size="small" icon={<SendOutlined />} className="text-blue-500"
                 onClick={() => handleStatusChange(r._id, 'sent')} />
             </Tooltip>
           )}
-          {['sent', 'accepted'].includes(r.status) && (
+          {['approved', 'sent', 'accepted'].includes(r.status) && (
             <Tooltip title="Convert to Sales Order">
               <Button type="text" size="small" icon={<SwapOutlined />} className="text-purple-600"
                 onClick={() => handleConvert(r)} />
@@ -156,7 +157,7 @@ const QuotationManager = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Quotation Manager</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Create quotations, send to dealers, convert to Sales Orders</p>
+          <p className="text-sm text-gray-500 mt-0.5">Create quotations for configured Dealer Types or walk-in customers, then convert to Sales Orders</p>
         </div>
         <Space>
           <ModuleRecycleBin module="quotation" title="Deleted Quotations" onRestore={fetchQuotations} />
@@ -203,7 +204,7 @@ const QuotationManager = () => {
       </div>
 
       {/* Create Modal */}
-      <CreateQuotationModal
+      <AuthoritativeQuotationModal
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onSuccess={() => { fetchQuotations(); loadStats(); }}
@@ -225,7 +226,8 @@ const QuotationManager = () => {
 // ═══════════════════════════════════════════════
 // CREATE QUOTATION MODAL
 // ═══════════════════════════════════════════════
-const CreateQuotationModal = ({ open, onClose, onSuccess }) => {
+// Legacy modal retained temporarily for backward-compatible reference; the manager uses AuthoritativeQuotationModal.
+export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [dealers, setDealers] = useState([]);
 

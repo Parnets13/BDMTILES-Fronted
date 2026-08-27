@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, InputNumber, Divider, Form
@@ -10,6 +10,7 @@ import {
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = {
   draft: 'default',
@@ -233,6 +234,8 @@ const PurchaseReturnPage = () => {
 // CREATE RETURN MODAL
 // ════════════════════════════════════════════
 const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
+  const returnSubmissionKey = useRef(createIdempotencyKey());
+  const wasOpenRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [availableGRNs, setAvailableGRNs] = useState([]);
@@ -248,6 +251,11 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
   ]);
 
   useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      returnSubmissionKey.current = createIdempotencyKey();
+    }
+    wasOpenRef.current = open;
+
     if (open) {
       masterService.getWarehouses({ limit: 50 }).then(r => { if (r.success) setWarehouses(r.data); }).catch(() => {});
     }
@@ -316,20 +324,26 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
         ...form,
         items, subtotal, totalTax, grandTotal,
       };
-      const res = await purchaseService.createReturn(payload);
+      const res = await purchaseService.createReturn(payload, returnSubmissionKey.current);
       if (res.success) {
+        returnSubmissionKey.current = createIdempotencyKey();
         message.success(`Debit Note ${res.data.debitNoteNumber} created!`);
-        onSuccess?.(); handleClose();
+        onSuccess?.(); closeAndReset();
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
   };
 
-  const handleClose = () => {
+  const closeAndReset = () => {
     setSelectedSupplier(null); setSelectedGRN(null); setAvailableGRNs([]);
     setForm({ returnDate: new Date().toISOString().split('T')[0], purchaseOrder: '', grn: '', remarks: '' });
     setItems([{ product: '', productName: '', shade: '', batch: '', returnQty: 1, unit: 'Box', rate: 0, gstPercentage: 18, reason: 'quality_issue', reasonDetails: '', warehouse: '' }]);
     onClose();
+  };
+
+  const handleClose = () => {
+    returnSubmissionKey.current = createIdempotencyKey();
+    closeAndReset();
   };
 
   const { subtotal, totalTax, grandTotal } = calcTotals();

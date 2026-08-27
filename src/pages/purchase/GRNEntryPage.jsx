@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, Card, Statistic, InputNumber, Divider, Popconfirm } from 'antd';
 import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadOutlined, AuditOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = {
   draft: 'default', verified: 'orange', approved: 'green', posted: 'blue',
@@ -195,6 +196,7 @@ const GRNEntryPage = () => {
 
 // ===================== CREATE GRN (Full-page overlay) =====================
 const CreateGRN = ({ onClose, onSuccess }) => {
+  const grnSubmissionKey = useRef(createIdempotencyKey());
   const [availablePOs, setAvailablePOs] = useState([]);
   const [selectedPO, setSelectedPO] = useState(null);
   const [items, setItems] = useState([]);
@@ -275,14 +277,20 @@ const CreateGRN = ({ onClose, onSuccess }) => {
           shade: i.shade, batch: i.batch, warehouse: i.warehouse, rack: i.rack,
         })),
       };
-      const res = await purchaseService.createGRN(payload);
+      const res = await purchaseService.createGRN(payload, grnSubmissionKey.current);
       if (res.success) {
+        grnSubmissionKey.current = createIdempotencyKey();
         message.success(`GRN ${res.data.grnNumber || ''} created!`);
         onSuccess?.();
         onClose();
       }
     } catch (err) { message.error(err.message || 'Failed to create GRN'); }
     finally { setLoading(false); }
+  };
+
+  const handleCancelCreateGRN = () => {
+    grnSubmissionKey.current = createIdempotencyKey();
+    onClose();
   };
 
   const columns = [
@@ -307,7 +315,7 @@ const CreateGRN = ({ onClose, onSuccess }) => {
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/40" onClick={handleCancelCreateGRN} />
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
           {/* Header */}
@@ -315,7 +323,7 @@ const CreateGRN = ({ onClose, onSuccess }) => {
             <h2 className="text-xl font-bold text-gray-800">New Goods Receipt Note</h2>
             <div className="flex gap-2">
               <Button type="primary" onClick={handleSubmit} loading={loading}>Save GRN</Button>
-              <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl px-1 ml-2" onClick={onClose}>✕</span>
+              <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl px-1 ml-2" onClick={handleCancelCreateGRN}>✕</span>
             </div>
           </div>
 

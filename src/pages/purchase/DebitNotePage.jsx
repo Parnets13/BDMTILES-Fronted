@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
 import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, FileExclamationOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = { draft: 'default', approved: 'blue', stock_deducted: 'cyan', debit_issued: 'green', cancelled: 'red' };
 const REASON_LABELS = { damaged_on_receipt: 'Damaged on Receipt', wrong_product: 'Wrong Product', quality_issue: 'Quality Issue', excess_supply: 'Excess Supply', defective: 'Defective', other: 'Other' };
 
 const DebitNotePage = () => {
+  const returnSubmissionKey = useRef(createIdempotencyKey());
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -110,8 +112,9 @@ const DebitNotePage = () => {
           warehouse: i.warehouse || undefined,
         })),
       };
-      const res = await purchaseService.createReturn(payload);
+      const res = await purchaseService.createReturn(payload, returnSubmissionKey.current);
       if (res.success) {
+        returnSubmissionKey.current = createIdempotencyKey();
         message.success(`Debit Note ${res.data.debitNoteNumber} created!`);
         setShowCreate(false);
         resetForm();
@@ -139,6 +142,18 @@ const DebitNotePage = () => {
   const resetForm = () => {
     setSelectedSupplier(null); setSelectedGRN(null); setReturnItems([]);
     setSupplierGRNs([]); setRemarks('');
+  };
+
+  const startNewDebitNote = () => {
+    returnSubmissionKey.current = createIdempotencyKey();
+    resetForm();
+    setShowCreate(true);
+  };
+
+  const cancelNewDebitNote = () => {
+    returnSubmissionKey.current = createIdempotencyKey();
+    setShowCreate(false);
+    resetForm();
   };
 
   const columns = [
@@ -192,7 +207,7 @@ const DebitNotePage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Debit Notes (Purchase Returns)</h1><p className="text-sm text-gray-500 mt-0.5">Return goods to suppliers and issue debit notes</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Debit Note</Button>
+        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={startNewDebitNote}>New Debit Note</Button>
       </div>
 
       {/* Stats */}
@@ -224,7 +239,7 @@ const DebitNotePage = () => {
       </div>
 
       {/* Create Modal */}
-      <Modal title="New Debit Note (Purchase Return)" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
+      <Modal title="New Debit Note (Purchase Return)" open={showCreate} onCancel={cancelNewDebitNote}
         width={1050} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Supplier */}
@@ -267,7 +282,7 @@ const DebitNotePage = () => {
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
+            <Button onClick={cancelNewDebitNote}>Cancel</Button>
             <Button type="primary" onClick={handleCreateReturn} loading={createLoading}>Create Debit Note</Button>
           </div>
         </div>

@@ -1,11 +1,14 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
-import { Spin } from 'antd';
+import { Spin, Result } from 'antd';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
 
 // Pages
 import Login from './pages/auth/Login.jsx';
+import ChangePassword from './pages/auth/ChangePassword.jsx';
+import ForgotPassword from './pages/auth/ForgotPassword.jsx';
+import ResetPassword from './pages/auth/ResetPassword.jsx';
 import UserManagement from './pages/system/UserManagement.jsx';
 import RecycleBin from './pages/system/RecycleBin.jsx';
 import CustomerMaster from './pages/masters/CustomerMaster.jsx';
@@ -20,6 +23,7 @@ import RegionPage from './pages/masters/RegionPage.jsx';
 import RoutePage from './pages/masters/RoutePage.jsx';
 import SupplierMaster from './pages/masters/SupplierMaster.jsx';
 import WarehousePage from './pages/masters/WarehousePage.jsx';
+import BranchPage from './pages/masters/BranchPage.jsx';
 import ExpenseCategoryPage from './pages/masters/ExpenseCategoryPage.jsx';
 import SalesOrderDashboard from './pages/sales/SalesOrderDashboard.jsx';
 import SalesReturnPage from './pages/sales/SalesReturnPage.jsx';
@@ -165,8 +169,18 @@ const PlaceholderPage = ({ title }) => (
   </div>
 );
 
+const UnauthorizedPage = () => (
+  <div className="bg-white rounded-xl shadow-sm border border-gray-200">
+    <Result
+      status="403"
+      title="Access denied"
+      subTitle="Your account does not have permission to access this page."
+    />
+  </div>
+);
+
 const App = () => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, branchEpoch, user } = useAuth();
 
   if (loading) {
     return (
@@ -181,16 +195,31 @@ const App = () => {
     return (
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
         <Route path="*" element={<Navigate to="/login" replace />} />
+      </Routes>
+    );
+  }
+
+  if (user?.mustChangePassword) {
+    return (
+      <Routes>
+        <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="*" element={<Navigate to="/change-password" replace />} />
       </Routes>
     );
   }
 
   // Authenticated — show app with layout
   return (
-    <AppLayout>
+    <AppLayout key={branchEpoch}>
       <Routes>
         <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
+        <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
         {/* Dashboard */}
         <Route path="/dashboard"
@@ -219,7 +248,7 @@ const App = () => {
         <Route
           path="/masters/price-list"
           element={
-            <ProtectedRoute requiredPermission="product.master">
+            <ProtectedRoute requiredPermission="price.list">
               <PriceListPage />
             </ProtectedRoute>
           }
@@ -281,6 +310,14 @@ const App = () => {
           }
         />
         <Route
+          path="/masters/branch-master"
+          element={
+            <ProtectedRoute requiredPermission="branch.master">
+              <BranchPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/masters/warehouse-master"
           element={
             <ProtectedRoute requiredPermission="warehouse.master">
@@ -304,7 +341,8 @@ const App = () => {
             </ProtectedRoute>
           }
         />
-        <Route path="/masters/customers" element={<ProtectedRoute requiredPermission="dealer.master"><CustomerMaster /></ProtectedRoute>} />
+        <Route path="/masters/customers" element={<ProtectedRoute requiredPermission="customer.master"><CustomerMaster /></ProtectedRoute>} />
+        <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
 
         {/* Sales & Purchase */}
         <Route
@@ -560,8 +598,8 @@ const App = () => {
         <Route path="/inventory/samples" element={<ProtectedRoute requiredPermission="stock.view"><SampleManagement /></ProtectedRoute>} />
 
         {/* Warehouse Operations — handled by new pages below */}
-        <Route path="/warehouse/sorting-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><SortingList /></ProtectedRoute>} />
-        <Route path="/warehouse/loading-verification" element={<ProtectedRoute requiredPermission="warehouse.manager"><LoadingVerification /></ProtectedRoute>} />
+        <Route path="/warehouse/sorting-list" element={<ProtectedRoute requiredPermission="sorting.management"><SortingList /></ProtectedRoute>} />
+        <Route path="/warehouse/loading-verification" element={<ProtectedRoute requiredPermission="dispatch.management"><LoadingVerification /></ProtectedRoute>} />
 
         {/* Dispatch & Delivery */}
         <Route path="/dispatch/delivery-assignment" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryAssignment /></ProtectedRoute>} />
@@ -598,40 +636,39 @@ const App = () => {
         <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="sales.order.create"><QuotationManager /></ProtectedRoute>} />
         <Route path="/sales-purchase/invoices" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><InvoiceManager /></ProtectedRoute>} />
         <Route path="/inventory/stock-transfers" element={<ProtectedRoute requiredPermission="stock.transfer"><StockTransferPage /></ProtectedRoute>} />
-        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="warehouse.manager"><PickingListPage /></ProtectedRoute>} />
-        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="warehouse.manager"><DispatchPlanningPage /></ProtectedRoute>} />
-        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredPermission="dispatch.management"><DeliveryTrackingPage /></ProtectedRoute>} />
+        <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="picking.management"><PickingListPage /></ProtectedRoute>} />
+        <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="dispatch.management"><DispatchPlanningPage /></ProtectedRoute>} />
+        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredAnyPermissions={['delivery.management', 'delivery.tracking']}><DeliveryTrackingPage /></ProtectedRoute>} />
         <Route path="/sales-purchase/supplier-schemes" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><SupplierSchemePage /></ProtectedRoute>} />
         <Route path="/finance/bank-reconciliation" element={<ProtectedRoute requiredPermission="reconciliation"><BankReconciliationPage /></ProtectedRoute>} />
-        <Route path="/reports/advanced" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><AdvancedReportsPage /></ProtectedRoute>} />
+        <Route path="/reports/advanced" element={<ProtectedRoute requiredPermission="reports.profit"><AdvancedReportsPage /></ProtectedRoute>} />
         <Route path="/inventory/barcode-labels" element={<ProtectedRoute requiredPermission="stock.view"><BarcodeLabelPage /></ProtectedRoute>} />
         <Route path="/tools/tile-calculator" element={<ProtectedRoute requiredPermission="dashboard.view"><TileCalculatorPage /></ProtectedRoute>} />
-        <Route path="/system/tasks" element={<ProtectedRoute requiredPermission="dashboard.view"><TaskManagementPage /></ProtectedRoute>} />
-        <Route path="/system/documents" element={<ProtectedRoute requiredPermission="dashboard.view"><DocumentManagementPage /></ProtectedRoute>} />
+        <Route path="/system/tasks" element={<ProtectedRoute requiredPermission="task.management"><TaskManagementPage /></ProtectedRoute>} />
+        <Route path="/system/documents" element={<ProtectedRoute requiredPermission="document.management"><DocumentManagementPage /></ProtectedRoute>} />
         <Route path="/system/notifications" element={<ProtectedRoute requiredPermission="system.management"><NotificationTemplatePage /></ProtectedRoute>} />
         <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredPermission="po.management"><PurchaseRequisition /></ProtectedRoute>} />
-        <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
 
         {/* Reports — additional */}
-        <Route path="/reports/sales-reports" element={<ProtectedRoute requiredPermission="reports.management"><SalesReports /></ProtectedRoute>} />
-        <Route path="/reports/purchase-reports" element={<ProtectedRoute requiredPermission="reports.management"><PurchaseReports /></ProtectedRoute>} />
-        <Route path="/reports/inventory-reports" element={<ProtectedRoute requiredPermission="reports.management"><InventoryReports /></ProtectedRoute>} />
-        <Route path="/reports/hr-reports" element={<ProtectedRoute requiredPermission="reports.management"><HRReports /></ProtectedRoute>} />
-        <Route path="/reports/se-performance" element={<ProtectedRoute requiredPermission="reports.management"><SEPerformance /></ProtectedRoute>} />
-        <Route path="/reports/cash-flow" element={<ProtectedRoute requiredPermission="balance.sheet"><FinanceStatements /></ProtectedRoute>} />
-        <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="balance.sheet"><PlaceholderPage title="Bank Reconciliation" /></ProtectedRoute>} />
-        <Route path="/reports/gst-reports" element={<ProtectedRoute requiredPermission="reports.management"><GSTReports /></ProtectedRoute>} />
-        <Route path="/reports/aging-report" element={<ProtectedRoute requiredPermission="reports.management"><AgingReport /></ProtectedRoute>} />
-        <Route path="/reports/audit-trail" element={<ProtectedRoute requiredPermission="balance.sheet"><ActivityLogs /></ProtectedRoute>} />
+        <Route path="/reports/sales-reports" element={<ProtectedRoute requiredPermission="reports.sales"><SalesReports /></ProtectedRoute>} />
+        <Route path="/reports/purchase-reports" element={<ProtectedRoute requiredPermission="reports.purchase"><PurchaseReports /></ProtectedRoute>} />
+        <Route path="/reports/inventory-reports" element={<ProtectedRoute requiredPermission="reports.inventory"><InventoryReports /></ProtectedRoute>} />
+        <Route path="/reports/hr-reports" element={<ProtectedRoute requiredPermission="reports.hr"><HRReports /></ProtectedRoute>} />
+        <Route path="/reports/se-performance" element={<ProtectedRoute requiredPermission="reports.sales"><SEPerformance /></ProtectedRoute>} />
+        <Route path="/reports/cash-flow" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
+        <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="reports.finance"><PlaceholderPage title="Bank Reconciliation" /></ProtectedRoute>} />
+        <Route path="/reports/gst-reports" element={<ProtectedRoute requiredPermission="reports.gst"><GSTReports /></ProtectedRoute>} />
+        <Route path="/reports/aging-report" element={<ProtectedRoute requiredPermission="reports.finance"><AgingReport /></ProtectedRoute>} />
+        <Route path="/reports/audit-trail" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs /></ProtectedRoute>} />
         <Route path="/reports/activity-logs" element={<ProtectedRoute requiredPermission="activity.logs"><ActivityLogs /></ProtectedRoute>} />
         <Route path="/reports/download-logs" element={<ProtectedRoute requiredPermission="download.logs"><ActivityLogs /></ProtectedRoute>} />
-        <Route path="/reports/dealer-performance" element={<ProtectedRoute requiredPermission="dealer.performance"><DealerPerformance /></ProtectedRoute>} />
-        <Route path="/reports/balance-sheet" element={<ProtectedRoute requiredPermission="balance.sheet"><FinanceStatements /></ProtectedRoute>} />
-        <Route path="/reports/trial-balance" element={<ProtectedRoute requiredPermission="balance.sheet"><FinanceStatements /></ProtectedRoute>} />
-        <Route path="/reports/profit-loss" element={<ProtectedRoute requiredPermission="balance.sheet"><FinanceStatements /></ProtectedRoute>} />
-        <Route path="/reports/profit-analysis/bill-wise-profit" element={<ProtectedRoute requiredPermission="bill.wise.profit"><BillWiseProfit /></ProtectedRoute>} />
-        <Route path="/reports/profit-analysis/category-margin" element={<ProtectedRoute requiredPermission="category.product.gross.margin"><BillWiseProfit /></ProtectedRoute>} />
-        <Route path="/reports/profit-analysis/deviation-report" element={<ProtectedRoute requiredPermission="sale.vs.purchase.price.deviation"><BillWiseProfit /></ProtectedRoute>} />
+        <Route path="/reports/dealer-performance" element={<ProtectedRoute requiredPermission="reports.sales"><DealerPerformance /></ProtectedRoute>} />
+        <Route path="/reports/balance-sheet" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
+        <Route path="/reports/trial-balance" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
+        <Route path="/reports/profit-loss" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
+        <Route path="/reports/profit-analysis/bill-wise-profit" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
+        <Route path="/reports/profit-analysis/category-margin" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
+        <Route path="/reports/profit-analysis/deviation-report" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
 
         {/* Tally Integration */}
         <Route path="/tally/dashboard" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
@@ -639,7 +676,7 @@ const App = () => {
         <Route path="/tally/conflict-resolver" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
 
         {/* Approval Workflow */}
-        <Route path="/approvals" element={<ProtectedRoute requiredPermission="dashboard.view"><ApprovalWorkflow /></ProtectedRoute>} />
+        <Route path="/approvals" element={<ProtectedRoute requiredAnyPermissions={['sales.order.approve', 'po.management', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management']}><ApprovalWorkflow /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

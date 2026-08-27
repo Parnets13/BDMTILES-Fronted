@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Checkbox } from 'antd';
 import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, ExclamationCircleOutlined, WalletOutlined, RiseOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = { pending: 'orange', confirmed: 'green', bounced: 'red', cancelled: 'default' };
 const MODE_COLORS = { cash: 'green', cheque: 'blue', upi: 'purple', neft: 'cyan', rtgs: 'geekblue', card: 'magenta', adjustment: 'default' };
 
 const DealerPaymentsPage = () => {
+  const paymentSubmissionKey = useRef(createIdempotencyKey());
   const [payments, setPayments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -112,8 +114,9 @@ const DealerPaymentsPage = () => {
           order: a.order, orderModel: 'SalesOrder', orderNumber: a.orderNumber, allocatedAmount: a.allocatedAmount,
         })),
       };
-      const res = await salesService.createPayment(payload);
+      const res = await salesService.createPayment(payload, paymentSubmissionKey.current);
       if (res.success) {
+        paymentSubmissionKey.current = createIdempotencyKey();
         message.success(`Payment ${res.data.paymentNumber} recorded!`);
         setShowCreate(false);
         resetForm();
@@ -150,6 +153,18 @@ const DealerPaymentsPage = () => {
     setPaymentForm({ amount: 0, paymentMode: 'cash', bankName: '', chequeNumber: '', chequeDate: '', transactionRef: '', remarks: '' });
   };
 
+  const startNewPayment = () => {
+    paymentSubmissionKey.current = createIdempotencyKey();
+    resetForm();
+    setShowCreate(true);
+  };
+
+  const cancelNewPayment = () => {
+    paymentSubmissionKey.current = createIdempotencyKey();
+    setShowCreate(false);
+    resetForm();
+  };
+
   const columns = [
     { title: 'Receipt #', dataIndex: 'paymentNumber', width: 110, render: v => <span className="text-xs font-mono text-green-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'paymentDate', width: 95, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
@@ -181,7 +196,7 @@ const DealerPaymentsPage = () => {
         <div><h1 className="text-2xl font-bold text-gray-800">Dealer Payments</h1><p className="text-sm text-gray-500 mt-0.5">Record and track dealer payment receipts</p></div>
         <Space>
           <ModuleRecycleBin module="payment" title="Deleted Payments" onRestore={fetchPayments} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Record Payment</Button>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={startNewPayment}>Record Payment</Button>
         </Space>
       </div>
 
@@ -216,7 +231,7 @@ const DealerPaymentsPage = () => {
       </div>
 
       {/* Create Payment Modal */}
-      <Modal title="Record Dealer Payment" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
+      <Modal title="Record Dealer Payment" open={showCreate} onCancel={cancelNewPayment}
         width={900} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Dealer Search */}
@@ -309,7 +324,7 @@ const DealerPaymentsPage = () => {
               <div><label className="text-xs text-gray-500 block mb-1">Remarks</label><Input value={paymentForm.remarks} onChange={e => setPaymentForm(p => ({ ...p, remarks: e.target.value }))} placeholder="Payment remarks..." /></div>
 
               <div className="flex justify-end gap-2 pt-3 border-t">
-                <Button onClick={() => { setShowCreate(false); resetForm(); }}>Cancel</Button>
+                <Button onClick={cancelNewPayment}>Cancel</Button>
                 <Button type="primary" onClick={handleCreatePayment} loading={createLoading}>Record Payment</Button>
               </div>
             </>

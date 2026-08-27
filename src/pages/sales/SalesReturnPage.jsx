@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
 import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = { draft: 'default', approved: 'blue', stock_updated: 'cyan', credit_issued: 'green', cancelled: 'red' };
 const REASON_LABELS = { damaged: 'Damaged', wrong_product: 'Wrong Product', quality_issue: 'Quality Issue', excess: 'Excess', shade_mismatch: 'Shade Mismatch', other: 'Other' };
 const CONDITION_COLORS = { resaleable: 'green', damaged: 'red', scrap: 'volcano' };
 
 const SalesReturnPage = () => {
+  const returnSubmissionKey = useRef(createIdempotencyKey());
   const [returns, setReturns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -126,8 +128,9 @@ const SalesReturnPage = () => {
           condition: i.condition, warehouse: i.warehouse || undefined,
         })),
       };
-      const res = await salesService.createReturn(payload);
+      const res = await salesService.createReturn(payload, returnSubmissionKey.current);
       if (res.success) {
+        returnSubmissionKey.current = createIdempotencyKey();
         message.success(`Return ${res.data.returnNumber} created!`);
         setShowCreate(false);
         resetCreateForm();
@@ -155,6 +158,18 @@ const SalesReturnPage = () => {
   const resetCreateForm = () => {
     setSelectedDealer(null); setSelectedOrder(null); setReturnItems([]);
     setDealerOrders([]); setRemarks(''); setAdjustmentType('credit_note');
+  };
+
+  const startNewReturn = () => {
+    returnSubmissionKey.current = createIdempotencyKey();
+    resetCreateForm();
+    setShowCreate(true);
+  };
+
+  const cancelNewReturn = () => {
+    returnSubmissionKey.current = createIdempotencyKey();
+    setShowCreate(false);
+    resetCreateForm();
   };
 
   const columns = [
@@ -218,7 +233,7 @@ const SalesReturnPage = () => {
         <div><h1 className="text-2xl font-bold text-gray-800">Sales Returns & Credit Notes</h1><p className="text-sm text-gray-500 mt-0.5">Handle product returns and issue credit notes</p></div>
         <Space>
           <ModuleRecycleBin module="sales_return" title="Deleted Sales Returns" onRestore={fetchReturns} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Sales Return</Button>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={startNewReturn}>New Sales Return</Button>
         </Space>
       </div>
 
@@ -251,7 +266,7 @@ const SalesReturnPage = () => {
       </div>
 
       {/* Create Return Modal */}
-      <Modal title="New Sales Return" open={showCreate} onCancel={() => { setShowCreate(false); resetCreateForm(); }}
+      <Modal title="New Sales Return" open={showCreate} onCancel={cancelNewReturn}
         width={1100} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           {/* Dealer Search */}
@@ -316,7 +331,7 @@ const SalesReturnPage = () => {
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t">
-            <Button onClick={() => { setShowCreate(false); resetCreateForm(); }}>Cancel</Button>
+            <Button onClick={cancelNewReturn}>Cancel</Button>
             <Button type="primary" onClick={handleCreateReturn} loading={createLoading}>Create Sales Return</Button>
           </div>
         </div>

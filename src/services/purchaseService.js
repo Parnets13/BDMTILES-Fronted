@@ -1,4 +1,4 @@
-import api from '../config/api.js';
+import api, { createIdempotencyKey } from '../config/api.js';
 
 const purchaseService = {
   // Purchase Orders
@@ -13,7 +13,7 @@ const purchaseService = {
   // GRN
   getGRNs: (params) => api.get('/purchase/grn', { params }),
   getGRN: (id) => api.get(`/purchase/grn/${id}`),
-  createGRN: (data) => api.post('/purchase/grn', data),
+  createGRN: (data, idempotencyKey = createIdempotencyKey()) => api.post('/purchase/grn', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
   approveGRN: (id) => api.patch(`/purchase/grn/${id}/approve`),
   getAvailablePOs: () => api.get('/purchase/grn/available-pos'),
 
@@ -35,7 +35,7 @@ const purchaseService = {
   // Purchase Returns (Debit Notes)
   getReturns: (params) => api.get('/purchase-returns', { params }),
   getReturn: (id) => api.get(`/purchase-returns/${id}`),
-  createReturn: (data) => api.post('/purchase-returns', data),
+  createReturn: (data, idempotencyKey = createIdempotencyKey()) => api.post('/purchase-returns', data, { headers: { 'Idempotency-Key': idempotencyKey } }),
   approveReturn: (id, data) => api.patch(`/purchase-returns/${id}/approve`, data),
   cancelReturn: (id) => api.patch(`/purchase-returns/${id}/cancel`),
   getReturnStats: () => api.get('/purchase-returns/stats'),

@@ -1,7 +1,4 @@
 import api from '../config/api.js';
-import axios from 'axios';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api/v1';
 
 const productService = {
   getProducts: (params) => api.get('/products', { params }),
@@ -12,19 +9,11 @@ const productService = {
   getStats: () => api.get('/products/stats'),
   getFilterOptions: () => api.get('/products/filter-options'),
 
-  // Upload images — uses FormData (multipart)
-  uploadImages: async (files) => {
+  // Shared API client removes the JSON content type so the browser can add the multipart boundary.
+  uploadImages: (files) => {
     const formData = new FormData();
-    files.forEach(file => formData.append('images', file));
-
-    const token = localStorage.getItem('bdmtiles_token');
-    const res = await axios.post(`${API_BASE}/products/upload-images`, formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    return res.data;
+    files.forEach((file) => formData.append('images', file));
+    return api.post('/products/upload-images', formData);
   },
 
   // Bulk price update — brand/category/product-wise

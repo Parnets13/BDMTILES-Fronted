@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip } from 'antd';
+import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Pagination } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CarOutlined, CheckCircleOutlined, CloseCircleOutlined, RocketOutlined, TruckOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
 
@@ -52,10 +52,9 @@ const DispatchPlanningPage = () => {
       <Space size="small">
         <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(r)} /></Tooltip>
         {r.status === 'planning' && <Tooltip title="Start Loading"><Button type="text" size="small" icon={<TruckOutlined />} className="text-orange-500" onClick={() => handleAction(r._id, 'start-loading')} /></Tooltip>}
-        {r.status === 'loading' && <Tooltip title="Verify Loading"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-blue-600" onClick={() => handleAction(r._id, 'verify-loading')} /></Tooltip>}
-        {['loaded', 'planning', 'loading'].includes(r.status) && <Tooltip title="Dispatch"><Button type="text" size="small" icon={<RocketOutlined />} className="text-indigo-600" onClick={() => handleAction(r._id, 'dispatch')} /></Tooltip>}
-        {r.status === 'dispatched' && <Tooltip title="Complete"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleAction(r._id, 'complete')} /></Tooltip>}
-        {!['completed', 'cancelled'].includes(r.status) && <Tooltip title="Cancel"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleAction(r._id, 'cancel')} /></Tooltip>}
+        {r.status === 'loading' && <Tooltip title="Complete verification in Loading Verification"><Tag color="orange">Awaiting verification</Tag></Tooltip>}
+        {r.status === 'loaded' && <Tooltip title="Dispatch verified trip"><Button type="text" size="small" icon={<RocketOutlined />} className="text-indigo-600" onClick={() => handleAction(r._id, 'dispatch')} /></Tooltip>}
+        {['planning', 'loading', 'loaded'].includes(r.status) && <Tooltip title="Cancel before dispatch"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleAction(r._id, 'cancel')} /></Tooltip>}
       </Space>
     )},
   ];
@@ -137,12 +136,23 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
   const [vehicles, setVehicles] = useState([]);
   const [form, setForm] = useState({ vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
   const [selectedOrders, setSelectedOrders] = useState([]);
+  const [readySearch, setReadySearch] = useState('');
+  const [readyPagination, setReadyPagination] = useState({ current: 1, pageSize: 10, total: 0 });
 
   useEffect(() => {
-    if (open) {
-      api.get('/dispatch-trips/ready-orders').then(r => { if (r.success) setReadyOrders(r.data || []); }).catch(() => {});
-      api.get('/masters/vehicles', { params: { limit: 50 } }).then(r => { if (r.success) setVehicles(r.data || []); }).catch(() => {});
-    }
+    if (!open) return;
+    api.get('/dispatch-trips/ready-orders', {
+      params: { page: readyPagination.current, limit: readyPagination.pageSize, search: readySearch },
+    }).then(r => {
+      if (r.success) {
+        setReadyOrders(r.data || []);
+        setReadyPagination(current => ({ ...current, total: r.pagination?.totalItems || 0 }));
+      }
+    }).catch(() => {});
+  }, [open, readyPagination.current, readyPagination.pageSize, readySearch]);
+
+  useEffect(() => {
+    if (open) api.get('/masters/vehicles', { params: { limit: 50 } }).then(r => { if (r.success) setVehicles(r.data || []); }).catch(() => {});
   }, [open]);
 
   const handleSubmit = async () => {
@@ -151,17 +161,10 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
 
     setLoading(true);
     try {
-      const orders = selectedOrders.map(pl => ({
-        salesOrder: pl.salesOrder?._id,
-        orderNumber: pl.orderNumber,
-        dealerName: pl.dealerName,
-        dealerCode: pl.dealerCode,
-        deliveryAddress: pl.deliveryAddress || pl.salesOrder?.deliveryAddress || '',
-        totalBoxes: pl.totalBoxes || pl.totalRequestedQty || 0,
-        pickListNumber: pl.pickListNumber,
-      }));
-
-      const res = await api.post('/dispatch-trips', { ...form, orders });
+      const res = await api.post('/dispatch-trips', {
+        ...form,
+        pickListIds: selectedOrders.map(pickList => pickList._id),
+      });
       if (res.success) { message.success(res.message); onSuccess?.(); handleClose(); }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
@@ -169,7 +172,10 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
 
   const handleClose = () => {
     setForm({ vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
-    setSelectedOrders([]); onClose();
+    setSelectedOrders([]);
+    setReadySearch('');
+    setReadyPagination({ current: 1, pageSize: 10, total: 0 });
+    onClose();
   };
 
   const toggleOrder = (order) => {
@@ -213,7 +219,16 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
 
         {/* Ready Orders */}
         <div>
-          <label className="text-sm font-semibold text-gray-700 block mb-2">Select Orders Ready for Dispatch ({readyOrders.length} available)</label>
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <label className="text-sm font-semibold text-gray-700">Select Orders Ready for Dispatch ({readyPagination.total} available)</label>
+            <Input.Search
+              placeholder="Search pick list, order, dealer or route"
+              value={readySearch}
+              onChange={event => { setReadySearch(event.target.value); setReadyPagination(current => ({ ...current, current: 1 })); }}
+              allowClear
+              className="w-80"
+            />
+          </div>
           {readyOrders.length === 0 ? (
             <div className="text-center text-gray-400 py-6 bg-gray-50 rounded-lg border border-dashed">No orders ready for dispatch. Complete picking & sorting first.</div>
           ) : (
@@ -236,6 +251,19 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
                   </div>
                 );
               })}
+            </div>
+          )}
+          {readyPagination.total > readyPagination.pageSize && (
+            <div className="flex justify-end mt-3">
+              <Pagination
+                size="small"
+                current={readyPagination.current}
+                pageSize={readyPagination.pageSize}
+                total={readyPagination.total}
+                showSizeChanger
+                pageSizeOptions={[10, 20, 50]}
+                onChange={(page, pageSize) => setReadyPagination(current => ({ ...current, current: page, pageSize }))}
+              />
             </div>
           )}
           {selectedOrders.length > 0 && (

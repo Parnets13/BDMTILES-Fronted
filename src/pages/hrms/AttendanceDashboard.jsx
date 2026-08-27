@@ -23,7 +23,7 @@ const AttendanceDashboard = () => {
 
   const fetchEmployeeList = async () => {
     try {
-      const res = await hrmsService.getEmployees({ limit: 200, status: 'active' });
+      const res = await hrmsService.getAllActiveEmployees();
       const data = res.data || [];
       setEmployees(Array.isArray(data) ? data : []);
     } catch {}
@@ -53,12 +53,18 @@ const AttendanceDashboard = () => {
   const handleMarkAttendance = async () => {
     try {
       const values = await markForm.validateFields();
+      const combineDateAndTime = (date, time) => date
+        .hour(time.hour())
+        .minute(time.minute())
+        .second(0)
+        .millisecond(0)
+        .toISOString();
       const payload = {
         employee: values.employeeId,
         date: values.date.format('YYYY-MM-DD'),
         status: values.status,
-        punchIn: values.punchIn ? values.punchIn.format('HH:mm') : null,
-        punchOut: values.punchOut ? values.punchOut.format('HH:mm') : null,
+        punchIn: values.punchIn ? combineDateAndTime(values.date, values.punchIn) : null,
+        punchOut: values.punchOut ? combineDateAndTime(values.date, values.punchOut) : null,
       };
       const res = await hrmsService.markAttendance(payload);
       if (res.success) {
@@ -100,16 +106,15 @@ const AttendanceDashboard = () => {
       ),
     },
     { title: 'Department', key: 'department', width: 120, render: (_, r) => <span className="text-sm">{r.employee?.department || '-'}</span> },
-    { title: 'Punch In', dataIndex: 'punchIn', key: 'punchIn', width: 100, render: v => v ? <span className="text-sm text-green-600 font-medium">{v}</span> : <span className="text-gray-400">—</span> },
-    { title: 'Punch Out', dataIndex: 'punchOut', key: 'punchOut', width: 100, render: v => v ? <span className="text-sm text-red-500 font-medium">{v}</span> : <span className="text-gray-400">—</span> },
+    { title: 'Punch In', dataIndex: 'punchIn', key: 'punchIn', width: 100, render: v => v ? <span className="text-sm text-green-600 font-medium">{dayjs(v).format('HH:mm')}</span> : <span className="text-gray-400">—</span> },
+    { title: 'Punch Out', dataIndex: 'punchOut', key: 'punchOut', width: 100, render: v => v ? <span className="text-sm text-red-500 font-medium">{dayjs(v).format('HH:mm')}</span> : <span className="text-gray-400">—</span> },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 100, render: s => getStatusTag(s) },
     {
       title: 'Total Hours', key: 'hours', width: 100,
       render: (_, r) => {
-        if (r.totalHours) return <span className="text-sm font-medium">{r.totalHours}h</span>;
+        if (Number.isFinite(r.totalHours)) return <span className="text-sm font-medium">{r.totalHours}h</span>;
         if (r.punchIn && r.punchOut) {
-          const diffMs = dayjs(`2024-01-01 ${r.punchOut}`) - dayjs(`2024-01-01 ${r.punchIn}`);
-          const hours = (diffMs / (1000 * 60 * 60)).toFixed(1);
+          const hours = dayjs(r.punchOut).diff(dayjs(r.punchIn), 'hour', true).toFixed(1);
           return <span className="text-sm font-medium">{hours}h</span>;
         }
         return <span className="text-gray-400">—</span>;
