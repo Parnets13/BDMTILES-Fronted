@@ -181,8 +181,13 @@ const ProductMaster = () => {
 
   // View product detail
   const [viewProduct, setViewProduct] = useState(null);
-  const handleViewProduct = (product) => {
-    setViewProduct(product);
+  const handleViewProduct = async (product) => {
+    try {
+      const res = await productService.getProduct(product._id);
+      if (res.success) setViewProduct(res.data);
+    } catch (err) {
+      message.error(err.message || 'Unable to load product details');
+    }
   };
 
   // Get filtered categories/subcategories based on selection (cascading)

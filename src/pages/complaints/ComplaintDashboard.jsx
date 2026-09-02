@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Checkbox
+  Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge
 } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, WarningOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, WarningOutlined, SendOutlined } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
@@ -17,6 +17,7 @@ const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', critic
 const STATUS_COLORS = {
   open: 'red', acknowledged: 'orange', warehouse_pending: 'gold',
   warehouse_verified: 'lime', finance_review: 'geekblue', in_progress: 'blue',
+  refund_pending: 'cyan', replacement_pending: 'purple', return_reversed: 'volcano',
   resolved: 'green', closed: 'default', rejected: 'volcano',
 };
 
@@ -44,10 +45,7 @@ const ComplaintDashboard = () => {
 
   const [viewComplaint, setViewComplaint] = useState(null);
   const [viewLoading, setViewLoading] = useState(false);
-  const [resolveForm, setResolveForm] = useState({
-    action: '', notes: '', closeComplaint: false, creditNoteAmount: 0,
-  });
-  const [resolveLoading, setResolveLoading] = useState(false);
+  const [commandLoading, setCommandLoading] = useState(false);
 
   useEffect(() => {
     crmService.getComplaintStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
@@ -98,7 +96,6 @@ const ComplaintDashboard = () => {
   const openView = async (id) => {
     setViewLoading(true);
     setViewComplaint({ _id: id });
-    setResolveForm({ action: '', notes: '', closeComplaint: false, creditNoteAmount: 0 });
     try {
       const res = await crmService.getComplaint(id);
       if (res.success) setViewComplaint(res.data);
@@ -106,26 +103,17 @@ const ComplaintDashboard = () => {
     finally { setViewLoading(false); }
   };
 
-  const handleResolve = async () => {
-    if (!resolveForm.action) { message.error('Enter action taken'); return; }
-    setResolveLoading(true);
+  const sendToWarehouse = async (complaint) => {
+    setCommandLoading(true);
     try {
-      const res = await crmService.resolveComplaint(viewComplaint._id, resolveForm);
-      if (res.success) {
-        message.success('Resolution added');
-        setResolveForm({ action: '', notes: '', closeComplaint: false, creditNoteAmount: 0 });
-        openView(viewComplaint._id);
-        fetchComplaints();
+      const response = await crmService.sendComplaintToWarehouse(complaint._id);
+      if (response.success) {
+        message.success(response.message || 'Complaint sent to warehouse.');
+        await fetchComplaints();
+        if (viewComplaint?._id === complaint._id) await openView(complaint._id);
       }
-    } catch (err) { message.error(err.message); }
-    finally { setResolveLoading(false); }
-  };
-
-  const handleStatusChange = async (id, status) => {
-    try {
-      const res = await crmService.updateComplaintStatus(id, { status });
-      if (res.success) { message.success('Status updated'); fetchComplaints(); }
-    } catch (err) { message.error(err.message); }
+    } catch (error) { message.error(error.message || 'Unable to send complaint to warehouse.'); }
+    finally { setCommandLoading(false); }
   };
 
   const columns = [
@@ -145,14 +133,16 @@ const ComplaintDashboard = () => {
       render: s => <Tag color={STATUS_COLORS[s] || 'default'}>{s?.replace(/_/g, ' ')}</Tag> },
     { title: 'Assigned', dataIndex: 'assignedToName', width: 110,
       render: v => <span className="text-xs">{v || '—'}</span> },
-    { title: 'Actions', width: 110,
+    { title: 'Actions', width: 160,
       render: (_, r) => (
         <Space size="small">
           <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500"
             onClick={() => openView(r._id)} />
-          <Select size="small" className="w-24" placeholder="Status" value={undefined}
-            onChange={v => handleStatusChange(r._id, v)}
-            options={STATUS_OPTIONS} />
+          {['open', 'acknowledged', 'in_progress'].includes(r.status) && (
+            <Button size="small" icon={<SendOutlined />} loading={commandLoading}
+              disabled={!r.invoice || !(r.products || []).every(item => item.invoiceItem)}
+              onClick={() => sendToWarehouse(r)}>Warehouse</Button>
+          )}
         </Space>
       )},
   ];
@@ -323,8 +313,8 @@ const ComplaintDashboard = () => {
                     {viewComplaint.warehouseVerification.recommendation && (
                       <div className="mt-1 bg-white p-2 rounded border">
                         <span className="text-gray-500 block text-[10px]">Recommendation:</span>
-                        <span className="capitalize">{viewComplaint.warehouseVerification.recommendation.action?.replace(/_/g, ' ')}</span>
-                        {viewComplaint.warehouseVerification.recommendation.amount > 0 && <span className="ml-2 text-blue-600">₹{viewComplaint.warehouseVerification.recommendation.amount.toLocaleString()}</span>}
+                        <span className="capitalize">{String(viewComplaint.warehouseVerification.recommendation).replace(/_/g, ' ')}</span>
+                        {viewComplaint.warehouseVerification.recommendedAmount > 0 && <span className="ml-2 text-blue-600">₹{viewComplaint.warehouseVerification.recommendedAmount.toLocaleString()}</span>}
                       </div>
                     )}
                     {viewComplaint.warehouseVerification.photos?.length > 0 && (
@@ -373,25 +363,20 @@ const ComplaintDashboard = () => {
                 </>
               )}
 
-              <Divider className="my-2">Add Resolution</Divider>
-              <div className="space-y-2">
-                <div><label className="text-xs text-gray-500 block mb-1">Action Taken *</label>
-                  <Input value={resolveForm.action} onChange={e => setResolveForm(f => ({ ...f, action: e.target.value }))} placeholder="What action was taken?" /></div>
-                <div><label className="text-xs text-gray-500 block mb-1">Notes</label>
-                  <Input.TextArea rows={2} value={resolveForm.notes} onChange={e => setResolveForm(f => ({ ...f, notes: e.target.value }))} /></div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="text-xs text-gray-500 block mb-1">Credit Note Amount (₹)</label>
-                    <Input type="number" value={resolveForm.creditNoteAmount} onChange={e => setResolveForm(f => ({ ...f, creditNoteAmount: parseFloat(e.target.value) || 0 }))} placeholder="0" /></div>
-                  <div className="flex items-center gap-2 pt-5">
-                    <Checkbox checked={resolveForm.closeComplaint} onChange={e => setResolveForm(f => ({ ...f, closeComplaint: e.target.checked }))}>
-                      Close this complaint
-                    </Checkbox>
-                  </div>
+              {viewComplaint.salesReturn && (
+                <div className={`${viewComplaint.salesReturn.status === 'reversed' ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'} border rounded-lg p-3 text-xs`}>
+                  <div className="font-medium">{viewComplaint.salesReturn.status === 'reversed' ? 'Reversed' : 'Posted'} Sales Return {viewComplaint.salesReturn.returnNumber}</div>
+                  <div>{viewComplaint.salesReturn.status?.replace(/_/g, ' ')} · {viewComplaint.salesReturn.adjustmentType?.replace(/_/g, ' ')} · ₹{Number(viewComplaint.salesReturn.grandTotal || 0).toLocaleString('en-IN')}</div>
+                  {viewComplaint.salesReturn.creditNoteNumber && <div>Credit note: {viewComplaint.salesReturn.creditNoteNumber}{viewComplaint.salesReturn.status === 'reversed' ? ' (historical, reversed)' : ''}</div>}
                 </div>
-                <Button type="primary" size="small" loading={resolveLoading} icon={<CheckCircleOutlined />} onClick={handleResolve}>
-                  Submit Resolution
+              )}
+              {['open', 'acknowledged', 'in_progress'].includes(viewComplaint.status) && (
+                <Button icon={<SendOutlined />} loading={commandLoading}
+                  disabled={!viewComplaint.invoice || !(viewComplaint.products || []).every(item => item.invoiceItem)}
+                  onClick={() => sendToWarehouse(viewComplaint)}>
+                  Send to warehouse verification
                 </Button>
-              </div>
+              )}
             </div>
           )}
         </Modal>

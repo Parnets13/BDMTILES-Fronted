@@ -80,6 +80,13 @@ const VoucherEntry = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const openView = async record => {
+    try {
+      const res = await financeService.getVoucher(record._id);
+      if (res.success) setViewVoucher(res.data);
+    } catch (err) { message.error(err.message || 'Unable to load voucher details'); }
+  };
+
   const handleCancel = async (id) => {
     Modal.confirm({
       title: 'Cancel Voucher?', okType: 'danger', okText: 'Cancel Voucher',
@@ -151,7 +158,7 @@ const VoucherEntry = () => {
       render: (_, r) => (
         <Space size="small">
           <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500"
-            onClick={() => setViewVoucher(r)} />
+            onClick={() => openView(r)} />
           {r.status === 'draft' && (
             <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600"
               onClick={() => handlePost(r._id)} />

@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Select, Tag, message,
-  Row, Col, Card, Statistic, Tabs, Divider, Space
+  Row, Col, Card, Statistic, Tabs, Divider, Space, Modal
 } from 'antd';
-import { ReloadOutlined, UserOutlined, BookOutlined, ShoppingOutlined, CreditCardOutlined, WarningOutlined, DollarOutlined, TeamOutlined } from '@ant-design/icons';
+import { ReloadOutlined, UserOutlined, BookOutlined, ShoppingOutlined, CreditCardOutlined, WarningOutlined, DollarOutlined, TeamOutlined, EyeOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import crmService from '../../services/crmService.js';
 import masterService from '../../services/masterService.js';
 import salesService from '../../services/salesService.js';
+import SalesOrderView from '../sales/SalesOrderView.jsx';
+import PaymentDetailModal from '../../components/payments/PaymentDetailModal.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const Customer360 = () => {
   const navigate = useNavigate();
@@ -23,6 +26,9 @@ const Customer360 = () => {
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [complaints, setComplaints] = useState([]);
   const [complaintsLoading, setComplaintsLoading] = useState(false);
+  const [viewOrderId, setViewOrderId] = useState(null);
+  const [viewPayment, setViewPayment] = useState(null);
+  const [viewComplaint, setViewComplaint] = useState(null);
 
   const [orderStats, setOrderStats] = useState({ total: 0, totalAmount: 0, paid: 0, balance: 0, openComplaints: 0 });
 
@@ -99,6 +105,20 @@ const Customer360 = () => {
     }
   };
 
+  const openPayment = async record => {
+    try {
+      const res = await salesService.getPayment(record._id);
+      if (res.success) setViewPayment(res.data);
+    } catch (err) { message.error(err.message || 'Unable to load payment details'); }
+  };
+
+  const openComplaint = async record => {
+    try {
+      const res = await crmService.getComplaint(record._id);
+      if (res.success) setViewComplaint(res.data);
+    } catch (err) { message.error(err.message || 'Unable to load complaint details'); }
+  };
+
   const orderColumns = [
     { title: 'Order #', dataIndex: 'orderNumber', width: 110,
       render: v => <span className="font-mono text-xs text-blue-600 font-medium">{v}</span> },
@@ -111,19 +131,21 @@ const Customer360 = () => {
       render: s => <Tag color="blue">{s?.replace(/_/g, ' ')}</Tag> },
     { title: 'Payment', dataIndex: 'paymentStatus', width: 90,
       render: s => <Tag color={s === 'paid' ? 'green' : s === 'partial' ? 'blue' : 'orange'}>{s}</Tag> },
+    { title: 'Actions', width: 65, render: (_, record) => <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewOrderId(record._id)} /> },
   ];
 
   const paymentColumns = [
-    { title: 'Receipt #', dataIndex: 'receiptNumber', width: 120,
+    { title: 'Receipt #', dataIndex: 'paymentNumber', width: 120,
       render: v => <span className="font-mono text-xs text-green-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'paymentDate', width: 100,
       render: v => <span className="text-xs">{v ? new Date(v).toLocaleDateString('en-IN') : '—'}</span> },
-    { title: 'Method', dataIndex: 'paymentMethod', width: 100,
+    { title: 'Method', dataIndex: 'paymentMode', width: 100,
       render: v => <Tag>{v?.replace(/_/g, ' ')}</Tag> },
     { title: 'Amount', dataIndex: 'amount', width: 110,
       render: v => <span className="font-semibold text-sm text-green-700">₹{(v || 0).toLocaleString()}</span> },
     { title: 'Status', dataIndex: 'status', width: 90,
       render: s => <Tag color={s === 'confirmed' ? 'green' : 'orange'}>{s}</Tag> },
+    { title: 'Actions', width: 65, render: (_, record) => <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openPayment(record)} /> },
   ];
 
   const complaintColumns = [
@@ -137,6 +159,7 @@ const Customer360 = () => {
       render: v => <Tag color={v === 'critical' ? 'red' : v === 'high' ? 'orange' : 'default'}>{v}</Tag> },
     { title: 'Status', dataIndex: 'status', width: 100,
       render: s => <Tag color={s === 'resolved' ? 'green' : s === 'open' ? 'red' : 'blue'}>{s}</Tag> },
+    { title: 'Actions', width: 65, render: (_, record) => <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openComplaint(record)} /> },
   ];
 
   const tabItems = [
@@ -254,6 +277,28 @@ const Customer360 = () => {
           </div>
         </div>
       )}
+
+      {viewOrderId && <SalesOrderView orderId={viewOrderId} onClose={() => setViewOrderId(null)} />}
+      <PaymentDetailModal payment={viewPayment} onClose={() => setViewPayment(null)} />
+      <Modal title={`Complaint ${viewComplaint?.complaintNumber || ''}`} open={!!viewComplaint} onCancel={() => setViewComplaint(null)} width={760} footer={<Button onClick={() => setViewComplaint(null)}>Close</Button>}>
+        {viewComplaint && <div className="space-y-4 mt-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-gray-50 border rounded-lg p-4">
+            <div><div className="text-xs text-gray-400">Dealer</div><b>{viewComplaint.dealerName || viewComplaint.dealer?.businessName || '—'}</b></div>
+            <div><div className="text-xs text-gray-400">Category</div><b className="capitalize">{viewComplaint.category?.replace(/_/g, ' ') || '—'}</b></div>
+            <div><div className="text-xs text-gray-400">Priority</div><Tag color={viewComplaint.priority === 'critical' ? 'red' : viewComplaint.priority === 'high' ? 'orange' : 'default'}>{viewComplaint.priority}</Tag></div>
+            <div><div className="text-xs text-gray-400">Status</div><Tag color={viewComplaint.status === 'resolved' ? 'green' : 'blue'}>{viewComplaint.status}</Tag></div>
+            <div><div className="text-xs text-gray-400">Order</div><b>{viewComplaint.orderNumber || viewComplaint.salesOrder?.orderNumber || '—'}</b></div>
+            <div><div className="text-xs text-gray-400">Invoice</div><b>{viewComplaint.invoiceNumber || viewComplaint.invoice?.invoiceNumber || '—'}</b></div>
+          </div>
+          <div><div className="text-xs text-gray-400">Subject</div><b>{viewComplaint.subject || viewComplaint.title || '—'}</b></div>
+          <div><div className="text-xs text-gray-400">Description</div><div>{viewComplaint.description || '—'}</div></div>
+          {(viewComplaint.resolution || viewComplaint.resolutionRemarks) && <div className="bg-green-50 border border-green-100 rounded p-3"><b>Resolution:</b> {viewComplaint.resolution || viewComplaint.resolutionRemarks}</div>}
+          {(() => {
+            const evidence = [...(viewComplaint.attachments || []), ...(viewComplaint.evidence || [])];
+            return evidence.length > 0 ? <div><div className="text-xs font-semibold text-gray-500 mb-2">Evidence</div><div className="flex flex-wrap gap-2">{evidence.map((entry, index) => <ProductImage key={entry._id || index} src={typeof entry === 'string' ? entry : entry.path || entry.filePath || entry.url} size="xl" />)}</div></div> : null;
+          })()}
+        </div>}
+      </Modal>
     </div>
   );
 };

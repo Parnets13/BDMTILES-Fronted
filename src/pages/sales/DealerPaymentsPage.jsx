@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Checkbox } from 'antd';
-import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, ExclamationCircleOutlined, WalletOutlined, RiseOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, ExclamationCircleOutlined, WalletOutlined, RiseOutlined, EyeOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import PaymentDetailModal from '../../components/payments/PaymentDetailModal.jsx';
 import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = { pending: 'orange', confirmed: 'green', bounced: 'red', cancelled: 'default' };
@@ -20,6 +21,7 @@ const DealerPaymentsPage = () => {
   // Create modal
   const [showCreate, setShowCreate] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
+  const [viewPayment, setViewPayment] = useState(null);
 
   // Dealer search
   const [dealerSearch, setDealerSearch] = useState('');
@@ -33,7 +35,7 @@ const DealerPaymentsPage = () => {
   });
 
   // Allocation
-  const [dealerOrders, setDealerOrders] = useState([]);
+  const [dealerInvoices, setDealerInvoices] = useState([]);
   const [allocations, setAllocations] = useState([]);
 
   useEffect(() => {
@@ -71,10 +73,16 @@ const DealerPaymentsPage = () => {
     setDealerResults([]);
     setAllocations([]);
     try {
-      const res = await salesService.getDealerOrders(dealer._id);
+      const res = await salesService.getDealerInvoices(dealer._id);
       if (res.success) {
-        setDealerOrders(res.data);
-        setAllocations(res.data.map(o => ({ order: o._id, orderNumber: o.orderNumber, balance: o.balanceAmount, allocatedAmount: 0, selected: false })));
+        setDealerInvoices(res.data);
+        setAllocations(res.data.map(invoice => ({
+          order: invoice._id,
+          orderNumber: invoice.invoiceNumber,
+          balance: invoice.balanceAmount,
+          allocatedAmount: 0,
+          selected: false,
+        })));
       }
     } catch (e) { message.error(e.message); }
   };
@@ -96,6 +104,11 @@ const DealerPaymentsPage = () => {
   const handleCreatePayment = async () => {
     if (!selectedDealer) { message.error('Select a dealer'); return; }
     if (!paymentForm.amount || paymentForm.amount <= 0) { message.error('Enter a valid amount'); return; }
+    const allocated = allocations.reduce((sum, allocation) => sum + Number(allocation.allocatedAmount || 0), 0);
+    if (Math.abs(allocated - Number(paymentForm.amount)) > 0.01) {
+      message.error('The full payment amount must be allocated to customer invoices.');
+      return;
+    }
 
     setCreateLoading(true);
     try {
@@ -111,7 +124,7 @@ const DealerPaymentsPage = () => {
         transactionRef: paymentForm.transactionRef,
         remarks: paymentForm.remarks,
         againstOrders: selectedAllocations.map(a => ({
-          order: a.order, orderModel: 'SalesOrder', orderNumber: a.orderNumber, allocatedAmount: a.allocatedAmount,
+          order: a.order, orderModel: 'Invoice', orderNumber: a.orderNumber, allocatedAmount: a.allocatedAmount,
         })),
       };
       const res = await salesService.createPayment(payload, paymentSubmissionKey.current);
@@ -125,6 +138,13 @@ const DealerPaymentsPage = () => {
       }
     } catch (err) { message.error(err.message); }
     finally { setCreateLoading(false); }
+  };
+
+  const openView = async record => {
+    try {
+      const res = await salesService.getPayment(record._id);
+      if (res.success) setViewPayment(res.data);
+    } catch (err) { message.error(err.message || 'Unable to load payment details'); }
   };
 
   const handleConfirm = async (id) => {
@@ -149,7 +169,7 @@ const DealerPaymentsPage = () => {
   };
 
   const resetForm = () => {
-    setSelectedDealer(null); setDealerOrders([]); setAllocations([]);
+    setSelectedDealer(null); setDealerInvoices([]); setAllocations([]);
     setPaymentForm({ amount: 0, paymentMode: 'cash', bankName: '', chequeNumber: '', chequeDate: '', transactionRef: '', remarks: '' });
   };
 
@@ -174,10 +194,11 @@ const DealerPaymentsPage = () => {
     { title: 'Amount', dataIndex: 'amount', width: 100, render: v => <span className="font-semibold text-sm text-green-700">₹{(v || 0).toLocaleString()}</span> },
     { title: 'Mode', dataIndex: 'paymentMode', width: 80, render: v => <Tag color={MODE_COLORS[v]}>{v?.toUpperCase()}</Tag> },
     { title: 'Ref/Cheque', key: 'ref', width: 110, render: (_, r) => <span className="text-xs">{r.chequeNumber || r.transactionRef || '—'}</span> },
-    { title: 'Against', key: 'orders', width: 100, render: (_, r) => <span className="text-xs">{r.againstOrders?.length || 0} order(s)</span> },
+    { title: 'Against', key: 'orders', width: 100, render: (_, r) => <span className="text-xs">{r.againstOrders?.length || 0} invoice(s)</span> },
     { title: 'Status', dataIndex: 'status', width: 90, render: s => <Tag color={STATUS_COLORS[s]}>{s}</Tag> },
     { title: 'Actions', width: 100, render: (_, r) => (
       <Space size="small">
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
         {r.status === 'pending' && (
           <>
             <Tooltip title="Confirm"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleConfirm(r._id)} /></Tooltip>
@@ -229,6 +250,8 @@ const DealerPaymentsPage = () => {
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }}
           onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       </div>
+
+      <PaymentDetailModal payment={viewPayment} onClose={() => setViewPayment(null)} />
 
       {/* Create Payment Modal */}
       <Modal title="Record Dealer Payment" open={showCreate} onCancel={cancelNewPayment}
@@ -291,20 +314,20 @@ const DealerPaymentsPage = () => {
               </div>
 
               {/* Allocation */}
-              {dealerOrders.length > 0 && paymentForm.amount > 0 && (
+              {dealerInvoices.length > 0 && paymentForm.amount > 0 && (
                 <div>
                   <div className="flex justify-between items-center mb-2">
-                    <label className="text-sm font-semibold text-gray-700">Allocate Against Orders</label>
+                    <label className="text-sm font-semibold text-gray-700">Allocate Against Customer Invoices</label>
                     <Button size="small" onClick={autoAllocate}>Auto Allocate</Button>
                   </div>
                   <div className="border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50"><tr><th className="p-2 text-left text-xs">Order</th><th className="p-2 text-left text-xs">Date</th><th className="p-2 text-right text-xs">Balance</th><th className="p-2 text-right text-xs">Allocate</th></tr></thead>
+                      <thead className="bg-gray-50"><tr><th className="p-2 text-left text-xs">Invoice</th><th className="p-2 text-left text-xs">Date</th><th className="p-2 text-right text-xs">Balance</th><th className="p-2 text-right text-xs">Allocate</th></tr></thead>
                       <tbody>
                         {allocations.map((a, idx) => (
                           <tr key={a.order} className="border-t">
                             <td className="p-2 font-mono text-xs text-blue-600">{a.orderNumber}</td>
-                            <td className="p-2 text-xs">{new Date(dealerOrders[idx]?.orderDate).toLocaleDateString('en-IN')}</td>
+                            <td className="p-2 text-xs">{new Date(dealerInvoices[idx]?.invoiceDate).toLocaleDateString('en-IN')}</td>
                             <td className="p-2 text-right text-xs">₹{(a.balance || 0).toLocaleString()}</td>
                             <td className="p-2 text-right"><InputNumber size="small" min={0} max={a.balance} value={a.allocatedAmount} onChange={v => updateAllocation(idx, 'allocatedAmount', v || 0)} className="w-24" /></td>
                           </tr>

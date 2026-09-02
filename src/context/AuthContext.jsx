@@ -5,6 +5,11 @@ const AuthContext = createContext();
 const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
 
 const branchId = (branch) => String(branch?._id || branch || '');
+const LEGACY_PERMISSION_ALIASES = {
+  'lead.management': ['lead.view', 'lead.create', 'lead.update', 'lead.assign', 'lead.app', 'lead.respond', 'lead.followup', 'lead.convert', 'lead.delete'],
+  'cheque.management': ['cheque.view', 'cheque.create', 'cheque.deposit', 'cheque.clear', 'cheque.bounce', 'cheque.return'],
+  'delivery.management': ['delivery.view', 'delivery.execute', 'delivery.verify', 'delivery.complete', 'delivery.fail'],
+};
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -165,10 +170,12 @@ export const AuthProvider = ({ children }) => {
     if (user.role === 'super_admin' || user.role === 'owner') return true;
     const permissions = user.permissions || [];
     const module = permission.split('.')[0];
+    const hasLegacyAlias = Object.entries(LEGACY_PERMISSION_ALIASES)
+      .some(([legacy, aliases]) => permissions.includes(legacy) && aliases.includes(permission));
     return permissions.includes('*')
       || permissions.includes(permission)
       || permissions.includes(`${module}.*`)
-      || permissions.includes(module);
+      || hasLegacyAlias;
   };
 
   const hasAnyPermission = (permissions = []) => permissions.some(hasPermission);

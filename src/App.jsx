@@ -28,11 +28,10 @@ import ExpenseCategoryPage from './pages/masters/ExpenseCategoryPage.jsx';
 import SalesOrderDashboard from './pages/sales/SalesOrderDashboard.jsx';
 import SalesReturnPage from './pages/sales/SalesReturnPage.jsx';
 import DealerPaymentsPage from './pages/sales/DealerPaymentsPage.jsx';
-import DealerInvoicePage from './pages/sales/DealerInvoicePage.jsx';
 import PurchaseOrderPage from './pages/purchase/PurchaseOrderPage.jsx';
 import GRNEntryPage from './pages/purchase/GRNEntryPage.jsx';
-import DebitNotePage from './pages/purchase/DebitNotePage.jsx';
 import PurchaseRequisition from './pages/purchase/PurchaseRequisition.jsx';
+import SupplierQuotationPage from './pages/purchase/SupplierQuotationPage.jsx';
 import SupplierPaymentsPage from './pages/purchase/SupplierPaymentsPage.jsx';
 import SupplierInvoicePage from './pages/purchase/SupplierInvoicePage.jsx';
 import StockPage from './pages/inventory/StockPage.jsx';
@@ -53,6 +52,9 @@ import TileCalculatorPage from './pages/tools/TileCalculatorPage.jsx';
 import TaskManagementPage from './pages/system/TaskManagementPage.jsx';
 import DocumentManagementPage from './pages/system/DocumentManagementPage.jsx';
 import NotificationTemplatePage from './pages/system/NotificationTemplatePage.jsx';
+import NotificationSettingsPage from './pages/system/NotificationSettingsPage.jsx';
+import NotificationInboxPage from './pages/system/NotificationInboxPage.jsx';
+import AccessPolicyPage from './pages/system/AccessPolicyPage.jsx';
 
 // Finance Pages
 import DealerLedger from './pages/finance/DealerLedger.jsx';
@@ -60,7 +62,6 @@ import SupplierLedger from './pages/finance/SupplierLedger.jsx';
 import ChequeManagement from './pages/finance/ChequeManagement.jsx';
 import VoucherEntry from './pages/finance/VoucherEntry.jsx';
 import CashBankBook from './pages/finance/CashBankBook.jsx';
-import PaymentAllocation from './pages/finance/PaymentAllocation.jsx';
 
 // Week 8 — Dispatch, Warehouse, CRM, Complaints, Approvals
 import DispatchPlanning from './pages/dispatch/DispatchPlanning.jsx';
@@ -68,6 +69,7 @@ import PickingList from './pages/warehouse/PickingList.jsx';
 import SortingList from './pages/warehouse/SortingList.jsx';
 import LoadingVerification from './pages/warehouse/LoadingVerification.jsx';
 import LeadManagement from './pages/crm/LeadManagement.jsx';
+import SELeadApp from './pages/crm/SELeadApp.jsx';
 import Customer360 from './pages/crm/Customer360.jsx';
 import ComplaintDashboard from './pages/complaints/ComplaintDashboard.jsx';
 import ApprovalWorkflow from './pages/approvals/ApprovalWorkflow.jsx';
@@ -107,6 +109,7 @@ import FollowUpManager from './pages/crm/FollowUpManager.jsx';
 // Complaints extra
 import ComplaintResolution from './pages/complaints/ComplaintResolution.jsx';
 import ReturnRequest from './pages/complaints/ReturnRequest.jsx';
+import ComplaintWorkflowQueue from './pages/complaints/ComplaintWorkflowQueue.jsx';
 
 // Inventory extra
 import StockAlerts from './pages/inventory/StockAlerts.jsx';
@@ -235,6 +238,10 @@ const App = () => {
           }
         />
         <Route path="/system/recycle-bin" element={<ProtectedRoute requiredPermission="users.manage"><RecycleBin /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute requiredPermission="notification.inbox"><NotificationInboxPage /></ProtectedRoute>} />
+        <Route path="/system/notification-templates" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="notification.manage"><NotificationTemplatePage /></ProtectedRoute>} />
+        <Route path="/system/notification-settings" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="notification.manage"><NotificationSettingsPage /></ProtectedRoute>} />
+        <Route path="/system/access-policies" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="access.policy.manage"><AccessPolicyPage /></ProtectedRoute>} />
 
         {/* Master Management */}
         <Route
@@ -256,7 +263,7 @@ const App = () => {
         <Route
           path="/masters/dealer-product-pricing"
           element={
-            <ProtectedRoute requiredPermission="product.master">
+            <ProtectedRoute requiredPermission="dealer.discounts">
               <DealerProductPricingPage />
             </ProtectedRoute>
           }
@@ -356,7 +363,7 @@ const App = () => {
         <Route
           path="/sales-purchase/discount-mapping"
           element={
-            <ProtectedRoute requiredPermission="product.master">
+            <ProtectedRoute requiredPermission="dealer.discounts">
               <DiscountMappingPage />
             </ProtectedRoute>
           }
@@ -364,7 +371,7 @@ const App = () => {
         <Route
           path="/sales-purchase/po-management"
           element={
-            <ProtectedRoute requiredPermission="po.management">
+            <ProtectedRoute requiredAnyPermissions={['po.management', 'po.approve']}>
               <PurchaseOrderPage />
             </ProtectedRoute>
           }
@@ -377,14 +384,7 @@ const App = () => {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/sales-purchase/dealer-invoice"
-          element={
-            <ProtectedRoute requiredPermission="invoice">
-              <DealerInvoicePage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/sales-purchase/dealer-invoice" element={<Navigate to="/sales-purchase/invoices" replace />} />
         <Route
           path="/sales-purchase/supplier-invoice"
           element={
@@ -409,14 +409,7 @@ const App = () => {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/sales-purchase/debit-note"
-          element={
-            <ProtectedRoute requiredPermission="debit.note">
-              <DebitNotePage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/sales-purchase/debit-note" element={<Navigate to="/sales-purchase/purchase-return" replace />} />
         <Route
           path="/sales-purchase/purchase-return"
           element={
@@ -524,15 +517,14 @@ const App = () => {
         <Route path="/finance/supplier-ledger"
           element={<ProtectedRoute requiredPermission="supplier.ledger"><SupplierLedger /></ProtectedRoute>} />
         <Route path="/finance/cheque-management"
-          element={<ProtectedRoute requiredPermission="cheque.management"><ChequeManagement /></ProtectedRoute>} />
+          element={<ProtectedRoute requiredPermission="cheque.view"><ChequeManagement /></ProtectedRoute>} />
         <Route path="/finance/voucher-entry"
           element={<ProtectedRoute requiredPermission="finance.management"><VoucherEntry /></ProtectedRoute>} />
         <Route path="/finance/bank-account-master"
           element={<ProtectedRoute requiredPermission="finance.management"><BankAccountMaster /></ProtectedRoute>} />
         <Route path="/finance/cash-bank-book"
           element={<ProtectedRoute requiredPermission="finance.management"><CashBankBook /></ProtectedRoute>} />
-        <Route path="/finance/payment-allocation"
-          element={<ProtectedRoute requiredPermission="finance.management"><PaymentAllocation /></ProtectedRoute>} />
+        <Route path="/finance/payment-allocation" element={<Navigate to="/sales-purchase/dealer-payments" replace />} />
         <Route path="/finance/auto-reconciliation"
           element={<ProtectedRoute requiredPermission="reconciliation"><Reconciliation /></ProtectedRoute>} />
         <Route
@@ -609,14 +601,17 @@ const App = () => {
         <Route path="/dispatch/route-optimization" element={<ProtectedRoute requiredPermission="dispatch.management"><PlaceholderPage title="Route Optimization" /></ProtectedRoute>} />
 
         {/* CRM */}
-        <Route path="/crm/lead-management" element={<ProtectedRoute requiredPermission="lead.management"><LeadManagement /></ProtectedRoute>} />
-        <Route path="/crm/followup-manager" element={<ProtectedRoute requiredPermission="lead.management"><FollowUpManager /></ProtectedRoute>} />
-        <Route path="/crm/customer-360" element={<ProtectedRoute requiredPermission="lead.management"><Customer360 /></ProtectedRoute>} />
+        <Route path="/crm/lead-management" element={<ProtectedRoute requiredPermission="lead.view"><LeadManagement /></ProtectedRoute>} />
+        <Route path="/se-app/leads" element={<ProtectedRoute requiredPermission="lead.app"><SELeadApp /></ProtectedRoute>} />
+        <Route path="/crm/followup-manager" element={<ProtectedRoute requiredPermission="lead.followup"><FollowUpManager /></ProtectedRoute>} />
+        <Route path="/crm/customer-360" element={<ProtectedRoute requiredPermission="lead.view"><Customer360 /></ProtectedRoute>} />
 
         {/* Complaints & Returns */}
         <Route path="/complaints/dashboard" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintDashboard /></ProtectedRoute>} />
         <Route path="/complaints/return-request" element={<ProtectedRoute requiredPermission="complaint.management"><ReturnRequest /></ProtectedRoute>} />
-        <Route path="/complaints/resolution" element={<ProtectedRoute requiredPermission="complaint.management"><ComplaintResolution /></ProtectedRoute>} />
+        <Route path="/complaints/warehouse-queue" element={<ProtectedRoute requiredPermission="warehouse.verification"><ComplaintWorkflowQueue mode="warehouse" /></ProtectedRoute>} />
+        <Route path="/complaints/finance-queue" element={<ProtectedRoute requiredPermission="finance.management"><ComplaintWorkflowQueue mode="finance" /></ProtectedRoute>} />
+        <Route path="/complaints/resolution" element={<ProtectedRoute requiredPermission="finance.management"><ComplaintResolution /></ProtectedRoute>} />
 
         {/* Assets */}
         <Route path="/assets/master" element={<ProtectedRoute requiredPermission="asset.management"><AssetMaster /></ProtectedRoute>} />
@@ -633,21 +628,22 @@ const App = () => {
         <Route path="/finance/expense-management" element={<ProtectedRoute requiredPermission="finance.management"><ExpenseManagement /></ProtectedRoute>} />
 
         {/* Sales & Purchase — additional */}
-        <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="sales.order.create"><QuotationManager /></ProtectedRoute>} />
-        <Route path="/sales-purchase/invoices" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><InvoiceManager /></ProtectedRoute>} />
+        <Route path="/sales-purchase/quotation-manager" element={<ProtectedRoute requiredPermission="quotation.management"><QuotationManager /></ProtectedRoute>} />
+        <Route path="/sales-purchase/invoices" element={<ProtectedRoute requiredPermission="invoice"><InvoiceManager /></ProtectedRoute>} />
         <Route path="/inventory/stock-transfers" element={<ProtectedRoute requiredPermission="stock.transfer"><StockTransferPage /></ProtectedRoute>} />
         <Route path="/warehouse/picking-list" element={<ProtectedRoute requiredPermission="picking.management"><PickingListPage /></ProtectedRoute>} />
         <Route path="/warehouse/dispatch-planning" element={<ProtectedRoute requiredPermission="dispatch.management"><DispatchPlanningPage /></ProtectedRoute>} />
-        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredAnyPermissions={['delivery.management', 'delivery.tracking']}><DeliveryTrackingPage /></ProtectedRoute>} />
-        <Route path="/sales-purchase/supplier-schemes" element={<ProtectedRoute requiredPermission="sales.order.dashboard"><SupplierSchemePage /></ProtectedRoute>} />
+        <Route path="/warehouse/delivery-tracking" element={<ProtectedRoute requiredAnyPermissions={['delivery.view', 'delivery.tracking']}><DeliveryTrackingPage /></ProtectedRoute>} />
+        <Route path="/sales-purchase/supplier-schemes" element={<ProtectedRoute requiredPermission="scheme.entry"><SupplierSchemePage /></ProtectedRoute>} />
         <Route path="/finance/bank-reconciliation" element={<ProtectedRoute requiredPermission="reconciliation"><BankReconciliationPage /></ProtectedRoute>} />
         <Route path="/reports/advanced" element={<ProtectedRoute requiredPermission="reports.profit"><AdvancedReportsPage /></ProtectedRoute>} />
         <Route path="/inventory/barcode-labels" element={<ProtectedRoute requiredPermission="stock.view"><BarcodeLabelPage /></ProtectedRoute>} />
         <Route path="/tools/tile-calculator" element={<ProtectedRoute requiredPermission="dashboard.view"><TileCalculatorPage /></ProtectedRoute>} />
         <Route path="/system/tasks" element={<ProtectedRoute requiredPermission="task.management"><TaskManagementPage /></ProtectedRoute>} />
         <Route path="/system/documents" element={<ProtectedRoute requiredPermission="document.management"><DocumentManagementPage /></ProtectedRoute>} />
-        <Route path="/system/notifications" element={<ProtectedRoute requiredPermission="system.management"><NotificationTemplatePage /></ProtectedRoute>} />
-        <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredPermission="po.management"><PurchaseRequisition /></ProtectedRoute>} />
+        <Route path="/system/notifications" element={<Navigate to="/system/notification-templates" replace />} />
+        <Route path="/sales-purchase/purchase-requisition" element={<ProtectedRoute requiredAnyPermissions={['po.management', 'po.approve']}><PurchaseRequisition /></ProtectedRoute>} />
+        <Route path="/sales-purchase/supplier-quotations" element={<ProtectedRoute requiredAnyPermissions={['po.management', 'po.approve']}><SupplierQuotationPage /></ProtectedRoute>} />
 
         {/* Reports — additional */}
         <Route path="/reports/sales-reports" element={<ProtectedRoute requiredPermission="reports.sales"><SalesReports /></ProtectedRoute>} />
@@ -676,7 +672,7 @@ const App = () => {
         <Route path="/tally/conflict-resolver" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
 
         {/* Approval Workflow */}
-        <Route path="/approvals" element={<ProtectedRoute requiredAnyPermissions={['sales.order.approve', 'po.management', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management']}><ApprovalWorkflow /></ProtectedRoute>} />
+        <Route path="/approvals" element={<ProtectedRoute requiredAnyPermissions={['sales.order.approve', 'po.approve', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management']}><ApprovalWorkflow /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="/" element={<Navigate to="/dashboard" replace />} />

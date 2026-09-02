@@ -1,219 +1,110 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Divider, InputNumber, Timeline
-} from 'antd';
-import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, SendOutlined, CheckOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, DatePicker, Input, InputNumber, Modal, Select, Space, Table, Tag, Upload, message } from 'antd';
+import { EyeOutlined, FileAddOutlined, ReloadOutlined, SyncOutlined, UploadOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
-import masterService from '../../services/masterService.js';
 
-const STATUS_COLORS = { active: 'green', expired: 'orange', claimed: 'blue', closed: 'default' };
-
-const emptyForm = () => ({
-  supplier: '', schemeName: '', schemeType: 'quantity_discount',
-  startDate: '', endDate: '', totalTargetValue: 0, remarks: '',
-});
+const money = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const STATUS_COLORS = { submitted: 'blue', approved: 'green', reversed: 'red', superseded: 'default' };
 
 const SupplierClaimManagement = () => {
-  const [schemes, setSchemes] = useState([]);
+  const [rows, setRows] = useState([]);
+  const [status, setStatus] = useState(undefined);
   const [loading, setLoading] = useState(false);
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('active');
-  const [suppliers, setSuppliers] = useState([]);
+  const [detail, setDetail] = useState(null);
+  const [creditTarget, setCreditTarget] = useState(null);
+  const [creditForm, setCreditForm] = useState({ noteNumber: '', noteDate: null, amount: 0, file: null });
+  const [saving, setSaving] = useState(false);
 
-  const [claimModal, setClaimModal] = useState(null);
-  const [claimAmount, setClaimAmount] = useState(0);
-  const [claimNotes, setClaimNotes] = useState('');
-  const [claimLoading, setClaimLoading] = useState(false);
-
-  const [settleModal, setSettleModal] = useState(null);
-  const [settledAmount, setSettledAmount] = useState(0);
-  const [settleLoading, setSettleLoading] = useState(false);
-
-  const [viewScheme, setViewScheme] = useState(null);
-
-  const load = useCallback(async (page = 1) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await reportService.getSupplierSchemes({ page, limit: 20, search, status: statusFilter });
-      if (res.success) {
-        setSchemes(res.data || []);
-        const pg = res.pagination;
-        setPagination({ current: pg?.currentPage || 1, pageSize: 20, total: pg?.totalItems || 0 });
-      }
-    } catch { setSchemes([]); }
+      const response = await reportService.getSchemeSettlements({ partyType: 'supplier', status, limit: 100 });
+      if (response.success) setRows(response.data || []);
+    } catch (error) { message.error(error.message); }
     finally { setLoading(false); }
-  }, [search, statusFilter]);
+  }, [status]);
+  useEffect(() => { load(); }, [load]);
 
-  useEffect(() => { load(1); }, [load]);
-  useEffect(() => {
-    masterService.getSuppliers({ limit: 100 }).then(r => { if (r.success) setSuppliers(r.data || []); }).catch(() => {});
-  }, []);
-
-  const submitClaim = async () => {
-    if (!claimAmount || claimAmount <= 0) { message.error('Enter valid claim amount'); return; }
-    setClaimLoading(true);
+  const openDetail = async record => {
     try {
-      const res = await reportService.claimSupplierScheme(claimModal._id, { claimAmount, notes: claimNotes });
-      if (res.success) { message.success(`Claim of ₹${claimAmount.toLocaleString()} submitted`); setClaimModal(null); load(1); }
-    } catch (err) { message.error(err.message); }
-    finally { setClaimLoading(false); }
+      const response = await reportService.getSchemeSettlement(record._id);
+      if (response.success) setDetail(response.data);
+    } catch (error) { message.error(error.message); }
   };
 
-  const submitSettle = async () => {
-    if (!settledAmount || settledAmount <= 0) { message.error('Enter settled amount'); return; }
-    setSettleLoading(true);
+  const adjustment = async record => {
     try {
-      const res = await reportService.settleSupplierScheme(settleModal._id, { settledAmount });
-      if (res.success) { message.success('Scheme settled'); setSettleModal(null); load(1); }
-    } catch (err) { message.error(err.message); }
-    finally { setSettleLoading(false); }
+      const response = await reportService.createSchemeAdjustment(record._id);
+      if (response.success) { message.success(response.message); load(); }
+    } catch (error) { message.error(error.message); }
   };
 
-  const totalClaimed = schemes.filter(s => s.status === 'claimed').reduce((acc, s) => acc + (s.totalClaimAmount || 0), 0);
-  const pendingSettlement = schemes.filter(s => s.status === 'claimed').length;
+  const uploadCreditNote = async () => {
+    if (!creditForm.file) { message.error('Select the supplier credit-note PDF or image.'); return; }
+    setSaving(true);
+    try {
+      const data = new FormData();
+      data.append('noteNumber', creditForm.noteNumber);
+      data.append('noteDate', creditForm.noteDate?.format('YYYY-MM-DD') || '');
+      data.append('amount', String(creditForm.amount || 0));
+      data.append('document', creditForm.file);
+      const response = await reportService.uploadSupplierCreditNote(creditTarget._id, data);
+      if (response.success) {
+        message.success(response.message);
+        setCreditTarget(null);
+        setCreditForm({ noteNumber: '', noteDate: null, amount: 0, file: null });
+        load();
+      }
+    } catch (error) { message.error(error.message); }
+    finally { setSaving(false); }
+  };
 
   const columns = [
-    { title: 'Scheme No.', dataIndex: 'schemeNumber', width: 120, render: v => <span className="font-mono text-xs font-semibold">{v}</span> },
-    { title: 'Scheme Name / Supplier', dataIndex: 'schemeName', render: (v, r) => <div><div className="font-medium">{v}</div><div className="text-xs text-gray-400">{r.supplierName}</div></div> },
-    { title: 'Period', key: 'period', width: 180, render: (_, r) => `${r.startDate ? new Date(r.startDate).toLocaleDateString('en-IN') : '—'} → ${r.endDate ? new Date(r.endDate).toLocaleDateString('en-IN') : '—'}` },
-    { title: 'Earned (₹)', dataIndex: 'totalIncentiveEarned', width: 120, render: v => <span className="text-green-700 font-semibold">₹{(v||0).toLocaleString()}</span> },
-    { title: 'Claim Amt (₹)', dataIndex: 'totalClaimAmount', width: 120, render: v => v ? <span className="text-blue-700 font-semibold">₹{v.toLocaleString()}</span> : '—' },
-    {
-      title: 'Settled (₹)', dataIndex: 'claimSettledAmount', width: 120,
-      render: v => v ? <span className="font-semibold text-gray-800">₹{v.toLocaleString()}</span> : '—',
-    },
-    { title: 'Status', dataIndex: 'status', width: 90, render: v => <Tag color={STATUS_COLORS[v] || 'default'} className="capitalize">{v}</Tag> },
-    {
-      title: 'Actions', width: 200,
-      render: (_, r) => (
-        <Space size="small">
-          {r.status === 'active' && (
-            <Button size="small" icon={<SendOutlined />}
-              onClick={() => { setClaimModal(r); setClaimAmount(r.totalIncentiveEarned || 0); setClaimNotes(''); }}>
-              Submit Claim
-            </Button>
-          )}
-          {r.status === 'claimed' && (
-            <Button size="small" type="primary" icon={<CheckOutlined />}
-              style={{ background: '#52c41a', borderColor: '#52c41a' }}
-              onClick={() => { setSettleModal(r); setSettledAmount(r.totalClaimAmount || 0); }}>
-              Mark Settled
-            </Button>
-          )}
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewScheme(r)}>View</Button>
-        </Space>
-      ),
-    },
+    { title: 'Claim', dataIndex: 'settlementNumber', render: (value, record) => <div><div className="font-mono text-xs text-blue-600">{value}</div><div className="font-medium">{record.schemeName}</div></div> },
+    { title: 'Supplier', dataIndex: 'partyName' },
+    { title: 'Type', dataIndex: 'adjustmentType', render: value => <Tag>{value}</Tag> },
+    { title: 'Calculated amount', dataIndex: 'amount', render: value => <strong>{money(value)}</strong> },
+    { title: 'Internal note', dataIndex: 'accountingNoteNumber', render: value => value || 'Awaiting approval' },
+    { title: 'Supplier credit note', key: 'credit', render: (_, record) => record.supplierCreditNote?.noteNumber
+      ? <div className="text-xs"><div>{record.supplierCreditNote.noteNumber}</div><Tag color={record.supplierCreditNote.status === 'verified' ? 'green' : record.supplierCreditNote.status === 'rejected' ? 'red' : 'orange'}>{record.supplierCreditNote.status}</Tag></div>
+      : 'Not captured' },
+    { title: 'Status', dataIndex: 'status', render: value => <Tag color={STATUS_COLORS[value]}>{value}</Tag> },
+    { title: 'Actions', render: (_, record) => <Space wrap>
+      <Button size="small" icon={<EyeOutlined />} onClick={() => openDetail(record)}>Details</Button>
+      {record.status === 'approved' && <Button size="small" icon={<SyncOutlined />} onClick={() => adjustment(record)}>Recalculate adjustment</Button>}
+      {record.status === 'approved' && record.adjustmentType !== 'clawback' && !['pending_verification', 'verified'].includes(record.supplierCreditNote?.status) && <Button size="small" icon={<FileAddOutlined />} onClick={() => {
+        setCreditTarget(record);
+        setCreditForm({ noteNumber: '', noteDate: null, amount: record.amount, file: null });
+      }}>Credit note</Button>}
+    </Space> },
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Supplier Claim Management</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Submit and track incentive claims from suppliers</p>
-        </div>
-        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading} />
-      </div>
+      <div className="flex items-center justify-between mb-5"><div><h1 className="text-2xl font-bold text-gray-800">Supplier Claims</h1><p className="text-sm text-gray-500">Immutable server calculations, internal debit memos, and supplier-issued credit-note evidence.</p></div><Button icon={<ReloadOutlined />} onClick={load} loading={loading} /></div>
+      <div className="bg-white border rounded-lg p-4 mb-4"><Select allowClear placeholder="All statuses" value={status} onChange={setStatus} className="w-48" options={Object.keys(STATUS_COLORS).map(value => ({ value, label: value }))} /></div>
+      <div className="bg-white border rounded-lg overflow-hidden"><Table rowKey="_id" columns={columns} dataSource={rows} loading={loading} scroll={{ x: 1150 }} /></div>
 
-      <Row gutter={16} className="mb-5">
-        {[
-          ['Pending Claims', pendingSettlement, '#fa8c16'],
-          ['Total Claimed (₹)', `₹${totalClaimed.toLocaleString()}`, '#1890ff'],
-          ['Active Schemes', schemes.filter(s => s.status === 'active').length, '#52c41a'],
-          ['Settled Schemes', schemes.filter(s => s.status === 'closed').length, '#57606a'],
-        ].map(([t, v, c]) => (
-          <Col span={6} key={t}><Card size="small" style={{ borderLeft: `4px solid ${c}` }}>
-            <Statistic title={t} value={v} valueStyle={{ color: c }} />
-          </Card></Col>
-        ))}
-      </Row>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex gap-3 flex-wrap">
-          <Input placeholder="Search schemes…" prefix={<SearchOutlined />}
-            value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-          <Select value={statusFilter} onChange={setStatusFilter} className="w-40"
-            options={[
-              { value: undefined, label: 'All Status' },
-              ...Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s })),
-            ]} />
-        </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <Table
-          columns={columns} dataSource={schemes} rowKey="_id"
-          loading={loading} size="small"
-          pagination={{ ...pagination, onChange: load }}
-          locale={{ emptyText: 'No schemes found.' }}
-        />
-      </div>
-
-      {/* Claim Modal */}
-      <Modal title="Submit Claim" open={!!claimModal} onCancel={() => setClaimModal(null)}
-        onOk={submitClaim} confirmLoading={claimLoading}
-        okText="Submit Claim"
-        okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        destroyOnHidden>
-        <Divider />
-        {claimModal && (
-          <div className="space-y-3">
-            <div className="bg-gray-50 p-3 rounded text-sm">
-              <div className="font-semibold">{claimModal.schemeName}</div>
-              <div className="text-gray-400">{claimModal.supplierName}</div>
-              <div className="text-green-700 mt-1">Earned: ₹{(claimModal.totalIncentiveEarned || 0).toLocaleString()}</div>
-            </div>
-            <div><label className="text-xs text-gray-500 block mb-1">Claim Amount (₹) *</label>
-              <InputNumber value={claimAmount} onChange={v => setClaimAmount(v || 0)} prefix="₹" className="w-full" min={0} /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Notes / Reference</label>
-              <Input.TextArea rows={2} value={claimNotes} onChange={e => setClaimNotes(e.target.value)} /></div>
-          </div>
-        )}
+      <Modal title={detail?.settlementNumber} open={!!detail} onCancel={() => setDetail(null)} footer={<Button onClick={() => setDetail(null)}>Close</Button>} width={780}>
+        {detail && <div className="space-y-3 text-sm mt-3">
+          <div className="grid grid-cols-2 gap-3"><div className="bg-gray-50 p-3 rounded"><div className="text-xs text-gray-400">Supplier / scheme</div><strong>{detail.partyName}</strong><div>{detail.schemeName}</div></div><div className="bg-green-50 p-3 rounded"><div className="text-xs text-gray-400">Authoritative amount</div><strong className="text-green-700">{money(detail.amount)}</strong><div>{detail.adjustmentType}</div></div></div>
+          <div><strong>Maker:</strong> {detail.submittedBy?.name || '—'} · <strong>Checker:</strong> {detail.approvedBy?.name || '—'}</div>
+          <div><strong>Internal accounting note:</strong> {detail.accountingNoteNumber || 'Not posted'}</div>
+          <div><strong>Sources:</strong> {detail.calculation?.sources?.invoices?.length || 0} invoices, {detail.calculation?.sources?.returns?.length || 0} returns, {detail.calculation?.sources?.payments?.length || 0} confirmed allocations</div>
+          <div className="text-xs text-gray-400 break-all">Fingerprint: {detail.calculationFingerprint}</div>
+        </div>}
       </Modal>
 
-      {/* Settle Modal */}
-      <Modal title="Mark as Settled" open={!!settleModal} onCancel={() => setSettleModal(null)}
-        onOk={submitSettle} confirmLoading={settleLoading}
-        okText="Confirm Settled"
-        okButtonProps={{ style: { background: '#52c41a', borderColor: '#52c41a' } }}
-        destroyOnHidden>
-        <Divider />
-        {settleModal && (
-          <div className="space-y-3">
-            <div className="bg-gray-50 p-3 rounded text-sm">
-              <div className="font-semibold">{settleModal.schemeName}</div>
-              <div className="text-gray-400">{settleModal.supplierName}</div>
-              <div className="text-blue-700 mt-1">Claimed: ₹{(settleModal.totalClaimAmount || 0).toLocaleString()}</div>
-            </div>
-            <div><label className="text-xs text-gray-500 block mb-1">Settled Amount (₹) *</label>
-              <InputNumber value={settledAmount} onChange={v => setSettledAmount(v || 0)} prefix="₹" className="w-full" min={0} /></div>
-          </div>
-        )}
-      </Modal>
-
-      {/* View Modal */}
-      <Modal title={viewScheme?.schemeNumber} open={!!viewScheme}
-        onCancel={() => setViewScheme(null)}
-        footer={[<Button key="c" onClick={() => setViewScheme(null)}>Close</Button>]} width={500}>
-        {viewScheme && (
-          <div className="space-y-2 text-sm">
-            {[
-              ['Supplier', viewScheme.supplierName],
-              ['Scheme Name', viewScheme.schemeName],
-              ['Status', viewScheme.status],
-              ['Earned', `₹${(viewScheme.totalIncentiveEarned || 0).toLocaleString()}`],
-              ['Claimed', `₹${(viewScheme.totalClaimAmount || 0).toLocaleString()}`],
-              ['Settled', `₹${(viewScheme.claimSettledAmount || 0).toLocaleString()}`],
-              ['Submitted On', viewScheme.claimSubmittedDate ? new Date(viewScheme.claimSubmittedDate).toLocaleDateString('en-IN') : '—'],
-              ['Settled On', viewScheme.claimSettledDate ? new Date(viewScheme.claimSettledDate).toLocaleDateString('en-IN') : '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex gap-2"><span className="text-gray-400 min-w-28">{k}:</span><span className="font-medium">{v}</span></div>
-            ))}
-          </div>
-        )}
+      <Modal title="Capture supplier-issued GST credit note" open={!!creditTarget} onCancel={() => setCreditTarget(null)} onOk={uploadCreditNote} confirmLoading={saving} okText="Submit for verification">
+        <div className="space-y-3 mt-3">
+          <div className="rounded bg-blue-50 p-3 text-xs text-blue-800">This evidence does not create a second ledger posting. The approved internal debit memo remains authoritative.</div>
+          <div><label className="text-xs text-gray-500 block mb-1">Credit-note number *</label><Input value={creditForm.noteNumber} onChange={event => setCreditForm(current => ({ ...current, noteNumber: event.target.value }))} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Credit-note date *</label><DatePicker className="w-full" value={creditForm.noteDate} onChange={noteDate => setCreditForm(current => ({ ...current, noteDate }))} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Amount (must equal approved claim)</label><InputNumber className="w-full" value={creditForm.amount} disabled prefix="₹" /></div>
+          <Upload maxCount={1} beforeUpload={file => { setCreditForm(current => ({ ...current, file })); return false; }} onRemove={() => setCreditForm(current => ({ ...current, file: null }))} accept="application/pdf,image/jpeg,image/png,image/webp">
+            <Button icon={<UploadOutlined />}>Select PDF or image</Button>
+          </Upload>
+        </div>
       </Modal>
     </div>
   );

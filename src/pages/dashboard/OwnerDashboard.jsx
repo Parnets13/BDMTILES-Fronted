@@ -111,15 +111,15 @@ const OwnerDashboard = () => {
 
   const quickActions = useMemo(() => [
     { label: 'Sales Orders', icon: <ShoppingCartOutlined />, path: '/sales-purchase/sales-order-dashboard', permissions: ['sales.order.dashboard'], color: BRAND },
-    { label: 'New Quotation', icon: <FileTextOutlined />, path: '/sales-purchase/quotation-manager', permissions: ['sales.order.create'], color: '#1890ff' },
+    { label: 'New Quotation', icon: <FileTextOutlined />, path: '/sales-purchase/quotation-manager', permissions: ['quotation.management'], color: '#1890ff' },
     { label: 'Dealer Payment', icon: <DollarOutlined />, path: '/sales-purchase/dealer-payments', permissions: ['payment'], color: '#52c41a' },
     { label: 'Dealer Ledger', icon: <TeamOutlined />, path: '/finance/dealer-ledger', permissions: ['dealer.ledger'], color: '#722ed1' },
     { label: 'Stock', icon: <ShopOutlined />, path: '/inventory/stock', permissions: ['stock.view'], color: '#fa8c16' },
     { label: 'Purchase Orders', icon: <FileTextOutlined />, path: '/sales-purchase/po-management', permissions: ['po.management'], color: '#13c2c2' },
     { label: 'GRN Entry', icon: <CheckSquareOutlined />, path: '/sales-purchase/grn-entry', permissions: ['grn.entry'], color: '#2f54eb' },
     { label: 'Picking', icon: <CheckSquareOutlined />, path: '/warehouse/picking-list', permissions: ['picking.management'], color: '#9254de' },
-    { label: 'Delivery', icon: <TruckOutlined />, path: '/warehouse/delivery-tracking', permissions: ['delivery.management', 'delivery.tracking'], color: '#08979c' },
-    { label: 'Approvals', icon: <CheckSquareOutlined />, path: '/approvals', permissions: ['sales.order.approve', 'po.management', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management'], color: '#d46b08' },
+    { label: 'Delivery', icon: <TruckOutlined />, path: '/warehouse/delivery-tracking', permissions: ['delivery.view', 'delivery.tracking'], color: '#08979c' },
+    { label: 'Approvals', icon: <CheckSquareOutlined />, path: '/approvals', permissions: ['sales.order.approve', 'po.approve', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management'], color: '#d46b08' },
   ].filter((action) => canNavigate(action.permissions)), [canNavigate]);
 
   const sales = sections.sales;

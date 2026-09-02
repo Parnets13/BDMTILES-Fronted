@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import purchaseService from '../../services/purchaseService.js';
 import productService from '../../services/productService.js';
 import masterService from '../../services/masterService.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const ADJUSTMENT_TYPES = [
   { value: 'add', label: '+ Add (Increase Stock)', color: 'green' },
@@ -126,8 +127,9 @@ const StockAdjustmentPage = () => {
                       className="px-4 py-3 hover:bg-blue-50 cursor-pointer border-b border-gray-50 transition"
                       onClick={() => selectProduct(p)}
                     >
-                      <div className="flex justify-between items-start">
-                        <div>
+                      <div className="flex justify-between items-start gap-3">
+                        <ProductImage src={p.images?.[0]} size="md" />
+                        <div className="flex-1">
                           <div className="text-sm font-semibold text-gray-800">{p.itemName}</div>
                           <div className="text-xs text-gray-500 mt-0.5">
                             {p.productCode} • {p.brand?.name || 'No Brand'}
@@ -141,11 +143,12 @@ const StockAdjustmentPage = () => {
               )}
             </div>
             {selectedProduct && (
-              <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm">
-                <div className="font-medium text-blue-800">{selectedProduct.itemName}</div>
+              <div className="mt-2 p-3 bg-blue-50 border border-blue-100 rounded-lg text-sm flex items-center gap-3">
+                <ProductImage src={selectedProduct.images?.[0]} size="lg" />
+                <div><div className="font-medium text-blue-800">{selectedProduct.itemName}</div>
                 <div className="text-xs text-blue-600 mt-0.5">
                   {selectedProduct.productCode} • Stock Unit: {selectedProduct.unit || 'Box'}
-                </div>
+                </div></div>
               </div>
             )}
           </div>

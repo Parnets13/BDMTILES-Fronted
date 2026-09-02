@@ -9,6 +9,7 @@ import {
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '../../config/api.js';
+import salesService from '../../services/salesService.js';
 
 const TARGET_COLORS = { product: 'blue', brand: 'purple', category: 'green', subcategory: 'orange' };
 
@@ -24,7 +25,7 @@ const DiscountMappingPage = () => {
   const [editRecord, setEditRecord] = useState(null);
 
   const loadStats = () => {
-    api.get('/discount-mappings/stats').then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+    salesService.getDiscountMappingStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
   };
 
   useEffect(() => { loadStats(); }, []);
@@ -32,8 +33,8 @@ const DiscountMappingPage = () => {
   const fetchRules = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/discount-mappings', {
-        params: { page: pagination.current, limit: pagination.pageSize, search, targetType: targetTypeFilter, status: statusFilter },
+      const res = await salesService.getDiscountMappings({
+        page: pagination.current, limit: pagination.pageSize, search, targetType: targetTypeFilter, status: statusFilter,
       });
       if (res.success) {
         setRules(res.data);
@@ -51,7 +52,7 @@ const DiscountMappingPage = () => {
       content: 'Products using this rule will no longer get the discount.',
       onOk: async () => {
         try {
-          const res = await api.delete(`/discount-mappings/${id}`);
+          const res = await salesService.deleteDiscountMapping(id);
           if (res.success) { message.success('Deleted.'); fetchRules(); loadStats(); }
         } catch (err) { message.error(err.message); }
       },
@@ -61,7 +62,7 @@ const DiscountMappingPage = () => {
   const handleToggleStatus = async (id, currentStatus) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     try {
-      const res = await api.patch(`/discount-mappings/${id}/status`, { status: newStatus });
+      const res = await salesService.updateDiscountMappingStatus(id, { status: newStatus });
       if (res.success) { message.success(`Rule ${newStatus}.`); fetchRules(); loadStats(); }
     } catch (err) { message.error(err.message); }
   };
@@ -333,9 +334,9 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
 
       let res;
       if (editRecord) {
-        res = await api.put(`/discount-mappings/${editRecord._id}`, payload);
+        res = await salesService.updateDiscountMapping(editRecord._id, payload);
       } else {
-        res = await api.post('/discount-mappings', payload);
+        res = await salesService.createDiscountMapping(payload);
       }
       if (res.success) {
         message.success(editRecord ? 'Rule updated.' : 'Rule created.');

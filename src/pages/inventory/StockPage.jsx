@@ -5,6 +5,7 @@ import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const StockPage = () => {
   const [stock, setStock] = useState([]);
@@ -42,8 +43,8 @@ const StockPage = () => {
   const columns = [
     { title: 'Product Code', dataIndex: 'productCode', width: 110, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Product Name', dataIndex: 'productName', width: 200, render: (v, r) => (
-      <div><div className="text-sm font-medium truncate max-w-[190px]">{v || r.product?.itemName || '-'}</div>
-        <div className="text-[10px] text-gray-400">{r.brandName || r.product?.brand?.name || ''}</div></div>
+      <div className="flex items-center gap-2"><ProductImage src={r.productImage || r.product?.images?.[0] || r.images?.[0]} size="sm" /><div><div className="text-sm font-medium truncate max-w-[170px]">{v || r.product?.itemName || '-'}</div>
+        <div className="text-[10px] text-gray-400">{r.brandName || r.product?.brand?.name || ''}</div></div></div>
     )},
     { title: 'Warehouse', dataIndex: 'warehouseName', width: 120, render: (v, r) => <span className="text-xs">{v || r.warehouse?.name || '-'}</span> },
     { title: 'Shade', dataIndex: 'shade', width: 80, render: v => <span className="text-xs">{v || '-'}</span> },
@@ -171,10 +172,11 @@ const AdjustStockModal = ({ open, onClose, warehouses, onSuccess }) => {
             {showDropdown && productResults.length > 0 && (
               <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                 {productResults.map(p => (
-                  <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50"
+                  <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex items-center gap-2"
                     onClick={() => { setFormData(f => ({ ...f, product: p._id })); setProductSearch(p.itemName); setShowDropdown(false); }}>
-                    <div className="text-sm font-medium">{p.itemName}</div>
-                    <div className="text-xs text-gray-400">{p.productCode}</div>
+                    <ProductImage src={p.images?.[0]} size="sm" />
+                    <div><div className="text-sm font-medium">{p.itemName}</div>
+                    <div className="text-xs text-gray-400">{p.productCode}</div></div>
                   </div>
                 ))}
               </div>
@@ -273,10 +275,11 @@ const TransferStockModal = ({ open, onClose, warehouses, onSuccess }) => {
             {showDropdown && productResults.length > 0 && (
               <div className="absolute z-20 w-full mt-1 bg-white border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                 {productResults.map(p => (
-                  <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50"
+                  <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex items-center gap-2"
                     onClick={() => { setFormData(f => ({ ...f, product: p._id })); setProductSearch(p.itemName); setShowDropdown(false); }}>
-                    <div className="text-sm font-medium">{p.itemName}</div>
-                    <div className="text-xs text-gray-400">{p.productCode}</div>
+                    <ProductImage src={p.images?.[0]} size="sm" />
+                    <div><div className="text-sm font-medium">{p.itemName}</div>
+                    <div className="text-xs text-gray-400">{p.productCode}</div></div>
                   </div>
                 ))}
               </div>

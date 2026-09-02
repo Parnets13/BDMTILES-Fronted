@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Modal } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, SendOutlined } from '@ant-design/icons';
-import api from '../../config/api.js';
+import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import notificationService from '../../services/notificationService.js';
 
 const CHANNEL_COLORS = { whatsapp: 'green', sms: 'blue', email: 'purple', push: 'orange' };
 const EVENTS = ['order_confirmation','invoice_generated','payment_received','payment_reminder','dispatch_notification','delivery_notification','delivery_otp','scheme_alert','credit_alert','overdue_reminder','quotation_sent','complaint_update','birthday_wish','custom'];
@@ -11,11 +11,11 @@ const NotificationTemplatePage = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
 
-  const fetchTemplates = () => { api.get('/notifications/templates').then(r => { if (r.success) setTemplates(r.data || []); }).catch(() => {}); };
+  const fetchTemplates = () => { notificationService.getTemplates().then(r => { if (r.success) setTemplates(r.data || []); }).catch(() => {}); };
   useEffect(() => { fetchTemplates(); }, []);
 
   const handleDelete = async (id) => {
-    try { await api.delete(`/notifications/templates/${id}`); message.success('Deleted.'); fetchTemplates(); }
+    try { await notificationService.deleteTemplate(id); message.success('Deleted.'); fetchTemplates(); }
     catch (err) { message.error(err.message); }
   };
 
@@ -62,7 +62,7 @@ const TemplateForm = ({ editRecord, onSuccess, onCancel }) => {
     if (!form.templateCode || !form.templateName || !form.body) { message.error('Fill required fields'); return; }
     const payload = { ...form, variables: form.variables ? form.variables.split(',').map(v => v.trim()) : [] };
     try {
-      const res = editRecord ? await api.put(`/notifications/templates/${editRecord._id}`, payload) : await api.post('/notifications/templates', payload);
+      const res = editRecord ? await notificationService.updateTemplate(editRecord._id, payload) : await notificationService.createTemplate(payload);
       if (res.success) { message.success(editRecord ? 'Updated.' : 'Created.'); onSuccess(); }
     } catch (err) { message.error(err.message); }
   };

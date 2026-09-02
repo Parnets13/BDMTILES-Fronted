@@ -1,22 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, PrinterOutlined, FileTextOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
-import api from '../../config/api.js';
-
-const supplierInvoiceService = {
-  getAll: (params) => api.get('/supplier-invoices', { params }),
-  getOne: (id) => api.get(`/supplier-invoices/${id}`),
-  create: (data) => api.post('/supplier-invoices', data),
-  verify: (id) => api.patch(`/supplier-invoices/${id}/verify`),
-  getStats: () => api.get('/supplier-invoices/stats'),
-  getAvailableGRNs: (supplier) => api.get('/supplier-invoices/available-grns', { params: { supplier } }),
-};
+import { createIdempotencyKey } from '../../config/api.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = { draft: 'default', pending_verification: 'orange', verified: 'blue', paid: 'green', cancelled: 'red' };
 
 const SupplierInvoicePage = () => {
+  const invoiceSubmissionKey = useRef(createIdempotencyKey());
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
@@ -43,14 +36,14 @@ const SupplierInvoicePage = () => {
 
   useEffect(() => {
     masterService.getSuppliers({ limit: 100 }).then(r => { if (r.success) setSuppliers(r.data); }).catch(() => {});
-    supplierInvoiceService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+    purchaseService.getSupplierInvoiceStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
   }, []);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     try {
       const params = { page: pagination.current, limit: pagination.pageSize, search, status: statusFilter };
-      const res = await supplierInvoiceService.getAll(params);
+      const res = await purchaseService.getSupplierInvoices(params);
       if (res.success) {
         setInvoices(res.data);
         setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
@@ -67,14 +60,27 @@ const SupplierInvoicePage = () => {
     setSelectedGRNs([]);
     if (supplierId) {
       try {
-        const res = await supplierInvoiceService.getAvailableGRNs(supplierId);
+        const res = await purchaseService.getAvailableSupplierInvoiceGRNs(supplierId);
         if (res.success) setAvailableGRNs(res.data);
       } catch (e) { message.error(e.message); }
     }
   };
 
+  const handleGRNSelection = (grnIds) => {
+    setSelectedGRNs(grnIds);
+    const selected = availableGRNs.filter(grn => grnIds.includes(grn._id));
+    setForm(prev => ({
+      ...prev,
+      invoiceAmount: selected.reduce((sum, grn) => sum + Number(grn.invoiceAmount || 0), 0),
+      taxAmount: selected.reduce((sum, grn) => sum + Number(grn.taxAmount || 0), 0),
+      freightAmount: selected.reduce((sum, grn) => sum + Number(grn.freightAmount || 0), 0),
+      otherCharges: selected.reduce((sum, grn) => sum + Number(grn.otherCharges || 0), 0),
+    }));
+  };
+
   const handleCreate = async () => {
     if (!selectedSupplier) { message.error('Select a supplier'); return; }
+    if (!selectedGRNs.length) { message.error('Select at least one posted GRN'); return; }
     if (!form.invoiceNumber) { message.error('Enter invoice number'); return; }
     if (!form.invoiceAmount) { message.error('Enter invoice amount'); return; }
     setCreateLoading(true);
@@ -84,30 +90,39 @@ const SupplierInvoicePage = () => {
         linkedGRNs: selectedGRNs,
         ...form,
       };
-      const res = await supplierInvoiceService.create(payload);
+      const res = await purchaseService.createSupplierInvoice(payload, invoiceSubmissionKey.current);
       if (res.success) {
+        invoiceSubmissionKey.current = createIdempotencyKey();
         message.success(`Invoice ${res.data.invoiceRefNumber} created!`);
         setShowCreate(false);
         resetForm();
         fetchInvoices();
-        supplierInvoiceService.getStats().then(r => { if (r.success) setStats(r.data); });
+        purchaseService.getSupplierInvoiceStats().then(r => { if (r.success) setStats(r.data); });
       }
     } catch (err) { message.error(err.message); }
     finally { setCreateLoading(false); }
   };
 
+  const openView = async record => {
+    try {
+      const res = await purchaseService.getSupplierInvoice(record._id);
+      if (res.success) setViewInvoice(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
   const handleVerify = async (id) => {
     try {
-      const res = await supplierInvoiceService.verify(id);
+      const res = await purchaseService.verifySupplierInvoice(id);
       if (res.success) {
         message.success(res.message);
-        const [, statsRes] = await Promise.all([fetchInvoices(), supplierInvoiceService.getStats()]);
+        const [, statsRes] = await Promise.all([fetchInvoices(), purchaseService.getSupplierInvoiceStats()]);
         if (statsRes.success) setStats(statsRes.data);
       }
     } catch (err) { message.error(err.message); }
   };
 
   const resetForm = () => {
+    invoiceSubmissionKey.current = createIdempotencyKey();
     setSelectedSupplier(null); setSelectedGRNs([]); setAvailableGRNs([]);
     setForm({ invoiceNumber: '', invoiceDate: new Date().toISOString().split('T')[0], invoiceAmount: 0, taxAmount: 0, freightAmount: 0, otherCharges: 0, paymentTerms: '', dueDate: '', remarks: '' });
   };
@@ -128,7 +143,7 @@ const SupplierInvoicePage = () => {
     { title: 'Tally', dataIndex: 'tallySyncStatus', width: 80, render: s => <Tag color={s === 'synced' ? 'green' : 'default'}>{s === 'not_synced' ? '—' : s}</Tag> },
     { title: 'Actions', width: 90, render: (_, r) => (
       <Space size="small">
-        <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewInvoice(r)} />
+        <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} />
         {r.status === 'pending_verification' && <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleVerify(r._id)} />}
       </Space>
     )},
@@ -186,9 +201,10 @@ const SupplierInvoicePage = () => {
           {/* Link GRNs */}
           {availableGRNs.length > 0 && (
             <div>
-              <label className="text-sm font-semibold block mb-1">Link Against GRNs (optional)</label>
-              <Select mode="multiple" className="w-full" placeholder="Select GRNs this invoice covers..."
-                onChange={v => setSelectedGRNs(v)}
+              <label className="text-sm font-semibold block mb-1">Posted GRNs *</label>
+              <Select mode="multiple" className="w-full" placeholder="Select posted GRNs this invoice covers..."
+                value={selectedGRNs}
+                onChange={handleGRNSelection}
                 options={availableGRNs.map(g => ({ value: g._id, label: `${g.grnNumber} — ${new Date(g.grnDate).toLocaleDateString('en-IN')} — ₹${(g.grandTotal || 0).toLocaleString()}` }))} />
             </div>
           )}
@@ -226,13 +242,39 @@ const SupplierInvoicePage = () => {
 
       {/* View Invoice Modal */}
       {viewInvoice && (
-        <Modal title={`Invoice: ${viewInvoice.invoiceRefNumber}`} open={!!viewInvoice} onCancel={() => setViewInvoice(null)} footer={<Button onClick={() => setViewInvoice(null)}>Close</Button>} width={600}>
+        <Modal title={`Invoice: ${viewInvoice.invoiceRefNumber}`} open={!!viewInvoice} onCancel={() => setViewInvoice(null)} footer={<Button onClick={() => setViewInvoice(null)}>Close</Button>} width={900}>
           <div className="space-y-3 mt-4 text-sm">
             <div className="grid grid-cols-2 gap-3">
-              <div><span className="text-gray-400">Supplier:</span> <span className="font-medium">{viewInvoice.supplierName}</span></div>
+              <div><span className="text-gray-400">Supplier:</span> <span className="font-medium">{viewInvoice.supplierName || viewInvoice.supplier?.companyName || '—'}</span></div>
               <div><span className="text-gray-400">Supplier Inv #:</span> <span className="font-medium">{viewInvoice.invoiceNumber}</span></div>
               <div><span className="text-gray-400">Date:</span> <span>{new Date(viewInvoice.invoiceDate).toLocaleDateString('en-IN')}</span></div>
               <div><span className="text-gray-400">Due:</span> <span>{viewInvoice.dueDate ? new Date(viewInvoice.dueDate).toLocaleDateString('en-IN') : '—'}</span></div>
+            </div>
+            <Divider className="my-2" />
+            <div>
+              <div className="font-semibold text-gray-700 mb-2">Linked GRNs ({viewInvoice.linkedGRNs?.length || 0})</div>
+              <div className="flex flex-wrap gap-2">
+                {viewInvoice.linkedGRNs?.map(grn => <Tag key={grn._id || grn} color="blue">{grn.grnNumber || grn}</Tag>)}
+              </div>
+            </div>
+            <div>
+              <div className="font-semibold text-gray-700 mb-2">Invoice Items ({viewInvoice.items?.length || 0})</div>
+              <div className="border border-gray-200 rounded overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-50"><tr>{['Image', 'Product', 'Qty', 'Rate', 'Taxable', 'GST', 'Total'].map(label => <th key={label} className="px-2 py-2 text-left">{label}</th>)}</tr></thead>
+                  <tbody>{viewInvoice.items?.map((item, index) => (
+                    <tr key={item._id || index} className="border-t border-gray-100">
+                      <td className="px-2 py-2"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
+                      <td className="px-2 py-2"><div className="font-medium">{item.productName || item.product?.itemName}</div><div className="text-[9px] text-gray-400">{item.productCode || item.product?.productCode}</div></td>
+                      <td className="px-2 py-2">{item.invoiceQuantity || 0} {item.unit}</td>
+                      <td className="px-2 py-2">₹{Number(item.rate || 0).toLocaleString()}</td>
+                      <td className="px-2 py-2">₹{Number(item.taxableAmount || 0).toLocaleString()}</td>
+                      <td className="px-2 py-2">₹{Number(item.taxAmount || 0).toLocaleString()} ({item.gstPercentage || 0}%)</td>
+                      <td className="px-2 py-2 font-semibold">₹{Number(item.totalAmount || 0).toLocaleString()}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
             </div>
             <Divider className="my-2" />
             <div className="space-y-1">

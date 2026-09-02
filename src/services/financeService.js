@@ -14,10 +14,14 @@ const financeService = {
   getCheques: (params) => api.get('/cheques', { params }),
   getCheque: (id) => api.get(`/cheques/${id}`),
   getChequeStats: () => api.get('/cheques/stats'),
+  getLinkableChequePayments: (params) => api.get('/cheques/linkable-payments', { params }),
+  getChequeReDepositCandidates: (id) => api.get(`/cheques/${id}/re-deposit-candidates`),
   createCheque: (data) => api.post('/cheques', data),
   depositCheque: (id, data) => api.patch(`/cheques/${id}/deposit`, data),
   clearCheque: (id, data) => api.patch(`/cheques/${id}/clear`, data),
   bounceCheque: (id, data) => api.patch(`/cheques/${id}/bounce`, data),
+  returnCheque: (id, data) => api.patch(`/cheques/${id}/return`, data),
+  reDepositCheque: (id, data) => api.patch(`/cheques/${id}/re-deposit`, data),
 
   // Vouchers
   getVouchers: (params) => api.get('/vouchers', { params }),

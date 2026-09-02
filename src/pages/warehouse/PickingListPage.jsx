@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Steps, Checkbox } from 'antd';
 import { SearchOutlined, ReloadOutlined, EyeOutlined, UserOutlined, PlayCircleOutlined, CheckCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   generated: 'default', assigned: 'orange', in_progress: 'blue', picked: 'cyan',
@@ -49,6 +50,13 @@ const PickingListPage = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const openView = async record => {
+    try {
+      const res = await api.get(`/pick-lists/${record._id}`);
+      if (res.success) setViewRecord(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
   const openCompletion = async record => {
     try {
       const res = await api.get(`/pick-lists/${record._id}`);
@@ -58,6 +66,7 @@ const PickingListPage = () => {
         _id: item._id,
         productName: item.productName,
         productCode: item.productCode,
+        productImage: item.productImage || item.product?.images?.[0] || item.images?.[0] || '',
         shade: item.shade,
         batch: item.batch,
         requestedQty: item.requestedQty,
@@ -100,7 +109,7 @@ const PickingListPage = () => {
     setSavingCompletion(true);
     try {
       const res = await api.patch(`/pick-lists/${completionRecord._id}/complete-picking`, {
-        items: completionItems.map(({ productName, productCode, shade, batch, requestedQty, ...item }) => item),
+        items: completionItems.map(({ productName, productCode, productImage, shade, batch, requestedQty, ...item }) => item),
       });
       if (res.success) {
         message.success(res.message);
@@ -125,7 +134,7 @@ const PickingListPage = () => {
     { title: 'Status', dataIndex: 'status', width: 120, render: value => <Tag color={STATUS_COLORS[value]}>{value.replace(/_/g, ' ')}</Tag> },
     { title: 'Actions', width: 140, render: (_, record) => (
       <Space size="small" wrap>
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(record)} /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(record)} /></Tooltip>
         {record.status === 'generated' && <Tooltip title="Assign to me"><Button type="text" size="small" icon={<UserOutlined />} className="text-orange-500" onClick={() => handleAction(record._id, 'assign')} /></Tooltip>}
         {record.status === 'assigned' && <Tooltip title="Start picking"><Button type="text" size="small" icon={<PlayCircleOutlined />} className="text-blue-600" onClick={() => handleAction(record._id, 'start')} /></Tooltip>}
         {record.status === 'in_progress' && <Tooltip title="Record item verification"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-cyan-600" onClick={() => openCompletion(record)} /></Tooltip>}
@@ -178,9 +187,10 @@ const PickingListPage = () => {
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs border border-gray-200">
-                <thead className="bg-gray-50"><tr>{['Product / Variant', 'Requested', 'Picked', 'Short', 'Damaged', 'Barcode', 'Shade', 'Batch', 'Remarks'].map(label => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead>
+                <thead className="bg-gray-50"><tr>{['Image', 'Product / Variant', 'Requested', 'Picked', 'Short', 'Damaged', 'Barcode', 'Shade', 'Batch', 'Remarks'].map(label => <th key={label} className="p-2 text-left">{label}</th>)}</tr></thead>
                 <tbody>{completionItems.map((item, index) => (
                   <tr key={item._id} className="border-t border-gray-100">
+                    <td className="p-2"><ProductImage src={item.productImage} size="md" /></td>
                     <td className="p-2 min-w-40"><div className="font-medium">{item.productName}</div><div className="text-[10px] text-gray-400">{item.productCode} · {item.shade || 'No shade'} · {item.batch || 'No batch'}</div></td>
                     <td className="p-2 font-semibold">{item.requestedQty}</td>
                     {['pickedQty', 'shortQty', 'damagedQty'].map(field => <td key={field} className="p-2"><InputNumber min={0} max={item.requestedQty} value={item[field]} onChange={value => updateCompletionItem(index, field, value || 0)} className="w-20" /></td>)}
@@ -206,9 +216,10 @@ const PickingListPage = () => {
               <div className="bg-green-50 p-3 rounded border border-green-100"><div className="text-[10px] text-gray-400 uppercase">Progress</div><div className="font-bold">{viewRecord.totalPickedQty || 0} / {viewRecord.totalRequestedQty}</div><div className="text-xs text-gray-500">Stock: {viewRecord.stockConsumedAt ? 'consumed' : viewRecord.stockReserved ? 'reserved' : 'legacy/unreserved'}</div></div>
             </div>
             <table className="w-full text-xs border border-gray-200">
-              <thead className="bg-blue-50"><tr>{['Product', 'Shade', 'Batch', 'Requested', 'Picked', 'Short', 'Damaged', 'Checks', 'Status'].map(label => <th key={label} className="px-2 py-1.5 text-left">{label}</th>)}</tr></thead>
+              <thead className="bg-blue-50"><tr>{['Image', 'Product', 'Shade', 'Batch', 'Requested', 'Picked', 'Short', 'Damaged', 'Checks', 'Status'].map(label => <th key={label} className="px-2 py-1.5 text-left">{label}</th>)}</tr></thead>
               <tbody>{viewRecord.items?.map(item => (
                 <tr key={item._id} className="border-t border-gray-100">
+                  <td className="px-2 py-1.5"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                   <td className="px-2 py-1.5"><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></td>
                   <td className="px-2 py-1.5">{item.shade || '—'}</td><td className="px-2 py-1.5">{item.batch || '—'}</td>
                   <td className="px-2 py-1.5">{item.requestedQty}</td><td className="px-2 py-1.5">{item.pickedQty || 0}</td><td className="px-2 py-1.5">{item.shortQty || 0}</td><td className="px-2 py-1.5">{item.damagedQty || 0}</td>

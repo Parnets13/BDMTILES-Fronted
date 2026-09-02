@@ -2,7 +2,7 @@ import { Navigate } from 'react-router-dom';
 import { Spin } from 'antd';
 import { useAuth } from '../../context/AuthContext.jsx';
 
-const ProtectedRoute = ({ children, requiredPermission, requiredAnyPermissions, requiredRole }) => {
+const ProtectedRoute = ({ children, requiredPermission, requiredAnyPermissions, requiredRole, requiredRoles }) => {
   const { user, loading, hasPermission, hasAnyPermission, isAuthenticated } = useAuth();
 
   if (loading) {
@@ -22,6 +22,10 @@ const ProtectedRoute = ({ children, requiredPermission, requiredAnyPermissions, 
   }
 
   if (requiredRole && user.role !== requiredRole) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+
+  if (requiredRoles?.length && !requiredRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />;
   }
 

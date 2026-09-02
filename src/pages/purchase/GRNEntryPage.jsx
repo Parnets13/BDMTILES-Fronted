@@ -4,12 +4,16 @@ import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadO
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import { createIdempotencyKey } from '../../config/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', verified: 'orange', approved: 'green', posted: 'blue',
 };
 
 const GRNEntryPage = () => {
+  const { hasPermission } = useAuth();
+  const canPostGRN = hasPermission('grn.approve');
   const [grns, setGRNs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -50,10 +54,24 @@ const GRNEntryPage = () => {
 
   useEffect(() => { fetchGRNs(); }, [fetchGRNs]);
 
+  const openView = async record => {
+    try {
+      const res = await purchaseService.getGRN(record._id);
+      if (res.success) setViewGRN(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
+  const handleVerify = async (id) => {
+    try {
+      const res = await purchaseService.verifyGRN(id);
+      if (res.success) { message.success('GRN verified and ready for posting'); fetchGRNs(); fetchStats(); }
+    } catch (err) { message.error(err.message); }
+  };
+
   const handleApprove = async (id) => {
     try {
       const res = await purchaseService.approveGRN(id);
-      if (res.success) { message.success('GRN approved & stock updated'); fetchGRNs(); fetchStats(); }
+      if (res.success) { message.success('GRN posted and stock updated'); fetchGRNs(); fetchStats(); }
     } catch (err) { message.error(err.message); }
   };
 
@@ -69,10 +87,15 @@ const GRNEntryPage = () => {
     { title: 'Status', dataIndex: 'status', width: 100, render: s => <Tag color={STATUS_COLORS[s]}>{s}</Tag> },
     { title: 'Actions', width: 100, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewGRN(r)} /></Tooltip>
-        {(r.status === 'draft' || r.status === 'verified') && (
-          <Popconfirm title="Approve GRN & update stock?" onConfirm={() => handleApprove(r._id)} okText="Approve" cancelText="Cancel">
-            <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
+        {r.status === 'draft' && (
+          <Popconfirm title="Verify this GRN? Values become ready for posting approval." onConfirm={() => handleVerify(r._id)} okText="Verify" cancelText="Cancel">
+            <Tooltip title="Verify"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-orange-600" /></Tooltip>
+          </Popconfirm>
+        )}
+        {r.status === 'verified' && canPostGRN && (
+          <Popconfirm title="Post GRN and update stock?" onConfirm={() => handleApprove(r._id)} okText="Post" cancelText="Cancel">
+            <Tooltip title="Post"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" /></Tooltip>
           </Popconfirm>
         )}
       </Space>
@@ -156,6 +179,7 @@ const GRNEntryPage = () => {
                   <table className="w-full text-xs">
                     <thead className="bg-gray-100"><tr>
                       <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Image</th>
                       <th className="px-3 py-2 text-left">Product</th>
                       <th className="px-3 py-2 text-right">Ordered</th>
                       <th className="px-3 py-2 text-right">Received</th>
@@ -166,7 +190,8 @@ const GRNEntryPage = () => {
                       {viewGRN.items?.map((item, idx) => (
                         <tr key={idx} className="border-t">
                           <td className="px-3 py-2">{idx + 1}</td>
-                          <td className="px-3 py-2"><div className="font-medium">{item.productName}</div><div className="text-gray-400">{item.productCode}</div></td>
+                          <td className="px-3 py-2"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
+                          <td className="px-3 py-2"><div className="font-medium">{item.productName || item.product?.itemName}</div><div className="text-gray-400">{item.productCode || item.product?.productCode}</div></td>
                           <td className="px-3 py-2 text-right">{item.orderedQty || item.quantity || 0}</td>
                           <td className="px-3 py-2 text-right font-medium">{item.receivedQty || 0}</td>
                           <td className="px-3 py-2 text-right text-green-600">{item.acceptedQty || item.receivedQty || 0}</td>
@@ -227,9 +252,11 @@ const CreateGRN = ({ onClose, onSuccess }) => {
     // Build items from PO items
     setItems((po.items || []).map((item, idx) => ({
       key: idx,
+      purchaseOrderItem: item._id,
       product: item.product,
       productCode: item.productCode,
-      productName: item.productName,
+      productName: item.productName || item.product?.itemName,
+      productImage: item.productImage || item.product?.images?.[0] || item.images?.[0] || '',
       unit: item.unit || 'Box',
       orderedQty: item.quantity || 0,
       receivedQty: item.quantity || 0,
@@ -271,6 +298,7 @@ const CreateGRN = ({ onClose, onSuccess }) => {
         vehicleNo: formData.vehicleNo,
         remarks: formData.remarks,
         items: items.map(i => ({
+          purchaseOrderItem: i.purchaseOrderItem,
           product: i.product, productCode: i.productCode, productName: i.productName,
           unit: i.unit, orderedQty: i.orderedQty, receivedQty: i.receivedQty,
           acceptedQty: i.acceptedQty, shortQty: i.shortQty, damagedQty: i.damagedQty,
@@ -295,9 +323,9 @@ const CreateGRN = ({ onClose, onSuccess }) => {
 
   const columns = [
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
-    { title: 'Product', width: 180, render: (_, r) => (
-      <div><div className="text-xs font-medium truncate max-w-[170px]">{r.productName}</div>
-        <div className="text-[10px] text-gray-400">{r.productCode}</div></div>
+    { title: 'Product', width: 200, render: (_, r) => (
+      <div className="flex items-center gap-2"><ProductImage src={r.productImage || r.product?.images?.[0] || r.images?.[0]} size="sm" /><div><div className="text-xs font-medium truncate max-w-[160px]">{r.productName}</div>
+        <div className="text-[10px] text-gray-400">{r.productCode}</div></div></div>
     )},
     { title: 'Ordered', width: 70, render: (_, r) => <span className="text-xs font-medium bg-gray-100 px-2 py-0.5 rounded">{r.orderedQty}</span> },
     { title: 'Received', width: 75, render: (_, r) => <InputNumber size="small" min={0} value={r.receivedQty} onChange={v => updateItem(r.key, 'receivedQty', v)} className="w-full" /> },

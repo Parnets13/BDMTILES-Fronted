@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Modal, message, Tooltip, Row, Col, Card, Statistic, DatePicker } from 'antd';
-import { PlusOutlined, SearchOutlined, CheckOutlined, CloseOutlined, DollarOutlined, ReloadOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, CheckOutlined, CloseOutlined, DollarOutlined, ReloadOutlined, ExclamationCircleOutlined, EyeOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -44,6 +45,7 @@ const ExpenseManagement = () => {
   const [employees, setEmployees] = useState([]);
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [viewExpense, setViewExpense] = useState(null);
   const [rejectModalOpen, setRejectModalOpen] = useState(false);
   const [rejectingId, setRejectingId] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -112,6 +114,13 @@ const ExpenseManagement = () => {
     }
   };
 
+  const openView = async record => {
+    try {
+      const res = await api.get(`/expenses/${record._id}`);
+      if (res.success) setViewExpense(res.data);
+    } catch (err) { message.error(err.message || 'Unable to load expense details'); }
+  };
+
   const handleApprove = async (id) => {
     try {
       const res = await api.patch(`/expenses/${id}/approve`);
@@ -172,6 +181,9 @@ const ExpenseManagement = () => {
       title: 'Actions', key: 'actions', width: 160, fixed: 'right',
       render: (_, record) => (
         <Space size="small">
+          <Tooltip title="View">
+            <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(record)} />
+          </Tooltip>
           {record.status === 'pending' && (
             <>
               <Tooltip title="Approve">
@@ -279,6 +291,34 @@ const ExpenseManagement = () => {
           }}
         />
       </div>
+
+      <Modal title={`Expense ${viewExpense?.expenseNumber || ''}`} open={!!viewExpense} onCancel={() => setViewExpense(null)} width={760} footer={<Button onClick={() => setViewExpense(null)}>Close</Button>}>
+        {viewExpense && <div className="space-y-4 mt-3 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 bg-gray-50 border rounded-lg p-4">
+            <div><div className="text-xs text-gray-400">Employee</div><b>{viewExpense.employeeName || viewExpense.employee?.name || '—'}</b></div>
+            <div><div className="text-xs text-gray-400">Department</div><b>{viewExpense.department || viewExpense.employee?.department || '—'}</b></div>
+            <div><div className="text-xs text-gray-400">Status</div><Tag color={STATUS_COLORS[viewExpense.status]}>{viewExpense.status}</Tag></div>
+            <div><div className="text-xs text-gray-400">Category</div><b className="capitalize">{viewExpense.category?.replace(/_/g, ' ')}</b></div>
+            <div><div className="text-xs text-gray-400">Amount</div><b className="text-base">₹{Number(viewExpense.amount || 0).toLocaleString('en-IN')}</b></div>
+            <div><div className="text-xs text-gray-400">Expense Date</div><b>{dayjs(viewExpense.expenseDate).format('DD/MM/YYYY')}</b></div>
+          </div>
+          <div><div className="text-xs text-gray-400">Description</div><div>{viewExpense.description || '—'}</div></div>
+          <div className="grid grid-cols-2 gap-3 text-xs">
+            <div><span className="text-gray-400">Dealer Ref:</span> <b>{viewExpense.dealerRef || '—'}</b></div>
+            <div><span className="text-gray-400">Trip Ref:</span> <b>{viewExpense.tripRef || '—'}</b></div>
+            <div><span className="text-gray-400">Approved By:</span> <b>{viewExpense.approvedBy?.name || '—'}</b></div>
+            <div><span className="text-gray-400">Approved At:</span> <b>{viewExpense.approvedAt ? dayjs(viewExpense.approvedAt).format('DD/MM/YYYY HH:mm') : '—'}</b></div>
+            <div><span className="text-gray-400">Reimbursement Ref:</span> <b>{viewExpense.reimbursementRef || '—'}</b></div>
+            <div><span className="text-gray-400">Reimbursed At:</span> <b>{viewExpense.reimbursementDate ? dayjs(viewExpense.reimbursementDate).format('DD/MM/YYYY HH:mm') : '—'}</b></div>
+          </div>
+          {(viewExpense.billUpload?.length > 0 || viewExpense.photoUpload?.length > 0) && <div>
+            <div className="text-xs font-semibold text-gray-500 mb-2">Evidence</div>
+            <div className="flex flex-wrap gap-2">{[...(viewExpense.billUpload || []), ...(viewExpense.photoUpload || [])].map((src, index) => <ProductImage key={`${src}-${index}`} src={src} size="xl" />)}</div>
+          </div>}
+          {viewExpense.rejectionReason && <div className="bg-red-50 border border-red-100 text-red-700 rounded p-3"><b>Rejection:</b> {viewExpense.rejectionReason}</div>}
+          {viewExpense.remarks && <div className="bg-yellow-50 border border-yellow-100 rounded p-3"><b>Remarks:</b> {viewExpense.remarks}</div>}
+        </div>}
+      </Modal>
 
       {/* Submit Expense Modal */}
       <Modal

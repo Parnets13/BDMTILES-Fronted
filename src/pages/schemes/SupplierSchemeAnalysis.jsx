@@ -1,230 +1,84 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, Divider, InputNumber, Tabs
-} from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, CheckOutlined, SendOutlined, RiseOutlined } from '@ant-design/icons';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Card, Col, Modal, Row, Statistic, Table, Tag, message } from 'antd';
+import { EyeOutlined, ReloadOutlined, SendOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
-import masterService from '../../services/masterService.js';
 
-const STATUS_COLORS = { active: 'green', expired: 'orange', claimed: 'blue', closed: 'default' };
-const TYPE_LABELS = {
-  quantity_discount: 'Quantity Discount', cash_incentive: 'Cash Incentive',
-  product_scheme: 'Product Scheme', annual_bonus: 'Annual Bonus',
-};
+const money = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const STATUS_COLORS = { draft: 'default', active: 'green', paused: 'orange', expired: 'gold', closed: 'red' };
 
 const SupplierSchemeAnalysis = () => {
   const [schemes, setSchemes] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
-  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState(undefined);
-  const [suppliers, setSuppliers] = useState([]);
-  const [supplierFilter, setSupplierFilter] = useState(undefined);
+  const [loading, setLoading] = useState(false);
+  const [detail, setDetail] = useState(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
-  const [claimModal, setClaimModal] = useState(null);
-  const [claimAmount, setClaimAmount] = useState(0);
-  const [claimLoading, setClaimLoading] = useState(false);
-  const [settleModal, setSettleModal] = useState(null);
-  const [settledAmount, setSettledAmount] = useState(0);
-  const [settleLoading, setSettleLoading] = useState(false);
-  const [viewScheme, setViewScheme] = useState(null);
-
-  const load = useCallback(async (page = 1) => {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [listRes, statsRes] = await Promise.all([
-        reportService.getSupplierSchemes({ page, limit: 20, search, status: statusFilter, supplier: supplierFilter }),
+      const [list, summary] = await Promise.all([
+        reportService.getSupplierSchemes({ limit: 100 }),
         reportService.getSupplierSchemeStats(),
       ]);
-      if (listRes.success) {
-        setSchemes(listRes.data || []);
-        const pg = listRes.pagination;
-        setPagination({ current: pg?.currentPage || 1, pageSize: 20, total: pg?.totalItems || 0 });
-      }
-      if (statsRes.success) setStats(statsRes.data);
-    } catch { /* silent */ }
+      if (list.success) setSchemes(list.data || []);
+      if (summary.success) setStats(summary.data || {});
+    } catch (error) { message.error(error.message); }
     finally { setLoading(false); }
-  }, [search, statusFilter, supplierFilter]);
-
-  useEffect(() => { load(1); }, [load]);
-  useEffect(() => {
-    masterService.getSuppliers({ limit: 100 }).then(r => { if (r.success) setSuppliers(r.data || []); }).catch(() => {});
   }, []);
+  useEffect(() => { load(); }, [load]);
 
-  const handleClaim = async () => {
-    setClaimLoading(true);
+  const analyse = async record => {
+    setAnalysisLoading(true);
     try {
-      const res = await reportService.claimSupplierScheme(claimModal._id, { claimAmount });
-      if (res.success) { message.success('Claim submitted'); setClaimModal(null); load(1); }
-    } catch (err) { message.error(err.message); }
-    finally { setClaimLoading(false); }
+      const response = await reportService.getSupplierSchemeAnalysis(record._id);
+      if (response.success) setDetail(response.data);
+    } catch (error) { message.error(error.message); }
+    finally { setAnalysisLoading(false); }
   };
 
-  const handleSettle = async () => {
-    setSettleLoading(true);
+  const submit = async record => {
     try {
-      const res = await reportService.settleSupplierScheme(settleModal._id, { settledAmount });
-      if (res.success) { message.success('Scheme settled'); setSettleModal(null); load(1); }
-    } catch (err) { message.error(err.message); }
-    finally { setSettleLoading(false); }
+      const response = await reportService.submitSupplierSchemeClaim(record._id);
+      if (response.success) { message.success(response.message); load(); }
+    } catch (error) { message.error(error.message); }
   };
 
-  // Compute analysis — grouping by supplier
-  const bySupplier = schemes.reduce((acc, s) => {
-    const key = s.supplierName || 'Unknown';
-    if (!acc[key]) acc[key] = { supplier: key, schemes: 0, earned: 0, claimed: 0, settled: 0 };
-    acc[key].schemes++;
-    acc[key].earned += s.totalIncentiveEarned || 0;
-    acc[key].claimed += s.totalClaimAmount || 0;
-    acc[key].settled += s.claimSettledAmount || 0;
-    return acc;
-  }, {});
-
-  const analysisData = Object.values(bySupplier).sort((a, b) => b.earned - a.earned);
-
-  const schemeColumns = [
-    { title: 'Scheme No.', dataIndex: 'schemeNumber', width: 120, render: v => <span className="font-mono text-xs font-semibold">{v}</span> },
-    { title: 'Scheme Name', dataIndex: 'schemeName', render: (v, r) => <div><div className="font-medium">{v}</div><div className="text-xs text-gray-400">{r.supplierName}</div></div> },
-    { title: 'Type', dataIndex: 'schemeType', render: v => <Tag color="blue" className="text-xs">{TYPE_LABELS[v] || v}</Tag> },
-    { title: 'Valid Till', dataIndex: 'endDate', width: 110, render: v => v ? new Date(v).toLocaleDateString('en-IN') : '—' },
-    { title: 'Earned (₹)', dataIndex: 'totalIncentiveEarned', width: 110, render: v => <span className="text-green-700 font-semibold">₹{(v||0).toLocaleString()}</span> },
-    { title: 'Claimed (₹)', dataIndex: 'totalClaimAmount', width: 110, render: v => <span className="text-blue-700 font-semibold">₹{(v||0).toLocaleString()}</span> },
-    { title: 'Settled (₹)', dataIndex: 'claimSettledAmount', width: 110, render: v => <span className="font-semibold">₹{(v||0).toLocaleString()}</span> },
-    { title: 'Status', dataIndex: 'status', width: 90, render: v => <Tag color={STATUS_COLORS[v] || 'default'} className="capitalize">{v}</Tag> },
-    {
-      title: 'Actions', width: 180,
-      render: (_, r) => (
-        <Space size="small">
-          {r.status === 'active' && <Button size="small" icon={<SendOutlined />} onClick={() => { setClaimModal(r); setClaimAmount(r.totalIncentiveEarned || 0); }}>Claim</Button>}
-          {r.status === 'claimed' && <Button size="small" type="primary" icon={<CheckOutlined />}
-            style={{ background: '#52c41a', borderColor: '#52c41a' }}
-            onClick={() => { setSettleModal(r); setSettledAmount(r.totalClaimAmount || 0); }}>Settle</Button>}
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewScheme(r)}>View</Button>
-        </Space>
-      ),
-    },
-  ];
-
-  const analysisColumns = [
-    { title: 'Supplier', dataIndex: 'supplier', render: v => <span className="font-semibold">{v}</span> },
-    { title: 'Schemes', dataIndex: 'schemes', width: 80 },
-    { title: 'Earned (₹)', dataIndex: 'earned', width: 120, render: v => <span className="text-green-700 font-semibold">₹{v.toLocaleString()}</span> },
-    { title: 'Claimed (₹)', dataIndex: 'claimed', width: 120, render: v => <span className="text-blue-700">₹{v.toLocaleString()}</span> },
-    { title: 'Settled (₹)', dataIndex: 'settled', width: 120, render: v => `₹${v.toLocaleString()}` },
-    { title: 'Pending (₹)', key: 'pending', width: 120, render: (_, r) => <span className="text-orange-600 font-semibold">₹{(r.earned - r.settled).toLocaleString()}</span> },
+  const columns = [
+    { title: 'Scheme', dataIndex: 'schemeNumber', render: (value, record) => <div><div className="font-medium">{record.schemeName}</div><div className="font-mono text-xs text-gray-400">{value}</div></div> },
+    { title: 'Supplier', dataIndex: 'supplierName' },
+    { title: 'Rule', key: 'rule', render: (_, record) => <div><Tag color="blue">{record.basis?.replaceAll('_', ' ')}</Tag><div className="text-xs text-gray-500">{record.calculationType?.replaceAll('_', ' ')}</div></div> },
+    { title: 'Period', key: 'period', render: (_, record) => `${new Date(record.startDate).toLocaleDateString('en-IN')} – ${new Date(record.endDate).toLocaleDateString('en-IN')}` },
+    { title: 'Submitted', key: 'submitted', render: (_, record) => money(record.settlementSummary?.submitted) },
+    { title: 'Posted', key: 'posted', render: (_, record) => <span className="text-green-700">{money(record.settlementSummary?.approved)}</span> },
+    { title: 'Status', dataIndex: 'status', render: value => <Tag color={STATUS_COLORS[value]}>{value}</Tag> },
+    { title: 'Actions', render: (_, record) => <div className="flex gap-2"><Button size="small" icon={<EyeOutlined />} disabled={!['active', 'expired', 'closed'].includes(record.status)} onClick={() => analyse(record)}>Analyse</Button><Button size="small" type="primary" icon={<SendOutlined />} disabled={!['active', 'expired', 'closed'].includes(record.status)} onClick={() => submit(record)}>Submit claim</Button></div> },
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">Supplier Scheme Analysis</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Track incentive earnings, claims and settlements</p>
-        </div>
-        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading} />
-      </div>
-
-      <Row gutter={16} className="mb-5">
-        {[
-          ['Total Schemes', stats.total || 0, '#1890ff'],
-          ['Active', stats.active || 0, '#52c41a'],
-          ['Claimed', stats.claimed || 0, '#fa8c16'],
-          ['Total Earned', `₹${(stats.totalEarned || 0).toLocaleString()}`, '#FF5F03'],
-        ].map(([t, v, c]) => (
-          <Col span={6} key={t}><Card size="small" style={{ borderLeft: `4px solid ${c}` }}>
-            <Statistic title={t} value={v} valueStyle={{ color: c }} />
-          </Card></Col>
-        ))}
+      <div className="flex items-center justify-between mb-5"><div><h1 className="text-2xl font-bold text-gray-800">Supplier Scheme Analysis</h1><p className="text-sm text-gray-500">Authoritative achievement and claim submission; claim amount cannot be edited.</p></div><Button icon={<ReloadOutlined />} loading={loading} onClick={load} /></div>
+      <Row gutter={16} className="mb-4">
+        <Col span={6}><Card size="small"><Statistic title="Rules" value={stats.total || 0} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Active" value={stats.active || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Awaiting approval" value={stats.submitted || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
+        <Col span={6}><Card size="small"><Statistic title="Posted claims" value={money(stats.approvedAmount)} valueStyle={{ color: '#1677ff' }} /></Card></Col>
       </Row>
-
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex gap-3 flex-wrap">
-          <Input placeholder="Search by scheme no. or supplier…" prefix={<SearchOutlined />}
-            value={search} onChange={e => setSearch(e.target.value)} className="max-w-xs" />
-          <Select placeholder="Status" allowClear value={statusFilter} onChange={setStatusFilter} className="w-36"
-            options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s }))} />
-          <Select placeholder="Supplier" allowClear value={supplierFilter} onChange={setSupplierFilter}
-            className="w-52" showSearch
-            filterOption={(input, opt) => opt.label?.toLowerCase().includes(input.toLowerCase())}
-            options={suppliers.map(s => ({ value: s._id, label: s.companyName }))} />
-        </div>
-      </div>
-
-      <Tabs items={[
-        {
-          key: 'schemes',
-          label: 'All Schemes',
-          children: (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <Table columns={schemeColumns} dataSource={schemes} rowKey="_id"
-                loading={loading} size="small"
-                pagination={{ ...pagination, onChange: load }}
-                locale={{ emptyText: 'No schemes found.' }} />
-            </div>
-          ),
-        },
-        {
-          key: 'analysis',
-          label: 'Supplier-wise Analysis',
-          children: (
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <Table columns={analysisColumns} dataSource={analysisData} rowKey="supplier"
-                size="small" pagination={false}
-                locale={{ emptyText: 'No data.' }} />
-            </div>
-          ),
-        },
-      ]} />
-
-      {/* Claim Modal */}
-      <Modal title="Submit Claim" open={!!claimModal} onCancel={() => setClaimModal(null)}
-        onOk={handleClaim} confirmLoading={claimLoading}
-        okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        okText="Submit Claim">
-        <Divider />
-        <div className="space-y-3">
-          <div className="bg-gray-50 p-3 rounded text-sm font-medium">{claimModal?.schemeName} — {claimModal?.supplierName}</div>
-          <div><label className="text-xs text-gray-500 block mb-1">Claim Amount (₹) *</label>
-            <InputNumber value={claimAmount} onChange={v => setClaimAmount(v || 0)} prefix="₹" className="w-full" min={0} /></div>
-        </div>
-      </Modal>
-
-      {/* Settle Modal */}
-      <Modal title="Settle Scheme" open={!!settleModal} onCancel={() => setSettleModal(null)}
-        onOk={handleSettle} confirmLoading={settleLoading}
-        okButtonProps={{ style: { background: '#52c41a', borderColor: '#52c41a' } }}
-        okText="Confirm Settlement">
-        <Divider />
-        <div className="space-y-3">
-          <div className="bg-gray-50 p-3 rounded text-sm font-medium">{settleModal?.schemeName} — Claimed: ₹{(settleModal?.totalClaimAmount || 0).toLocaleString()}</div>
-          <div><label className="text-xs text-gray-500 block mb-1">Settled Amount (₹) *</label>
-            <InputNumber value={settledAmount} onChange={v => setSettledAmount(v || 0)} prefix="₹" className="w-full" min={0} /></div>
-        </div>
-      </Modal>
-
-      {/* View Modal */}
-      <Modal title={<span className="font-bold">{viewScheme?.schemeNumber}</span>}
-        open={!!viewScheme} onCancel={() => setViewScheme(null)}
-        footer={[<Button key="c" onClick={() => setViewScheme(null)}>Close</Button>]} width={520}>
-        {viewScheme && (
-          <div className="space-y-2 text-sm">
-            {[
-              ['Supplier', viewScheme.supplierName],
-              ['Scheme Name', viewScheme.schemeName],
-              ['Type', TYPE_LABELS[viewScheme.schemeType] || viewScheme.schemeType],
-              ['Status', viewScheme.status],
-              ['Valid', `${viewScheme.startDate ? new Date(viewScheme.startDate).toLocaleDateString('en-IN') : '—'} → ${viewScheme.endDate ? new Date(viewScheme.endDate).toLocaleDateString('en-IN') : '—'}`],
-              ['Earned', `₹${(viewScheme.totalIncentiveEarned || 0).toLocaleString()}`],
-              ['Claimed', `₹${(viewScheme.totalClaimAmount || 0).toLocaleString()}`],
-              ['Settled', `₹${(viewScheme.claimSettledAmount || 0).toLocaleString()}`],
-              ['Remarks', viewScheme.remarks || '—'],
-            ].map(([k, v]) => (
-              <div key={k} className="flex gap-2"><span className="text-gray-400 min-w-28">{k}:</span><span className="font-medium">{v}</span></div>
-            ))}
+      <div className="bg-white border rounded-lg overflow-hidden"><Table rowKey="_id" columns={columns} dataSource={schemes} loading={loading} scroll={{ x: 1050 }} /></div>
+      <Modal title={`${detail?.scheme?.schemeNumber || ''} authoritative analysis`} open={!!detail} onCancel={() => setDetail(null)} confirmLoading={analysisLoading}
+        footer={detail ? [<Button key="close" onClick={() => setDetail(null)}>Close</Button>, <Button key="submit" type="primary" disabled={!detail.eligible} onClick={() => submit(detail.scheme)}>Submit exact claim</Button>] : null} width={780}>
+        {detail && <div className="space-y-3 text-sm mt-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <Card size="small"><Statistic title="Gross value" value={money(detail.grossValue)} /></Card>
+            <Card size="small"><Statistic title="Posted returns" value={money(detail.returnValue)} /></Card>
+            <Card size="small"><Statistic title="Net value" value={money(detail.netValue)} /></Card>
+            <Card size="small"><Statistic title="Earned" value={money(detail.earnedAmount)} valueStyle={{ color: detail.eligible ? '#52c41a' : '#fa8c16' }} /></Card>
           </div>
-        )}
+          <Tag color={detail.eligible ? 'green' : 'orange'}>{detail.eligible ? 'Eligible' : 'Target not met'}</Tag>
+          <div><strong>Verified invoices ({detail.sources?.invoices?.length || 0})</strong><div className="text-xs text-gray-500">{detail.sources?.invoices?.map(row => row.number).join(', ') || 'None'}</div></div>
+          <div><strong>Posted purchase returns ({detail.sources?.returns?.length || 0})</strong><div className="text-xs text-gray-500">{detail.sources?.returns?.map(row => row.noteNumber).join(', ') || 'None'}</div></div>
+          <div><strong>Confirmed allocations ({detail.sources?.payments?.length || 0})</strong><div className="text-xs text-gray-500">{detail.sources?.payments?.map(row => `${row.number}: ${money(row.allocatedAmount)}`).join(', ') || 'None / not selected basis'}</div></div>
+          <div className="text-xs text-gray-400 break-all">Fingerprint: {detail.calculationFingerprint}</div>
+        </div>}
       </Modal>
     </div>
   );

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message, Modal, Form, InputNumber, DatePicker,
-  Row, Col, Card, Statistic, Tooltip, Badge, Divider, Timeline
+  Row, Col, Card, Statistic, Tooltip, Badge, Divider, Timeline, Checkbox
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, TeamOutlined,
@@ -16,6 +16,8 @@ import crmService from '../../services/crmService.js';
 import api from '../../config/api.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
+import { subscribeToLeadEvents } from '../../services/leadEventStream.js';
 
 // Customer types — how the lead came to us
 const CUSTOMER_TYPES = [
@@ -43,6 +45,10 @@ const ASSIGNMENT_COLORS = { unassigned: 'red', pending: 'orange', accepted: 'gre
 
 const LeadManagement = () => {
   const { confirm, alertModal } = useConfirm();
+  const { hasPermission, activeBranchId } = useAuth();
+  const canCreate = hasPermission('lead.create');
+  const canAssign = hasPermission('lead.assign');
+  const canDelete = hasPermission('lead.delete');
 
   // Core state
   const [leads, setLeads] = useState([]);
@@ -62,8 +68,11 @@ const LeadManagement = () => {
   const [viewLead, setViewLead] = useState(null);
   const [assignModal, setAssignModal] = useState(null); // lead to assign
   const [selectedSE, setSelectedSE] = useState('');
+  const [overrideAvailability, setOverrideAvailability] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
+  const [streamState, setStreamState] = useState('connecting');
 
-  // Polling for real-time updates
+  // Polling is only used when the authenticated fetch stream is unavailable.
   const pollingRef = useRef(null);
 
   // ═══════════════════════════════════
@@ -101,27 +110,29 @@ const LeadManagement = () => {
   };
 
   useEffect(() => { fetchLeads(); }, [fetchLeads]);
-  useEffect(() => { fetchStats(); fetchSEStatus(); }, []);
+  useEffect(() => { fetchStats(); if (canAssign) fetchSEStatus(); }, [canAssign]);
 
-  // Poll every 15 seconds for real-time updates (SE accept/decline)
-  useEffect(() => {
-    pollingRef.current = setInterval(() => {
+  // Authenticated fetch-stream first; polling remains a safe fallback.
+  useEffect(() => subscribeToLeadEvents({
+    onStateChange: setStreamState,
+    onEvent: ({ event, data }) => {
+      if (event === 'ready') return;
+      fetchLeads();
       fetchStats();
-      fetchSEStatus();
-      // Silently refresh leads without loading spinner
-      crmService.getLeads({
-        page: pagination.current, limit: pagination.pageSize,
-        search, status: statusFilter, customerType: customerTypeFilter,
-        assignmentStatus: assignmentFilter, sortBy: 'queue',
-      }).then(res => {
-        if (res.success) {
-          setLeads(res.data || []);
-          setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
-        }
-      }).catch(() => {});
-    }, 15000);
+      if (canAssign) fetchSEStatus();
+      if (viewLead?._id && (!data?.leadId || String(data.leadId) === String(viewLead._id))) loadLeadDetail(viewLead._id);
+    },
+  }), [activeBranchId, canAssign, fetchLeads, viewLead?._id]);
+
+  useEffect(() => {
+    if (streamState === 'connected') return undefined;
+    pollingRef.current = setInterval(() => {
+      fetchLeads();
+      fetchStats();
+      if (canAssign) fetchSEStatus();
+    }, 20000);
     return () => clearInterval(pollingRef.current);
-  }, [pagination.current, search, statusFilter, customerTypeFilter, assignmentFilter]);
+  }, [canAssign, fetchLeads, streamState]);
 
   // ═══════════════════════════════════
   // ACTIONS
@@ -130,10 +141,16 @@ const LeadManagement = () => {
   const handleAssign = async () => {
     if (!selectedSE || !assignModal) return;
     try {
-      const res = await crmService.assignLead(assignModal._id, { assignedTo: selectedSE });
+      const res = await crmService.assignLead(assignModal._id, {
+        assignedTo: selectedSE,
+        expectedVersion: assignModal.assignmentVersion || 0,
+        expectedCurrentAssignedTo: assignModal.assignedTo?._id || assignModal.assignedTo || null,
+        overrideAvailability,
+        overrideReason,
+      });
       if (res.success) {
         message.success(res.message || 'Lead assigned!');
-        setAssignModal(null); setSelectedSE('');
+        setAssignModal(null); setSelectedSE(''); setOverrideAvailability(false); setOverrideReason('');
         fetchLeads(); fetchStats(); fetchSEStatus();
       }
     } catch (err) { alertModal('Assign Failed', err.message, 'error'); }
@@ -186,20 +203,27 @@ const LeadManagement = () => {
     { title: 'Actions', width: 150, fixed: 'right', render: (_, r) => (
       <Space size="small">
         <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500" onClick={() => loadLeadDetail(r._id)} /></Tooltip>
-        {(r.assignmentStatus === 'unassigned' || r.assignmentStatus === 'declined') && (
-          <Tooltip title="Assign to SE"><Button type="text" size="small" icon={<UserAddOutlined />} className="text-orange-500" onClick={() => { setAssignModal(r); setSelectedSE(''); }} /></Tooltip>
+        {canAssign && !['won', 'lost'].includes(r.status) && (
+          <Tooltip title={r.assignedTo ? 'Reassign lead' : 'Assign to SE'}><Button type="text" size="small" icon={<UserAddOutlined />} className="text-orange-500" onClick={() => { setAssignModal(r); setSelectedSE(''); setOverrideAvailability(false); setOverrideReason(''); }} /></Tooltip>
         )}
-        <Tooltip title="Delete"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleDelete(r._id)} /></Tooltip>
+        {canDelete && <Tooltip title="Delete"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleDelete(r._id)} /></Tooltip>}
       </Space>
     )},
   ];
 
-  const loadLeadDetail = async (id) => {
+  const loadLeadDetail = useCallback(async (id) => {
     try {
       const res = await crmService.getLead(id);
       if (res.success) setViewLead(res.data);
     } catch (err) { message.error(err.message); }
-  };
+  }, []);
+
+  useEffect(() => {
+    const leadId = new URLSearchParams(window.location.search).get('lead');
+    if (leadId) loadLeadDetail(leadId);
+  }, [activeBranchId, loadLeadDetail]);
+
+  const selectedExecutive = salesExecutives.find(se => se._id === selectedSE);
 
   // ═══════════════════════════════════
   // RENDER
@@ -215,7 +239,7 @@ const LeadManagement = () => {
         </div>
         <Space>
           <ModuleRecycleBin module="lead" title="Deleted Leads" onRestore={fetchLeads} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Lead</Button>
+          {canCreate && <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>New Lead</Button>}
         </Space>
       </div>
 
@@ -232,25 +256,26 @@ const LeadManagement = () => {
       </Row>
 
       {/* SE Availability Panel */}
-      <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
+      {canAssign && <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
         <div className="flex items-center gap-2 mb-2">
           <TeamOutlined className="text-blue-500" />
           <span className="text-sm font-semibold text-gray-700">Sales Executive Status</span>
-          <Badge status="processing" text={<span className="text-[10px] text-gray-400">Live — updates every 15s</span>} />
+          <Badge status={streamState === 'connected' ? 'processing' : 'warning'} text={<span className="text-[10px] text-gray-400">{streamState === 'connected' ? 'Live event stream' : 'Polling fallback'}</span>} />
         </div>
         <div className="flex flex-wrap gap-2">
           {salesExecutives.map(se => (
-            <div key={se._id} className={`px-3 py-1.5 rounded-lg border text-xs ${se.isBusy ? 'bg-red-50 border-red-200' : se.pendingResponse > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
-              <div className="font-medium">{se.name}</div>
+            <div key={se._id} className={`px-3 py-1.5 rounded-lg border text-xs ${!se.canAssign ? 'bg-red-50 border-red-200' : se.pendingResponse > 0 ? 'bg-orange-50 border-orange-200' : 'bg-green-50 border-green-200'}`}>
+              <div className="font-medium">{se.name} <span className="uppercase text-[9px] text-gray-400">{se.availability}</span></div>
               <div className="text-[10px] text-gray-500">
-                {se.activeLeads} active · {se.pendingResponse} pending
-                {se.isBusy && <span className="text-red-600 ml-1 font-semibold">BUSY</span>}
+                {se.activeLeads}/{se.workloadLimit} active · {se.pendingResponse} pending
+                {!se.canAssign && <span className="text-red-600 ml-1 font-semibold">UNAVAILABLE</span>}
               </div>
+              {se.statusReason && <div className="text-[9px] text-gray-400">{se.statusReason}</div>}
             </div>
           ))}
           {salesExecutives.length === 0 && <span className="text-gray-400 text-xs">No sales executives found</span>}
         </div>
-      </div>
+      </div>}
 
       {/* Filters */}
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
@@ -276,14 +301,18 @@ const LeadManagement = () => {
       </div>
 
       {/* ═══════════════════════════════ ASSIGN MODAL ═══════════════════════════════ */}
-      <Modal title={`Assign Lead — ${assignModal?.leadNumber || ''}`} open={!!assignModal} onCancel={() => setAssignModal(null)}
-        onOk={handleAssign} okText="Assign" okButtonProps={{ disabled: !selectedSE }} width={500}>
+      <Modal title={`${assignModal?.assignedTo ? 'Reassign' : 'Assign'} Lead — ${assignModal?.leadNumber || ''}`} open={!!assignModal} onCancel={() => setAssignModal(null)}
+        onOk={handleAssign} okText={assignModal?.assignedTo ? 'Reassign' : 'Assign'}
+        okButtonProps={{ disabled: !selectedSE || (!!selectedExecutive && !selectedExecutive.canAssign && (!overrideAvailability || !overrideReason.trim())) }} width={500}>
         {assignModal && (
           <div className="space-y-3 mt-3">
             <div className="bg-gray-50 p-3 rounded border">
               <div className="font-medium">{assignModal.name} — {assignModal.phone}</div>
-              <div className="text-xs text-gray-500">{CUSTOMER_TYPES.find(t => t.value === assignModal.customerType)?.label || assignModal.customerType} · {assignModal.city || ''} · Est. ₹{assignModal.estimatedValue || 0}</div>
+              <div className="text-xs text-gray-500">Version {assignModal.assignmentVersion || 0} · {assignModal.assignmentStatus} · Est. ₹{assignModal.estimatedValue || 0}</div>
             </div>
+            <Checkbox checked={overrideAvailability} onChange={event => { setOverrideAvailability(event.target.checked); setSelectedSE(''); }}>
+              Authorized availability/workload override
+            </Checkbox>
             <div>
               <label className="text-xs text-gray-500 block mb-1">Select Sales Executive *</label>
               <Select showSearch className="w-full" size="large" value={selectedSE || undefined}
@@ -291,22 +320,22 @@ const LeadManagement = () => {
                 onChange={v => setSelectedSE(v)}
                 options={salesExecutives.map(se => ({
                   value: se._id,
-                  label: `${se.name} (${se.activeLeads} active${se.isBusy ? ' — BUSY' : ''})`,
-                  disabled: se.isBusy,
+                  label: `${se.name} · ${se.availability || 'offline'} · ${se.activeLeads}/${se.workloadLimit} active`,
+                  disabled: !se.canAssign && !overrideAvailability,
                 }))} />
             </div>
-            {selectedSE && (
-              <div className="text-xs text-green-600 bg-green-50 p-2 rounded">
-                SE will receive a push notification. They must accept within the app to proceed.
-              </div>
+            {selectedExecutive && !selectedExecutive.canAssign && overrideAvailability && (
+              <Input.TextArea value={overrideReason} onChange={event => setOverrideReason(event.target.value)}
+                placeholder="Override reason is required" rows={2} />
             )}
+            {selectedSE && <div className="text-xs text-blue-600 bg-blue-50 p-2 rounded">The executive must accept before the configured deadline.</div>}
           </div>
         )}
       </Modal>
 
       {/* ═══════════════════════════════ CREATE LEAD MODAL ═══════════════════════════════ */}
       <CreateLeadModal open={showCreate} onClose={() => setShowCreate(false)}
-        onSuccess={() => { fetchLeads(); fetchStats(); }} salesExecutives={salesExecutives} />
+        onSuccess={() => { fetchLeads(); fetchStats(); }} />
 
       {/* ═══════════════════════════════ VIEW LEAD DETAIL ═══════════════════════════════ */}
       {viewLead && (
@@ -432,6 +461,22 @@ const LeadManagement = () => {
               </div>
             )}
 
+            {/* Visits and immutable activity */}
+            {viewLead.visits?.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border">
+                <div className="text-xs font-semibold text-gray-700 uppercase mb-3">Visits</div>
+                <div className="space-y-2 max-h-44 overflow-y-auto">
+                  {viewLead.visits.map(visit => <div key={visit._id} className="flex justify-between text-xs bg-gray-50 rounded p-2"><span>{dayjs(visit.scheduledAt).format('DD MMM YYYY, hh:mm A')} · {visit.location?.address || 'No address'}</span><Tag>{visit.status}</Tag></div>)}
+                </div>
+              </div>
+            )}
+            {viewLead.activities?.length > 0 && (
+              <div className="bg-white rounded-xl p-4 border">
+                <div className="text-xs font-semibold text-gray-700 uppercase mb-3">Immutable Activity</div>
+                <Timeline items={viewLead.activities.slice(0, 20).map(activity => ({ children: <div className="text-xs"><div>{activity.summary}</div><div className="text-gray-400">{dayjs(activity.createdAt).format('DD MMM, hh:mm A')} · {activity.actorName || 'System'}</div></div> }))} />
+              </div>
+            )}
+
             {/* Key Dates */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-gray-50 rounded-lg p-3 text-center border">
@@ -460,7 +505,7 @@ const LeadManagement = () => {
 // ═══════════════════════════════════════════════
 // CREATE LEAD MODAL
 // ═══════════════════════════════════════════════
-const CreateLeadModal = ({ open, onClose, onSuccess, salesExecutives }) => {
+const CreateLeadModal = ({ open, onClose, onSuccess }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
 
@@ -488,8 +533,8 @@ const CreateLeadModal = ({ open, onClose, onSuccess, salesExecutives }) => {
         <Row gutter={16}>
           <Col span={8}><Form.Item name="name" label="Customer Name" rules={[{ required: true }]}><Input placeholder="Full name" /></Form.Item></Col>
           <Col span={8}><Form.Item name="phone" label="Phone" rules={[{ required: true }]}><Input placeholder="Mobile number" /></Form.Item></Col>
-          <Col span={8}><Form.Item name="customerType" label="How They Came" rules={[{ required: true }]}>
-            <Select placeholder="Select type..." options={CUSTOMER_TYPES} />
+          <Col span={8}><Form.Item name="customerType" label="Legacy Source Category" rules={[{ required: true }]}>
+            <Select placeholder="Select category..." options={CUSTOMER_TYPES} />
           </Form.Item></Col>
         </Row>
         <Row gutter={16}>
@@ -508,11 +553,14 @@ const CreateLeadModal = ({ open, onClose, onSuccess, salesExecutives }) => {
           <Col span={6}><Form.Item name="estimatedArea" label="Area (sqft)"><InputNumber min={0} className="w-full" /></Form.Item></Col>
         </Row>
         <Row gutter={16}>
-          <Col span={8}><Form.Item name="referredBy" label="Referred By"><Input placeholder="Referral name (if any)" /></Form.Item></Col>
-          <Col span={8}><Form.Item name="nextFollowupDate" label="Next Follow-up"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
-          <Col span={8}><Form.Item name="assignedTo" label="Assign to SE (optional)">
-            <Select allowClear placeholder="Assign later..." options={salesExecutives.map(se => ({ value: se._id, label: `${se.name} (${se.activeLeads} leads)` }))} />
-          </Form.Item></Col>
+          <Col span={6}><Form.Item name="leadSource" label="Source"><Input placeholder="Referral, campaign, organic..." /></Form.Item></Col>
+          <Col span={6}><Form.Item name="leadChannel" label="Channel"><Select allowClear options={['store_visit', 'phone', 'whatsapp', 'online', 'referral', 'exhibition', 'social', 'other'].map(value => ({ value, label: value.replace(/_/g, ' ') }))} /></Form.Item></Col>
+          <Col span={6}><Form.Item name="leadType" label="Lead Type"><Input placeholder="Retail, project, trade..." /></Form.Item></Col>
+          <Col span={6}><Form.Item name="campaign" label="Campaign"><Input placeholder="Campaign name/code" /></Form.Item></Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}><Form.Item name="referredBy" label="Referred By"><Input placeholder="Referral name (if any)" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="nextFollowupDate" label="Next Follow-up"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
         </Row>
         <Form.Item name="remarks" label="Remarks / Interest"><Input.TextArea rows={2} placeholder="What are they looking for? Any specific products/brands?" /></Form.Item>
 

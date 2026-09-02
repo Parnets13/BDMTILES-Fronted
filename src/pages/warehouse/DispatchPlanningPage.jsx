@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Pagination } from 'antd';
+import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Pagination, Checkbox } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CarOutlined, CheckCircleOutlined, CloseCircleOutlined, RocketOutlined, TruckOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
+import { useAuth } from '../../context/AuthContext.jsx';
 
 const STATUS_COLORS = {
   planning: 'default', loading: 'orange', loaded: 'blue', dispatched: 'geekblue',
@@ -9,6 +11,9 @@ const STATUS_COLORS = {
 };
 
 const DispatchPlanningPage = () => {
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('dispatch.management');
+  const canVerify = hasPermission('dispatch.verify');
   const [trips, setTrips] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
@@ -17,6 +22,9 @@ const DispatchPlanningPage = () => {
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [showCreate, setShowCreate] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
+  const [verifyRecord, setVerifyRecord] = useState(null);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [verifyForm, setVerifyForm] = useState({ vehicleConfirmed: false, sealConfirmed: false, sealNumber: '', invoiceConfirmed: false, eWayBillConfirmed: false, lrDocumentConfirmed: false, finalOrderCount: 0, finalBoxCount: 0, remarks: '' });
 
   const loadStats = () => { api.get('/dispatch-trips/stats').then(r => { if (r.success) setStats(r.data); }).catch(() => {}); };
   useEffect(() => { loadStats(); }, []);
@@ -39,6 +47,31 @@ const DispatchPlanningPage = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const openView = async trip => {
+    try {
+      const res = await api.get(`/dispatch-trips/${trip._id}`);
+      if (res.success) setViewRecord(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
+  const openFinalVerification = async trip => {
+    try {
+      const res = await api.get(`/dispatch-trips/${trip._id}`);
+      if (!res.success) return;
+      setVerifyRecord(res.data);
+      setVerifyForm({ vehicleConfirmed: false, sealConfirmed: false, sealNumber: '', invoiceConfirmed: false, eWayBillConfirmed: false, lrDocumentConfirmed: false, finalOrderCount: res.data.totalOrders || 0, finalBoxCount: res.data.totalBoxes || 0, remarks: '' });
+    } catch (err) { message.error(err.message); }
+  };
+
+  const submitFinalVerification = async () => {
+    setVerifyLoading(true);
+    try {
+      const res = await api.patch(`/dispatch-trips/${verifyRecord._id}/verify-dispatch`, verifyForm);
+      if (res.success) { message.success(res.message); setVerifyRecord(null); fetchTrips(); }
+    } catch (err) { message.error(err.message); }
+    finally { setVerifyLoading(false); }
+  };
+
   const columns = [
     { title: 'Trip #', dataIndex: 'tripNumber', width: 100, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'tripDate', width: 90, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
@@ -50,11 +83,12 @@ const DispatchPlanningPage = () => {
     { title: 'Status', dataIndex: 'status', width: 100, render: s => <Tag color={STATUS_COLORS[s]}>{s.replace('_', ' ')}</Tag> },
     { title: 'Actions', width: 140, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(r)} /></Tooltip>
-        {r.status === 'planning' && <Tooltip title="Start Loading"><Button type="text" size="small" icon={<TruckOutlined />} className="text-orange-500" onClick={() => handleAction(r._id, 'start-loading')} /></Tooltip>}
-        {r.status === 'loading' && <Tooltip title="Complete verification in Loading Verification"><Tag color="orange">Awaiting verification</Tag></Tooltip>}
-        {r.status === 'loaded' && <Tooltip title="Dispatch verified trip"><Button type="text" size="small" icon={<RocketOutlined />} className="text-indigo-600" onClick={() => handleAction(r._id, 'dispatch')} /></Tooltip>}
-        {['planning', 'loading', 'loaded'].includes(r.status) && <Tooltip title="Cancel before dispatch"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleAction(r._id, 'cancel')} /></Tooltip>}
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
+        {canManage && r.status === 'planning' && <Tooltip title="Start Loading"><Button type="text" size="small" icon={<TruckOutlined />} className="text-orange-500" onClick={() => handleAction(r._id, 'start-loading')} /></Tooltip>}
+        {r.status === 'loading' && <Tooltip title="Complete verification in Loading Verification"><Tag color="orange">Awaiting loading verification</Tag></Tooltip>}
+        {r.status === 'loaded' && !r.finalDispatchVerification?.completed && canVerify && <Tooltip title="Complete final dispatch checklist"><Button size="small" type="primary" ghost onClick={() => openFinalVerification(r)}>Final Verify</Button></Tooltip>}
+        {r.status === 'loaded' && r.finalDispatchVerification?.completed && canManage && <Tooltip title="Dispatch verified trip and consume reserved stock"><Button type="text" size="small" icon={<RocketOutlined />} className="text-indigo-600" onClick={() => handleAction(r._id, 'dispatch')} /></Tooltip>}
+        {canManage && ['planning', 'loading', 'loaded'].includes(r.status) && <Tooltip title="Cancel before dispatch"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleAction(r._id, 'cancel')} /></Tooltip>}
       </Space>
     )},
   ];
@@ -66,7 +100,7 @@ const DispatchPlanningPage = () => {
           <h1 className="text-2xl font-bold text-gray-800">Dispatch Planning</h1>
           <p className="text-sm text-gray-500 mt-0.5">Create trips, assign vehicles, verify loading, dispatch orders</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Create Trip</Button>
+        {canManage && <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>Create Trip</Button>}
       </div>
 
       <Row gutter={12} className="mb-4">
@@ -97,12 +131,21 @@ const DispatchPlanningPage = () => {
       <CreateTripModal open={showCreate} onClose={() => setShowCreate(false)} onSuccess={() => { fetchTrips(); loadStats(); }} />
 
       {viewRecord && (
-        <Modal open title={`Trip ${viewRecord.tripNumber}`} onCancel={() => setViewRecord(null)} width={750} footer={<Button onClick={() => setViewRecord(null)}>Close</Button>}>
+        <Modal open title={`Trip ${viewRecord.tripNumber}`} onCancel={() => setViewRecord(null)} width={1050} footer={<Button onClick={() => setViewRecord(null)}>Close</Button>}>
           <div className="space-y-3 text-sm mt-3">
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-gray-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase font-semibold">Vehicle</div><div className="font-bold">{viewRecord.vehicleNumber || '—'}</div><div className="text-xs text-gray-500">{viewRecord.vehicleType}</div></div>
               <div className="bg-blue-50 p-3 rounded border border-blue-100"><div className="text-[10px] text-gray-400 uppercase font-semibold">Driver</div><div className="font-bold">{viewRecord.driverName || '—'}</div><div className="text-xs text-gray-500">{viewRecord.driverPhone}</div></div>
               <div className="bg-green-50 p-3 rounded border border-green-100"><div className="text-[10px] text-gray-400 uppercase font-semibold">Summary</div><div className="font-bold">{viewRecord.totalOrders} orders · {viewRecord.totalBoxes} boxes</div><Tag color={STATUS_COLORS[viewRecord.status]}>{viewRecord.status.replace('_', ' ')}</Tag></div>
+            </div>
+            <div className="font-semibold text-gray-700">Final Dispatch Verification</div>
+            <div className="bg-indigo-50 border border-indigo-100 rounded p-3 grid grid-cols-3 gap-2 text-xs">
+              <div>Status: <b>{viewRecord.finalDispatchVerification?.completed ? 'Completed' : 'Pending'}</b></div>
+              <div>Counts: <b>{viewRecord.finalDispatchVerification?.finalOrderCount || 0} orders / {viewRecord.finalDispatchVerification?.finalBoxCount || 0} boxes</b></div>
+              <div>Verified by: <b>{viewRecord.finalDispatchVerification?.verifiedBy?.name || '—'}</b></div>
+              <div>Seal: <b>{viewRecord.finalDispatchVerification?.sealNumber || '—'}</b></div>
+              <div>Time: <b>{viewRecord.finalDispatchVerification?.verifiedAt ? new Date(viewRecord.finalDispatchVerification.verifiedAt).toLocaleString('en-IN') : '—'}</b></div>
+              <div>Remarks: <b>{viewRecord.finalDispatchVerification?.remarks || '—'}</b></div>
             </div>
             <div className="font-semibold text-gray-700">Orders in Trip ({viewRecord.orders?.length || 0})</div>
             <table className="w-full text-xs border border-gray-200 rounded">
@@ -120,9 +163,55 @@ const DispatchPlanningPage = () => {
                 </tr>
               ))}</tbody>
             </table>
+            <div className="font-semibold text-gray-700">Loaded Product Lines</div>
+            <div className="space-y-3">
+              {viewRecord.orders?.map((order, orderIndex) => (
+                <div key={order._id || order.pickList?._id || orderIndex} className="border border-gray-200 rounded overflow-hidden">
+                  <div className="flex justify-between gap-3 bg-gray-50 px-3 py-2 text-xs">
+                    <span><b>{order.orderNumber}</b> · {order.dealerName}</span>
+                    <span>{order.pickListNumber || order.pickList?.pickListNumber || 'No pick list reference'}</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="bg-blue-50"><tr>{['Image', 'Product', 'Shade', 'Batch', 'Loaded Qty', 'Unit', 'Sales Order Qty'].map(label => <th key={label} className="px-2 py-1.5 text-left font-semibold text-gray-600">{label}</th>)}</tr></thead>
+                      <tbody>{order.loadingItems?.map((item, itemIndex) => (
+                        <tr key={item._id || item.pickListItem || itemIndex} className="border-t border-gray-100">
+                          <td className="px-2 py-1.5"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
+                          <td className="px-2 py-1.5"><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></td>
+                          <td className="px-2 py-1.5">{item.shade || '—'}</td>
+                          <td className="px-2 py-1.5">{item.batch || '—'}</td>
+                          <td className="px-2 py-1.5 font-semibold">{item.quantity || 0}</td>
+                          <td className="px-2 py-1.5">{item.unit || 'Box'}</td>
+                          <td className="px-2 py-1.5">{item.salesOrderQuantity || '—'}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                    {!order.loadingItems?.length && <div className="px-3 py-3 text-xs text-gray-400">No authoritative loaded product lines recorded.</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </Modal>
       )}
+
+      {verifyRecord && <Modal open title={`Final Dispatch Verification — ${verifyRecord.tripNumber}`} onCancel={() => setVerifyRecord(null)} onOk={submitFinalVerification} confirmLoading={verifyLoading} okText="Verify for dispatch" width={700}>
+        <div className="space-y-4 mt-3 text-sm">
+          <div className="bg-blue-50 border border-blue-100 rounded p-3">This is a separate final gate. Stock is not consumed until an authorized user dispatches after this checklist is complete.</div>
+          <div className="grid grid-cols-2 gap-3"><div><label className="text-xs text-gray-500">Final order count</label><InputNumber min={0} className="w-full" value={verifyForm.finalOrderCount} onChange={value => setVerifyForm(form => ({ ...form, finalOrderCount: value || 0 }))} /></div><div><label className="text-xs text-gray-500">Final box count</label><InputNumber min={0} className="w-full" value={verifyForm.finalBoxCount} onChange={value => setVerifyForm(form => ({ ...form, finalBoxCount: value || 0 }))} /></div></div>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              ['vehicleConfirmed', 'Vehicle number / fitness confirmed'],
+              ['sealConfirmed', 'Seal applied and confirmed'],
+              ['invoiceConfirmed', 'Invoice(s) confirmed'],
+              ['eWayBillConfirmed', 'E-way bill confirmed'],
+              ['lrDocumentConfirmed', 'LR / dispatch document confirmed'],
+            ].map(([field, label]) => <Checkbox key={field} checked={verifyForm[field]} onChange={event => setVerifyForm(form => ({ ...form, [field]: event.target.checked }))}>{label}</Checkbox>)}
+          </div>
+          <Input value={verifyForm.sealNumber} onChange={event => setVerifyForm(form => ({ ...form, sealNumber: event.target.value }))} placeholder="Seal number / reference" />
+          <Input.TextArea rows={2} value={verifyForm.remarks} onChange={event => setVerifyForm(form => ({ ...form, remarks: event.target.value }))} placeholder="Final verification remarks" />
+        </div>
+      </Modal>}
     </div>
   );
 };

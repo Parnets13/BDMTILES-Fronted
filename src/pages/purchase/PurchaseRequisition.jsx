@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, InputNumber, Alert
@@ -7,18 +8,11 @@ import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
   CheckOutlined, CloseOutlined, EyeOutlined, DeleteOutlined, ShoppingOutlined
 } from '@ant-design/icons';
-import api from '../../config/api.js';
+import purchaseService from '../../services/purchaseService.js';
 import productService from '../../services/productService.js';
 import masterService from '../../services/masterService.js';
-
-const prService = {
-  getAll:   (p)    => api.get('/purchase-requisitions', { params: p }),
-  getStats: ()     => api.get('/purchase-requisitions/stats'),
-  get:      (id)   => api.get(`/purchase-requisitions/${id}`),
-  create:   (d)    => api.post('/purchase-requisitions', d),
-  approve:  (id,d) => api.patch(`/purchase-requisitions/${id}/approve`, d),
-  reject:   (id,d) => api.patch(`/purchase-requisitions/${id}/reject`, d),
-};
+import { useAuth } from '../../context/AuthContext.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   draft: 'default', submitted: 'blue', approved: 'green',
@@ -28,11 +22,16 @@ const PRIORITY_COLORS = { low: 'default', normal: 'blue', high: 'orange', urgent
 
 const emptyForm = () => ({
   requiredByDate: '', department: '', warehouse: '', priority: 'normal',
-  remarks: '', status: 'submitted',
+  remarks: '',
   items: [{ productName: '', productCode: '', product: '', requiredQty: 1, currentStock: 0, remarks: '' }],
 });
 
 const PurchaseRequisition = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { hasPermission } = useAuth();
+  const canManage = hasPermission('po.management');
+  const canApprove = hasPermission('po.approve');
   const [prs, setPRs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
@@ -57,8 +56,8 @@ const PurchaseRequisition = () => {
     setLoading(true);
     try {
       const [listRes, statsRes] = await Promise.all([
-        prService.getAll({ page, limit: 20, search, status: statusFilter }),
-        prService.getStats(),
+        purchaseService.getPurchaseRequisitions({ page, limit: 20, search, status: statusFilter }),
+        purchaseService.getPurchaseRequisitionStats(),
       ]);
       if (listRes.success) {
         setPRs(listRes.data || []);
@@ -88,6 +87,7 @@ const PurchaseRequisition = () => {
     updateItem(idx, 'product',     prod._id);
     updateItem(idx, 'productName', prod.itemName);
     updateItem(idx, 'productCode', prod.productCode || '');
+    updateItem(idx, 'productImage', prod.images?.[0] || '');
     setProdSearches(p => ({ ...p, [idx]: prod.itemName }));
     setProdResults(r => ({ ...r, [idx]: [] }));
   };
@@ -111,37 +111,90 @@ const PurchaseRequisition = () => {
   }));
 
   const handleCreate = async () => {
-    if (!form.items.length || !form.items[0].productName) {
-      message.error('Add at least one product');
+    if (!form.items.length || form.items.some(item => !item.product || Number(item.requiredQty) <= 0)) {
+      message.error('Select a valid product and positive quantity for every row');
       return;
     }
     setCreateLoading(true);
     try {
-      const res = await prService.create(form);
+      const payload = {
+        ...form,
+        requiredByDate: form.requiredByDate || undefined,
+        warehouse: form.warehouse || undefined,
+        items: form.items.map(({ product, requiredQty, currentStock, remarks }) => ({
+          product, requiredQty, currentStock, remarks,
+        })),
+      };
+      const res = await purchaseService.createPurchaseRequisition(payload);
       if (res.success) {
-        message.success(`${res.data.prNumber} created`);
+        message.success(`${res.data.prNumber} saved as draft`);
         setShowCreate(false);
+        setViewPR(res.data);
         setForm(emptyForm());
+        setProdSearches({});
+        setProdResults({});
         load(1);
       }
-    } catch (err) { message.error(err.message || 'Failed'); }
+    } catch (err) { message.error(err.message || 'Failed to create purchase requisition'); }
     finally { setCreateLoading(false); }
+  };
+
+  const handleSubmit = async (pr) => {
+    try {
+      const res = await purchaseService.submitPurchaseRequisition(pr._id);
+      if (res.success) {
+        message.success('PR submitted for approval');
+        load(pagination.current);
+      }
+    } catch (err) { message.error(err.message || 'Failed to submit PR'); }
   };
 
   const handleAction = async () => {
     setActionLoading(true);
     try {
       const res = actionModal.type === 'approve'
-        ? await prService.approve(actionModal.pr._id, { notes: actionNote })
-        : await prService.reject(actionModal.pr._id, { notes: actionNote });
+        ? await purchaseService.approvePurchaseRequisition(actionModal.pr._id, { notes: actionNote })
+        : await purchaseService.rejectPurchaseRequisition(actionModal.pr._id, { notes: actionNote });
       if (res.success) {
         message.success(actionModal.type === 'approve' ? 'PR Approved' : 'PR Rejected');
         setActionModal(null);
-        load(1);
+        load(pagination.current);
       }
-    } catch (err) { message.error(err.message); }
+    } catch (err) { message.error(err.message || 'PR action failed'); }
     finally { setActionLoading(false); }
   };
+
+  const openQuotation = async (pr) => {
+    try {
+      const res = await purchaseService.getSupplierQuotations({ purchaseRequisition: pr._id, limit: 1 });
+      const existing = res.data?.[0];
+      navigate(existing
+        ? `/sales-purchase/supplier-quotations?id=${existing._id}`
+        : `/sales-purchase/supplier-quotations?purchaseRequisition=${pr._id}&create=1`);
+    } catch (err) { message.error(err.message || 'Unable to open supplier quotation'); }
+  };
+
+  const openPO = (pr) => {
+    const linkedPO = pr.linkedPO?._id || pr.linkedPO;
+    navigate(linkedPO ? `/sales-purchase/po-management?po=${linkedPO}` : '/sales-purchase/po-management');
+  };
+
+  const handleView = async (pr) => {
+    try {
+      const res = await purchaseService.getPurchaseRequisition(pr._id);
+      setViewPR(res.data || pr);
+    } catch (err) {
+      message.error(err.message || 'Unable to load purchase requisition');
+    }
+  };
+
+  useEffect(() => {
+    const id = new URLSearchParams(location.search).get('pr') || location.state?.openPurchaseRequisitionId;
+    if (!id) return;
+    purchaseService.getPurchaseRequisition(id).then(res => {
+      if (res.success) setViewPR(res.data);
+    }).catch(err => message.error(err.message || 'Unable to open the created purchase requisition'));
+  }, [location.search, location.state]);
 
   const setF = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -183,10 +236,13 @@ const PurchaseRequisition = () => {
     },
     {
       title: 'Actions',
-      width: 200,
+      width: 310,
       render: (_, r) => (
-        <Space size="small">
-          {r.status === 'submitted' && (
+        <Space size="small" wrap>
+          {canManage && r.status === 'draft' && (
+            <Button size="small" type="primary" onClick={() => handleSubmit(r)}>Submit</Button>
+          )}
+          {canApprove && r.status === 'submitted' && (
             <>
               <Button size="small" type="primary" icon={<CheckOutlined />}
                 style={{ background: '#52c41a', borderColor: '#52c41a' }}
@@ -199,7 +255,13 @@ const PurchaseRequisition = () => {
               </Button>
             </>
           )}
-          <Button size="small" icon={<EyeOutlined />} onClick={() => setViewPR(r)}>View</Button>
+          {canManage && r.status === 'approved' && (
+            <Button size="small" type="primary" onClick={() => openQuotation(r)}>Supplier Quotation</Button>
+          )}
+          {r.status === 'po_created' && (
+            <Button size="small" type="link" onClick={() => openPO(r)}>Open PO</Button>
+          )}
+          <Button size="small" icon={<EyeOutlined />} onClick={() => handleView(r)}>View</Button>
         </Space>
       ),
     },
@@ -219,10 +281,10 @@ const PurchaseRequisition = () => {
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading} />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => { setShowCreate(true); setForm(emptyForm()); }}
+          {canManage && <Button type="primary" icon={<PlusOutlined />} onClick={() => { setShowCreate(true); setForm(emptyForm()); }}
             style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
             New Requisition
-          </Button>
+          </Button>}
         </Space>
       </div>
 
@@ -264,7 +326,7 @@ const PurchaseRequisition = () => {
         open={showCreate}
         onCancel={() => setShowCreate(false)}
         onOk={handleCreate}
-        okText="Submit PR"
+        okText="Save Draft"
         confirmLoading={createLoading}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
         width={680}
@@ -308,8 +370,9 @@ const PurchaseRequisition = () => {
                 {prodResults[idx]?.length > 0 && !item.product && (
                   <div className="absolute z-50 bg-white border border-gray-200 rounded shadow w-full max-h-32 overflow-y-auto">
                     {prodResults[idx].map(p => (
-                      <div key={p._id} className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-xs"
+                      <div key={p._id} className="px-2 py-1.5 hover:bg-gray-50 cursor-pointer text-xs flex items-center gap-2"
                         onClick={() => selectProduct(idx, p)}>
+                        <ProductImage src={p.images?.[0]} size="xs" />
                         <span className="font-medium">{p.itemName}</span>
                         <span className="text-gray-400 ml-1">{p.productCode}</span>
                       </div>
@@ -327,8 +390,8 @@ const PurchaseRequisition = () => {
               <div className="col-span-2">
                 <InputNumber
                   size="small" min={0} value={item.currentStock}
-                  onChange={v => updateItem(idx, 'currentStock', v || 0)}
-                  placeholder="Stock" className="w-full"
+                  disabled
+                  placeholder="Server snapshot" className="w-full"
                 />
               </div>
               <div className="col-span-2">
@@ -386,7 +449,11 @@ const PurchaseRequisition = () => {
         title={<span className="font-bold">{viewPR?.prNumber}</span>}
         open={!!viewPR}
         onCancel={() => setViewPR(null)}
-        footer={[<Button key="c" onClick={() => setViewPR(null)}>Close</Button>]}
+        footer={[
+          canManage && viewPR?.status === 'approved' && <Button key="quotation" type="primary" onClick={() => openQuotation(viewPR)}>Supplier Quotation</Button>,
+          viewPR?.status === 'po_created' && <Button key="po" type="primary" onClick={() => openPO(viewPR)}>Open Linked PO</Button>,
+          <Button key="c" onClick={() => setViewPR(null)}>Close</Button>,
+        ].filter(Boolean)}
         width={600}
       >
         {viewPR && (
@@ -396,6 +463,7 @@ const PurchaseRequisition = () => {
                 ['Requested By', viewPR.requestedByName],
                 ['Department', viewPR.department || '—'],
                 ['Warehouse', viewPR.warehouseName || '—'],
+                ['Source', viewPR.source === 'reorder_suggestion' ? 'Stock suggestion' : 'Manual'],
                 ['Priority', <Tag color={PRIORITY_COLORS[viewPR.priority]} className="capitalize">{viewPR.priority}</Tag>],
                 ['Status', <Tag color={STATUS_COLORS[viewPR.status]} className="capitalize">{viewPR.status?.replace(/_/g,' ')}</Tag>],
                 ['Required By', viewPR.requiredByDate ? new Date(viewPR.requiredByDate).toLocaleDateString('en-IN') : '—'],
@@ -411,7 +479,7 @@ const PurchaseRequisition = () => {
               rowKey={(_, i) => i}
               pagination={false}
               columns={[
-                { title: 'Product', dataIndex: 'productName', render: (v, r) => <span>{v} <span className="text-gray-400 text-xs">{r.productCode}</span></span> },
+                { title: 'Product', dataIndex: 'productName', render: (v, r) => <div className="flex items-center gap-2"><ProductImage src={r.productImage} size="xs" /><span>{v} <span className="text-gray-400 text-xs">{r.productCode}</span></span></div> },
                 { title: 'Req Qty', dataIndex: 'requiredQty', width: 80 },
                 { title: 'In Stock', dataIndex: 'currentStock', width: 80 },
                 { title: 'Remarks', dataIndex: 'remarks', render: v => v || '—' },

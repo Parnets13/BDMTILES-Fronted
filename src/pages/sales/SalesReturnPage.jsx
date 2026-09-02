@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, UndoOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined, UndoOutlined, RollbackOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 import { createIdempotencyKey } from '../../config/api.js';
 
-const STATUS_COLORS = { draft: 'default', approved: 'blue', stock_updated: 'cyan', credit_issued: 'green', cancelled: 'red' };
+const STATUS_COLORS = {
+  draft: 'default', approved: 'blue', stock_updated: 'cyan', credit_issued: 'green',
+  refund_pending: 'gold', replacement_pending: 'purple', reversed: 'volcano', cancelled: 'red',
+};
 const REASON_LABELS = { damaged: 'Damaged', wrong_product: 'Wrong Product', quality_issue: 'Quality Issue', excess: 'Excess', shade_mismatch: 'Shade Mismatch', other: 'Other' };
 const CONDITION_COLORS = { resaleable: 'green', damaged: 'red', scrap: 'volcano' };
 
@@ -88,15 +92,23 @@ const SalesReturnPage = () => {
     if (order?.items) {
       setReturnItems(order.items.map((item, i) => ({
         key: i,
+        invoiceItem: item._id,
         product: item.product?._id || item.product,
-        productCode: item.productCode,
-        productName: item.productName,
+        productCode: item.productCode || item.product?.productCode,
+        productName: item.productName || item.product?.itemName,
+        productImage: item.productImage || item.product?.images?.[0] || item.images?.[0] || '',
         shade: item.shade || '',
         batch: item.batch || '',
-        orderedQty: item.quantity,
+        invoiceQuantity: item.quantity,
+        orderedQty: item.remainingReturnQty,
         returnQty: 0,
         rate: item.rate,
-        gstPercentage: item.gstPercentage || 18,
+        discountAmount: item.discountAmount || 0,
+        schemeDiscount: item.schemeDiscount || 0,
+        taxableAmount: item.taxableAmount || 0,
+        gstPercentage: item.gstPercentage || 0,
+        gstAmount: item.gstAmount || 0,
+        totalAmount: item.totalAmount || 0,
         reason: 'other',
         condition: 'resaleable',
         warehouse: '',
@@ -112,20 +124,26 @@ const SalesReturnPage = () => {
   const handleCreateReturn = async () => {
     const validItems = returnItems.filter(i => i.returnQty > 0);
     if (!selectedDealer) { message.error('Select a dealer'); return; }
+    if (!selectedOrder?.invoice) { message.error('Select an active sales invoice'); return; }
     if (validItems.length === 0) { message.error('Enter return quantity for at least one item'); return; }
+    if (validItems.some(i => i.condition !== 'scrap' && !i.warehouse)) {
+      message.error('Select a receiving warehouse for every resaleable or damaged item'); return;
+    }
 
     setCreateLoading(true);
     try {
       const payload = {
         dealer: selectedDealer._id,
-        salesOrder: selectedOrder?._id || undefined,
+        salesOrder: selectedOrder.salesOrder || selectedOrder._id,
+        invoice: selectedOrder.invoice,
         adjustmentType,
         remarks,
         items: validItems.map(i => ({
-          product: i.product, productCode: i.productCode, productName: i.productName,
-          shade: i.shade, batch: i.batch, returnQty: i.returnQty, unit: i.unit,
-          rate: i.rate, gstPercentage: i.gstPercentage, reason: i.reason,
-          condition: i.condition, warehouse: i.warehouse || undefined,
+          invoiceItem: i.invoiceItem,
+          returnQty: i.returnQty,
+          reason: i.reason,
+          condition: i.condition,
+          warehouse: i.condition === 'scrap' ? undefined : i.warehouse,
         })),
       };
       const res = await salesService.createReturn(payload, returnSubmissionKey.current);
@@ -141,11 +159,37 @@ const SalesReturnPage = () => {
     finally { setCreateLoading(false); }
   };
 
+  const openView = async record => {
+    try {
+      const res = await salesService.getReturn(record._id);
+      if (res.success) setViewReturn(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
   const handleApprove = async (id) => {
     try {
       const res = await salesService.approveReturn(id, {});
       if (res.success) { message.success(res.message); fetchReturns(); salesService.getReturnStats().then(r => { if (r.success) setStats(r.data); }); }
     } catch (err) { message.error(err.message); }
+  };
+
+  const handleReverse = (record) => {
+    let reason = '';
+    Modal.confirm({
+      title: 'Reverse Posted Sales Return?',
+      content: <Input.TextArea className="mt-3" rows={3} placeholder="Reversal reason (required)" onChange={e => { reason = e.target.value; }} />,
+      okText: 'Reverse Return Effects',
+      okType: 'danger',
+      onOk: async () => {
+        if (!reason.trim()) { message.error('Enter a reversal reason.'); return Promise.reject(); }
+        const res = await salesService.reverseReturn(record._id, { reason: reason.trim() });
+        if (res.success) {
+          message.success(res.message);
+          fetchReturns();
+          salesService.getReturnStats().then(r => { if (r.success) setStats(r.data); });
+        }
+      },
+    });
   };
 
   const handleCancel = async (id) => {
@@ -178,14 +222,17 @@ const SalesReturnPage = () => {
     { title: 'Dealer', key: 'dealer', width: 170, render: (_, r) => (
       <div><div className="text-sm font-medium truncate max-w-[160px]">{r.dealerName || r.dealer?.businessName}</div><div className="text-xs text-gray-400">{r.dealerCode || r.dealer?.dealerCode}</div></div>
     )},
-    { title: 'Against SO', dataIndex: 'orderNumber', width: 110, render: v => v ? <span className="text-xs font-mono text-blue-500">{v}</span> : '—' },
+    { title: 'Against Invoice', dataIndex: 'invoiceNumber', width: 120, render: v => v ? <span className="text-xs font-mono text-blue-500">{v}</span> : '—' },
     { title: 'Items', key: 'items', width: 55, render: (_, r) => r.items?.length || 0 },
     { title: 'Amount', dataIndex: 'grandTotal', width: 100, render: v => <span className="font-semibold text-sm">₹{(v || 0).toLocaleString()}</span> },
-    { title: 'Credit Note', dataIndex: 'creditNoteNumber', width: 100, render: v => v || '—' },
+    { title: 'Credit Note', dataIndex: 'creditNoteNumber', width: 130, render: (value, record) => value ? <span>{value}{record.status === 'reversed' ? <Tag color="volcano" className="ml-1">reversed</Tag> : null}</span> : '—' },
     { title: 'Status', dataIndex: 'status', width: 110, render: s => <Tag color={STATUS_COLORS[s]}>{s?.replace('_', ' ')}</Tag> },
     { title: 'Actions', width: 110, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewReturn(r)} /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
+        {['credit_issued', 'refund_pending', 'replacement_pending'].includes(r.status) && (
+          <Tooltip title="Reverse"><Button type="text" size="small" icon={<RollbackOutlined />} className="text-orange-600" onClick={() => handleReverse(r)} /></Tooltip>
+        )}
         {r.status === 'draft' && (
           <>
             <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleApprove(r._id)} /></Tooltip>
@@ -198,10 +245,10 @@ const SalesReturnPage = () => {
 
   const returnItemColumns = [
     { title: '#', width: 30, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
-    { title: 'Product', width: 180, render: (_, r) => <div><div className="text-xs font-medium">{r.productName}</div><div className="text-[10px] text-gray-400">{r.productCode}</div></div> },
+    { title: 'Product', width: 180, render: (_, r) => <div className="flex items-center gap-2"><ProductImage src={r.productImage || r.product?.images?.[0] || r.images?.[0]} size="sm" /><div><div className="text-xs font-medium">{r.productName}</div><div className="text-[10px] text-gray-400">{r.productCode}</div></div></div> },
     { title: 'Shade', width: 65, render: (_, r) => <span className="text-xs">{r.shade || '—'}</span> },
-    { title: 'Ordered', width: 60, render: (_, r) => <span className="text-xs">{r.orderedQty}</span> },
-    { title: 'Return Qty', width: 80, render: (_, r) => <InputNumber size="small" min={0} max={r.orderedQty} value={r.returnQty} onChange={v => updateReturnItem(r.key, 'returnQty', v)} className="w-full" /> },
+    { title: 'Returnable', width: 70, render: (_, r) => <span className="text-xs">{r.orderedQty}</span> },
+    { title: 'Return Qty', width: 80, render: (_, r) => <InputNumber size="small" min={0} step={0.0001} max={r.orderedQty} value={r.returnQty} onChange={v => updateReturnItem(r.key, 'returnQty', v)} className="w-full" /> },
     { title: 'Rate', width: 70, render: (_, r) => <span className="text-xs">₹{r.rate}</span> },
     { title: 'Reason', width: 120, render: (_, r) => (
       <Select size="small" value={r.reason} onChange={v => updateReturnItem(r.key, 'reason', v)} className="w-full"
@@ -212,19 +259,19 @@ const SalesReturnPage = () => {
         options={[{ value: 'resaleable', label: 'Resaleable' }, { value: 'damaged', label: 'Damaged' }, { value: 'scrap', label: 'Scrap' }]} />
     )},
     { title: 'Warehouse', width: 110, render: (_, r) => (
-      <Select size="small" value={r.warehouse} onChange={v => updateReturnItem(r.key, 'warehouse', v)} className="w-full" placeholder="Select"
-        options={warehouses.map(w => ({ value: w._id, label: w.name }))} allowClear />
+      <Select size="small" value={r.warehouse} onChange={v => updateReturnItem(r.key, 'warehouse', v)} className="w-full"
+        placeholder={r.condition === 'scrap' ? 'Not required' : 'Required'} disabled={r.condition === 'scrap'}
+        options={warehouses.map(w => ({ value: w._id, label: w.name }))} />
     )},
     { title: 'Total', width: 80, render: (_, r) => {
-      const taxable = r.returnQty * r.rate;
-      const gst = (taxable * r.gstPercentage) / 100;
-      return <span className="text-xs font-semibold">₹{Math.round(taxable + gst).toLocaleString()}</span>;
+      const ratio = Number(r.returnQty || 0) / Number(r.invoiceQuantity || 1);
+      return <span className="text-xs font-semibold">₹{Math.round(Number(r.totalAmount || 0) * ratio).toLocaleString()}</span>;
     }},
   ];
 
-  const returnTotal = returnItems.filter(i => i.returnQty > 0).reduce((s, i) => {
-    const t = i.returnQty * i.rate;
-    return s + t + (t * i.gstPercentage / 100);
+  const returnTotal = returnItems.filter(i => i.returnQty > 0).reduce((sum, item) => {
+    const ratio = Number(item.returnQty || 0) / Number(item.invoiceQuantity || 1);
+    return sum + Number(item.totalAmount || 0) * ratio;
   }, 0);
 
   return (
@@ -293,10 +340,10 @@ const SalesReturnPage = () => {
           {/* Select Order */}
           {selectedDealer && dealerOrders.length > 0 && (
             <div>
-              <label className="text-sm font-semibold text-gray-700 block mb-1">Against Sales Order (optional)</label>
-              <Select className="w-full" placeholder="Select order to return against..." allowClear
-                value={selectedOrder?._id} onChange={v => v ? handleSelectOrder(v) : setReturnItems([])}
-                options={dealerOrders.map(o => ({ value: o._id, label: `${o.orderNumber} — ${new Date(o.orderDate).toLocaleDateString('en-IN')} — ₹${(o.grandTotal || 0).toLocaleString()} [${o.status}]` }))} />
+              <label className="text-sm font-semibold text-gray-700 block mb-1">Against Active Sales Invoice *</label>
+              <Select className="w-full" placeholder="Select invoice to return against..."
+                value={selectedOrder?.invoice} onChange={v => handleSelectOrder(dealerOrders.find(o => o.invoice === v)?._id)}
+                options={dealerOrders.map(o => ({ value: o.invoice, label: `${o.invoiceNumber} — SO ${o.orderNumber} — ${new Date(o.invoiceDate).toLocaleDateString('en-IN')} — ₹${(o.grandTotal || 0).toLocaleString()}` }))} />
             </div>
           )}
 
@@ -313,7 +360,11 @@ const SalesReturnPage = () => {
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Adjustment Type</label>
                 <Select value={adjustmentType} onChange={v => setAdjustmentType(v)} className="w-full"
-                  options={[{ value: 'credit_note', label: 'Credit Note' }, { value: 'refund', label: 'Cash Refund' }, { value: 'replacement', label: 'Replacement' }]} />
+                  options={[
+                    { value: 'credit_note', label: 'Credit Note' },
+                    { value: 'refund', label: 'Refund (pending settlement)' },
+                    { value: 'replacement', label: 'Replacement (pending fulfilment)' },
+                  ]} />
               </div>
               <div>
                 <label className="text-xs text-gray-500 block mb-1">Remarks</label>
@@ -358,10 +409,10 @@ const SalesReturnPage = () => {
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div><span className="text-gray-500">Dealer:</span> <span className="font-medium">{viewReturn.dealerName || viewReturn.dealer?.businessName || '-'}</span></div>
                   <div><span className="text-gray-500">Dealer Code:</span> <span className="font-medium">{viewReturn.dealerCode || viewReturn.dealer?.dealerCode || '-'}</span></div>
-                  <div><span className="text-gray-500">Against SO:</span> <span className="font-medium font-mono text-blue-600">{viewReturn.orderNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">Against Invoice:</span> <span className="font-medium font-mono text-blue-600">{viewReturn.invoiceNumber || '-'}</span></div>
                   <div><span className="text-gray-500">Return Date:</span> <span className="font-medium">{viewReturn.returnDate ? new Date(viewReturn.returnDate).toLocaleDateString('en-IN') : '-'}</span></div>
                   <div><span className="text-gray-500">Adjustment Type:</span> <span className="font-medium capitalize">{viewReturn.adjustmentType?.replace(/_/g, ' ') || 'Credit Note'}</span></div>
-                  <div><span className="text-gray-500">Credit Note #:</span> <span className="font-medium text-green-600">{viewReturn.creditNoteNumber || '-'}</span></div>
+                  <div><span className="text-gray-500">Credit Note #:</span> <span className={viewReturn.status === 'reversed' ? 'font-medium text-red-600' : 'font-medium text-green-600'}>{viewReturn.creditNoteNumber || '-'}{viewReturn.creditNoteNumber && viewReturn.status === 'reversed' ? ' (historical, reversed)' : ''}</span></div>
                 </div>
               </div>
 
@@ -372,6 +423,7 @@ const SalesReturnPage = () => {
                   <table className="w-full text-xs">
                     <thead className="bg-gray-100"><tr>
                       <th className="px-3 py-2 text-left">#</th>
+                      <th className="px-3 py-2 text-left">Image</th>
                       <th className="px-3 py-2 text-left">Product</th>
                       <th className="px-3 py-2 text-right">Qty</th>
                       <th className="px-3 py-2 text-right">Rate</th>
@@ -386,6 +438,7 @@ const SalesReturnPage = () => {
                         return (
                           <tr key={idx} className="border-t">
                             <td className="px-3 py-2">{idx + 1}</td>
+                            <td className="px-3 py-2"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                             <td className="px-3 py-2">
                               <div className="font-medium">{item.productName}</div>
                               <div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div>
@@ -394,7 +447,7 @@ const SalesReturnPage = () => {
                             <td className="px-3 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>
                             <td className="px-3 py-2"><Tag color="default">{REASON_LABELS[item.reason] || item.reason || '-'}</Tag></td>
                             <td className="px-3 py-2"><Tag color={CONDITION_COLORS[item.condition] || 'default'}>{item.condition || '-'}</Tag></td>
-                            <td className="px-3 py-2 text-right font-semibold">₹{Math.round(taxable + gst).toLocaleString()}</td>
+                            <td className="px-3 py-2 text-right font-semibold">₹{Number(item.totalAmount || 0).toLocaleString()}</td>
                           </tr>
                         );
                       })}
@@ -421,7 +474,7 @@ const SalesReturnPage = () => {
               <div className="text-xs text-gray-400 flex gap-4 pt-2 border-t">
                 <span>Created: {viewReturn.createdAt ? new Date(viewReturn.createdAt).toLocaleDateString('en-IN') : '-'}</span>
                 <span>By: {viewReturn.createdBy?.name || '-'}</span>
-                {viewReturn.approvedAt && <span>Approved: {new Date(viewReturn.approvedAt).toLocaleDateString('en-IN')}</span>}
+                {viewReturn.approvalDate && <span>Approved: {new Date(viewReturn.approvalDate).toLocaleDateString('en-IN')}</span>}
               </div>
             </div>
           </div>

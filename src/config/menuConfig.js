@@ -80,6 +80,37 @@ const menuConfig = {
         path: '/system/recycle-bin',
         permission: 'users.manage',
       },
+      {
+        id: 'notification-inbox',
+        title: 'Notifications',
+        icon: MessageCircle,
+        path: '/notifications',
+        permission: 'notification.inbox',
+      },
+      {
+        id: 'notification-templates',
+        title: 'Notification Templates',
+        icon: FileText,
+        path: '/system/notification-templates',
+        permission: 'notification.manage',
+        roles: ['super_admin', 'owner'],
+      },
+      {
+        id: 'notification-settings',
+        title: 'Notification Controls',
+        icon: Settings,
+        path: '/system/notification-settings',
+        permission: 'notification.manage',
+        roles: ['super_admin', 'owner'],
+      },
+      {
+        id: 'access-policies',
+        title: 'Access Policies',
+        icon: Clock,
+        path: '/system/access-policies',
+        permission: 'access.policy.manage',
+        roles: ['super_admin', 'owner'],
+      },
     ],
   },
   masters: {
@@ -87,7 +118,7 @@ const menuConfig = {
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['product.master', 'price.list', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master'],
+    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master'],
     items: [
       {
         id: 'product-master',
@@ -108,7 +139,7 @@ const menuConfig = {
         title: 'Dealer Product Pricing',
         icon: DollarSign,
         path: '/masters/dealer-product-pricing',
-        permission: 'product.master',
+        permission: 'dealer.discounts',
       },
       {
         id: 'category-master',
@@ -201,7 +232,7 @@ const menuConfig = {
     title: 'Sales & Purchase',
     icon: ShoppingCart,
     hasSubmenu: true,
-    modulePermissions: ['sales.purchase.management', 'sales.order.dashboard', 'sales.order.create', 'dealer.specific.discounts', 'po.management'],
+    modulePermissions: ['sales.order.dashboard', 'sales.order.create', 'sales.order.approve', 'quotation.management', 'dealer.discounts', 'po.management', 'po.approve', 'grn.entry', 'invoice', 'payment', 'credit.note', 'debit.note'],
     items: [
       {
         id: 'sales-order-dashboard',
@@ -215,28 +246,35 @@ const menuConfig = {
         title: 'Quotation Manager',
         icon: FileText,
         path: '/sales-purchase/quotation-manager',
-        permission: 'sales.order.create',
+        permission: 'quotation.management',
       },
       {
         id: 'discount-mapping',
         title: 'Discount Mapping',
         icon: Percent,
         path: '/sales-purchase/discount-mapping',
-        permission: 'product.master',
+        permission: 'dealer.discounts',
       },
       {
         id: 'po-management',
         title: 'PO Management',
         icon: FileText,
         path: '/sales-purchase/po-management',
-        permission: 'po.management',
+        permissions: ['po.management', 'po.approve'],
       },
       {
         id: 'purchase-requisition',
         title: 'Purchase Requisition',
         icon: ClipboardList,
         path: '/sales-purchase/purchase-requisition',
-        permission: 'po.management',
+        permissions: ['po.management', 'po.approve'],
+      },
+      {
+        id: 'supplier-quotations',
+        title: 'Supplier Quotations',
+        icon: FileCheck,
+        path: '/sales-purchase/supplier-quotations',
+        permissions: ['po.management', 'po.approve'],
       },
       {
         id: 'grn-entry',
@@ -250,7 +288,7 @@ const menuConfig = {
         title: 'Invoices & Billing',
         icon: Receipt,
         path: '/sales-purchase/invoices',
-        permission: 'sales.order.dashboard',
+        permission: 'invoice',
       },
       {
         id: 'supplier-invoice',
@@ -274,13 +312,6 @@ const menuConfig = {
         permission: 'payment',
       },
       {
-        id: 'debit-note',
-        title: 'Debit Note',
-        icon: FileText,
-        path: '/sales-purchase/debit-note',
-        permission: 'debit.note',
-      },
-      {
         id: 'credit-note',
         title: 'Credit Note / Sales Return',
         icon: FileText,
@@ -289,7 +320,7 @@ const menuConfig = {
       },
       {
         id: 'purchase-return',
-        title: 'Purchase Return',
+        title: 'Purchase Returns / Debit Notes',
         icon: RefreshCw,
         path: '/sales-purchase/purchase-return',
         permission: 'debit.note',
@@ -359,8 +390,15 @@ const menuConfig = {
     title: 'Warehouse Operations',
     icon: PackageCheck,
     hasSubmenu: true,
-    modulePermissions: ['picking.management', 'sorting.management', 'dispatch.management'],
+    modulePermissions: ['picking.management', 'sorting.management', 'dispatch.management', 'warehouse.verification'],
     items: [
+      {
+        id: 'warehouse-complaint-verification',
+        title: 'Complaint Verification',
+        icon: FileCheck,
+        path: '/complaints/warehouse-queue',
+        permission: 'warehouse.verification',
+      },
       {
         id: 'picking-list',
         title: 'Picking List',
@@ -396,7 +434,7 @@ const menuConfig = {
     title: 'Dispatch & Delivery',
     icon: Truck,
     hasSubmenu: true,
-    modulePermissions: ['dispatch.management', 'delivery.management'],
+    modulePermissions: ['dispatch.management', 'delivery.view', 'delivery.tracking'],
     items: [
       {
         id: 'delivery-assignment',
@@ -410,7 +448,7 @@ const menuConfig = {
         title: 'Delivery Tracking',
         icon: Activity,
         path: '/warehouse/delivery-tracking',
-        permission: 'dispatch.management',
+        permissions: ['delivery.view', 'delivery.tracking'],
       },
       {
         id: 'delivery-history',
@@ -440,28 +478,35 @@ const menuConfig = {
     title: 'CRM',
     icon: Users2,
     hasSubmenu: true,
-    modulePermissions: ['crm.management', 'lead.management'],
+    modulePermissions: ['lead.view', 'lead.followup', 'lead.app'],
     items: [
+      {
+        id: 'my-leads',
+        title: 'My Leads',
+        icon: Smartphone,
+        path: '/se-app/leads',
+        permission: 'lead.app',
+      },
       {
         id: 'lead-management',
         title: 'Lead Management',
         icon: Target,
         path: '/crm/lead-management',
-        permission: 'lead.management',
+        permission: 'lead.view',
       },
       {
         id: 'followup-manager',
         title: 'Follow-Up Manager',
         icon: Calendar,
         path: '/crm/followup-manager',
-        permission: 'lead.management',
+        permission: 'lead.followup',
       },
       {
         id: 'customer-360',
         title: 'Customer 360',
         icon: Users,
         path: '/crm/customer-360',
-        permission: 'lead.management',
+        permission: 'lead.view',
       },
     ],
   },
@@ -484,13 +529,6 @@ const menuConfig = {
         title: 'Return Requests',
         icon: RefreshCw,
         path: '/complaints/return-request',
-        permission: 'complaint.management',
-      },
-      {
-        id: 'complaint-resolution',
-        title: 'Complaint Resolution',
-        icon: CheckCircle,
-        path: '/complaints/resolution',
         permission: 'complaint.management',
       },
     ],
@@ -619,6 +657,13 @@ const menuConfig = {
     modulePermissions: ['finance.management', 'dealer.ledger', 'supplier.ledger'],
     items: [
       {
+        id: 'finance-complaint-review',
+        title: 'Complaint Finance Review',
+        icon: CheckCircle,
+        path: '/complaints/finance-queue',
+        permission: 'finance.management',
+      },
+      {
         id: 'bank-account-master',
         title: 'Bank Account Master',
         icon: Building2,
@@ -637,13 +682,6 @@ const menuConfig = {
         title: 'Account Master',
         icon: BookMarked,
         path: '/finance/account-master',
-        permission: 'finance.management',
-      },
-      {
-        id: 'payment-allocation',
-        title: 'Payment Allocation',
-        icon: CreditCard,
-        path: '/finance/payment-allocation',
         permission: 'finance.management',
       },
       {
@@ -672,7 +710,7 @@ const menuConfig = {
         title: 'Cheque Management',
         icon: FileCheck,
         path: '/finance/cheque-management',
-        permission: 'cheque.management',
+        permission: 'cheque.view',
       },
       {
         id: 'auto-reconciliation',
@@ -883,7 +921,7 @@ const menuConfig = {
     title: 'Supplier Incentive',
     icon: Gift,
     hasSubmenu: true,
-    modulePermissions: ['supplier.incentive', 'scheme.entry'],
+    modulePermissions: ['scheme.entry', 'scheme.analysis', 'claim.submission', 'incentive.reconciliation'],
     items: [
       {
         id: 'scheme-entry',

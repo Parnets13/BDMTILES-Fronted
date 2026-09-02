@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip
@@ -24,9 +25,11 @@ const STATUS_COLORS = {
 };
 
 const QuotationManager = () => {
+  const navigate = useNavigate();
   const { confirm, alertModal } = useConfirm();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [convertingId, setConvertingId] = useState(null);
   const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
@@ -67,15 +70,42 @@ const QuotationManager = () => {
   };
 
   const handleConvert = async (record) => {
-    const proceed = await confirm(`Convert ${record.quotationNumber} to Sales Order?`, { content: 'A confirmed Sales Order will be created from this quotation.', okText: 'Convert to SO', type: 'info' });
+    if (!['approved', 'accepted'].includes(record.status)) {
+      alertModal('Conversion Not Available', 'Only approved or accepted quotations can be converted.', 'warning');
+      return;
+    }
+    if (record.convertedToSO || record.convertedAt) {
+      alertModal('Already Converted', 'This quotation is already linked to a Sales Order.', 'info');
+      return;
+    }
+    if (isExpired(record.validUntil)) {
+      alertModal('Quotation Expired', 'Expired quotations cannot be converted. Create or approve a valid quotation first.', 'warning');
+      return;
+    }
+    const proceed = await confirm(`Convert ${record.quotationNumber} to Sales Order?`, {
+      content: 'This will create the Sales Order from the quotation pricing snapshot. Credit checks may leave it as a draft pending approval.',
+      okText: 'Convert to Sales Order',
+      type: 'info',
+    });
     if (!proceed) return;
+    setConvertingId(record._id);
     try {
       const res = await salesService.convertQuotation(record._id);
       if (res.success) {
-        message.success(`Converted! Sales Order ${res.data.salesOrder.orderNumber} created.`);
+        const orderNumber = res.data.salesOrder.orderNumber;
+        message.success(res.idempotent ? `Sales Order ${orderNumber} was already created.` : `Sales Order ${orderNumber} created.`);
+        setViewRecord(null);
         fetchQuotations(); loadStats();
+        const viewOrders = await confirm(`Open Sales Order ${orderNumber}?`, {
+          content: 'Go to the Sales Order Dashboard to view the converted order and its source quotation.',
+          okText: 'View Sales Orders',
+          cancelText: 'Stay Here',
+          type: 'info',
+        });
+        if (viewOrders) navigate('/sales-purchase/sales-order-dashboard');
       }
     } catch (err) { alertModal('Convert Failed', err.message, 'error'); }
+    finally { setConvertingId(null); }
   };
 
   const handleDelete = async (id) => {
@@ -130,9 +160,10 @@ const QuotationManager = () => {
                 onClick={() => handleStatusChange(r._id, 'sent')} />
             </Tooltip>
           )}
-          {['approved', 'sent', 'accepted'].includes(r.status) && (
-            <Tooltip title="Convert to Sales Order">
+          {['approved', 'accepted'].includes(r.status) && !isExpired(r.validUntil) && !r.convertedToSO && !r.convertedAt && (
+            <Tooltip title="Convert approved/accepted quotation to Sales Order">
               <Button type="text" size="small" icon={<SwapOutlined />} className="text-purple-600"
+                loading={convertingId === r._id} disabled={Boolean(convertingId && convertingId !== r._id)}
                 onClick={() => handleConvert(r)} />
             </Tooltip>
           )}
@@ -214,8 +245,9 @@ const QuotationManager = () => {
       {viewRecord && (
         <ViewQuotationModal
           quotationId={viewRecord._id}
+          converting={convertingId === viewRecord._id}
           onClose={() => setViewRecord(null)}
-          onConvert={() => { handleConvert(viewRecord); setViewRecord(null); }}
+          onConvert={handleConvert}
           onStatusChange={(id, s) => { handleStatusChange(id, s); setViewRecord(null); }}
         />
       )}
@@ -652,7 +684,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
 // ═══════════════════════════════════════════════
 // VIEW / PRINT QUOTATION MODAL
 // ═══════════════════════════════════════════════
-const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange }) => {
+const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, converting = false }) => {
   const [q, setQ] = useState(null);
   const [loading, setLoading] = useState(true);
   const printRef = useRef(null);
@@ -719,8 +751,8 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange })
       footer={
         <Space>
           <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print PDF</Button>
-          {['sent', 'accepted'].includes(q.status) && (
-            <Button type="primary" icon={<SwapOutlined />} onClick={onConvert}>
+          {['approved', 'accepted'].includes(q.status) && !isExpired && !q.convertedToSO && !q.convertedAt && (
+            <Button type="primary" icon={<SwapOutlined />} loading={converting} onClick={() => onConvert(q)}>
               Convert to Sales Order
             </Button>
           )}

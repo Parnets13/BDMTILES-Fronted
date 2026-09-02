@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip } from 'antd';
 import { SearchOutlined, ReloadOutlined, EyeOutlined, PrinterOutlined, FileTextOutlined, SendOutlined, CloseCircleOutlined } from '@ant-design/icons';
-import api from '../../config/api.js';
+import salesService from '../../services/salesService.js';
 import getImageUrl from '../../utils/imageUrl.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = { draft: 'default', generated: 'blue', sent: 'green', cancelled: 'red' };
+const PAYMENT_COLORS = { pending: 'orange', partial: 'blue', paid: 'green' };
 
 const InvoiceManager = () => {
   const [invoices, setInvoices] = useState([]);
@@ -15,13 +17,13 @@ const InvoiceManager = () => {
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [viewInvoice, setViewInvoice] = useState(null);
 
-  const loadStats = () => { api.get('/invoices/stats').then(r => { if (r.success) setStats(r.data); }).catch(() => {}); };
+  const loadStats = () => { salesService.getInvoiceStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {}); };
   useEffect(() => { loadStats(); }, []);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/invoices', { params: { page: pagination.current, limit: pagination.pageSize, search, status: statusFilter } });
+      const res = await salesService.getInvoices({ page: pagination.current, limit: pagination.pageSize, search, status: statusFilter });
       if (res.success) { setInvoices(res.data); setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 })); }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
@@ -33,18 +35,21 @@ const InvoiceManager = () => {
     { title: 'Invoice #', dataIndex: 'invoiceNumber', width: 130, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'invoiceDate', width: 95, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
     { title: 'SO #', dataIndex: 'orderNumber', width: 110, render: v => <span className="text-xs font-mono">{v || '—'}</span> },
+    { title: 'Dispatch', dataIndex: 'dispatchNumbers', width: 130, render: values => <span className="text-xs">{values?.join(', ') || 'Legacy invoice'}</span> },
     { title: 'Buyer', key: 'buyer', width: 180, render: (_, r) => (
       <div><div className="text-sm font-medium truncate max-w-[170px]">{r.buyerName}</div>
         <div className="text-xs text-gray-400">{r.buyerCode} · {r.buyerGstin || 'No GSTIN'}</div></div>
     )},
-    { title: 'Items', key: 'items', width: 50, render: (_, r) => <span className="text-xs">{r.items?.length || 0}</span> },
     { title: 'Total', dataIndex: 'grandTotal', width: 110, render: v => <span className="font-semibold">₹{(v || 0).toLocaleString()}</span> },
+    { title: 'Paid', dataIndex: 'paidAmount', width: 100, render: v => <span className="text-green-700">₹{(v || 0).toLocaleString()}</span> },
+    { title: 'Balance', dataIndex: 'balanceAmount', width: 105, render: v => <span className="font-semibold text-red-600">₹{(v || 0).toLocaleString()}</span> },
+    { title: 'Payment', dataIndex: 'paymentStatus', width: 90, render: s => <Tag color={PAYMENT_COLORS[s]}>{s}</Tag> },
     { title: 'Status', dataIndex: 'status', width: 90, render: s => <Tag color={STATUS_COLORS[s]}>{s}</Tag> },
     { title: 'Actions', width: 100, render: (_, r) => (
       <Space size="small">
         <Tooltip title="View / Print"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewInvoice(r._id)} /></Tooltip>
         {r.status === 'generated' && <Tooltip title="Mark Sent"><Button type="text" size="small" icon={<SendOutlined />} className="text-green-600"
-          onClick={async () => { const res = await api.patch(`/invoices/${r._id}/status`, { status: 'sent' }); if (res.success) { message.success('Marked sent.'); fetchInvoices(); } }} /></Tooltip>}
+          onClick={async () => { const res = await salesService.updateInvoiceStatus(r._id, { status: 'sent' }); if (res.success) { message.success('Marked sent.'); fetchInvoices(); } }} /></Tooltip>}
       </Space>
     )},
   ];
@@ -54,7 +59,7 @@ const InvoiceManager = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Invoices</h1>
-          <p className="text-sm text-gray-500 mt-0.5">GST Tax Invoices generated from Sales Orders</p>
+          <p className="text-sm text-gray-500 mt-0.5">GST Tax Invoices generated after full stock-consumed dispatch</p>
         </div>
       </div>
 
@@ -96,7 +101,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
   const printRef = useRef(null);
 
   useEffect(() => {
-    api.get(`/invoices/${invoiceId}`).then(r => { if (r.success) setInv(r.data); })
+    salesService.getInvoice(invoiceId).then(r => { if (r.success) setInv(r.data); })
       .catch(err => message.error(err.message)).finally(() => setLoading(false));
   }, [invoiceId]);
 
@@ -158,6 +163,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
               <div className="flex justify-between"><span className="text-gray-500">Invoice #:</span><span className="font-medium">{inv.invoiceNumber}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date:</span><span>{new Date(inv.invoiceDate).toLocaleDateString('en-IN')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">SO #:</span><span>{inv.orderNumber || '—'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Dispatch:</span><span>{inv.dispatchNumbers?.join(', ') || 'Legacy invoice'}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Type:</span><span className="capitalize">{inv.invoiceType?.replace('_', ' ')}</span></div>
             </div>
           </div>
@@ -174,7 +180,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
                 <td className="px-1.5 py-1 text-gray-400">{i+1}</td>
                 <td className="px-1.5 py-1">
                   <div className="flex items-center gap-1">
-                    {item.productImage && <img src={getImageUrl(item.productImage)} alt="" className="w-5 h-5 rounded object-cover border border-gray-100" />}
+                    <ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="xs" />
                     <div><div className="font-medium">{item.productName}</div><div className="text-[8px] text-gray-400">{item.productCode}</div></div>
                   </div>
                 </td>
@@ -212,6 +218,8 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
             <div className="flex justify-between font-bold text-sm text-blue-700 border-t border-blue-200 pt-1 mt-1">
               <span>Grand Total</span><span>₹{inv.grandTotal?.toLocaleString()}</span>
             </div>
+            <div className="flex justify-between text-green-700"><span>Paid</span><span>₹{(inv.paidAmount || 0).toLocaleString()}</span></div>
+            <div className="flex justify-between font-semibold text-red-600"><span>Balance</span><span>₹{(inv.balanceAmount || 0).toLocaleString()}</span></div>
           </div>
         </div>
         {inv.amountInWords && <div className="text-[10px] italic text-gray-500 bg-gray-50 p-2 rounded">{inv.amountInWords}</div>}

@@ -65,6 +65,7 @@ const Sidebar = ({ onClose }) => {
         return item;
       })
       .filter((item) => {
+        if (item.roles?.length && !item.roles.includes(user.role)) return false;
         if (item.hasSubmenu) return item.items.length > 0;
         if (item.permission) return hasPermission(item.permission);
         if (item.permissions) return item.permissions.some((permission) => hasPermission(permission));

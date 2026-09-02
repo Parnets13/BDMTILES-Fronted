@@ -60,7 +60,7 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
     if (!printContent) return;
     const win = window.open('', '_blank');
     win.document.write(`
-      <html><head><title>Invoice - ${order.orderNumber}</title>
+      <html><head><title>Sales Order - ${order.orderNumber}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; padding: 20px; color: #333; font-size: 12px; }
@@ -103,6 +103,10 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
   );
 
   if (!order) return null;
+
+  const fullyDispatched = (order.items || []).length > 0 && (order.items || []).every(item => (
+    Number(item.quantity || 0) - Number(item.dispatchedQuantity || 0) <= 0.0001
+  ));
 
   const itemColumns = [
     { title: '#', width: 35, render: (_, __, i) => <span className="text-xs text-gray-400">{i + 1}</span> },
@@ -154,13 +158,11 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
               {!['cancelled', 'delivered', 'dispatched', 'partial_dispatch'].includes(order.status) && (
                 <Button danger icon={<CloseCircleOutlined />} onClick={() => setCancelModal(true)}>Cancel</Button>
               )}
-              <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Invoice</Button>
-              {['confirmed', 'processing', 'dispatched', 'delivered'].includes(order.status) && (
+              <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Sales Order</Button>
+              {fullyDispatched && ['partial_dispatch', 'dispatched', 'delivered'].includes(order.status) && (
                 <Button type="primary" icon={<FileTextOutlined />} onClick={async () => {
                   try {
-                    const res = await api.post(`/invoices/generate-from-so/${order._id}`, undefined, {
-                      headers: { 'Idempotency-Key': invoiceGenerationKey.current },
-                    });
+                    const res = await salesService.generateInvoiceFromSalesOrder(order._id, invoiceGenerationKey.current);
                     if (res.success) {
                       invoiceGenerationKey.current = createIdempotencyKey();
                       message.success(`${res.data.invoiceNumber} generated!`);

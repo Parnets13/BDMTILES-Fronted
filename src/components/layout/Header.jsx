@@ -1,9 +1,21 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
+import notificationService from '../../services/notificationService.js';
 import { Menu, Bell, Building2 } from 'lucide-react';
 
 const Header = ({ onMenuToggle }) => {
-  const { user, activeBranchId, setActiveBranch } = useAuth();
+  const { user, activeBranchId, setActiveBranch, hasPermission } = useAuth();
+  const navigate = useNavigate();
+  const [unreadCount, setUnreadCount] = useState(0);
   const branches = user?.assignedBranches || [];
+
+  useEffect(() => {
+    if (!activeBranchId || !hasPermission('notification.inbox')) return;
+    notificationService.getUnreadCount()
+      .then((response) => setUnreadCount(response.data?.count || 0))
+      .catch(() => setUnreadCount(0));
+  }, [activeBranchId]);
 
   const getInitial = (name) => {
     if (!name) return 'U';
@@ -66,14 +78,14 @@ const Header = ({ onMenuToggle }) => {
       {/* Right: Notifications + User Info */}
       <div className="flex items-center space-x-4">
         {/* Notification bell */}
-        <button
+        {hasPermission('notification.inbox') && <button
           className="relative p-2 text-gray-500 rounded-lg hover:bg-gray-100 transition-colors border-0 outline-none"
-          aria-label="Notifications"
+          aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ''}`}
+          onClick={() => navigate('/notifications')}
         >
           <Bell size={20} />
-          {/* Notification dot placeholder */}
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
-        </button>
+          {unreadCount > 0 && <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-semibold text-white">{unreadCount > 99 ? '99+' : unreadCount}</span>}
+        </button>}
 
         {/* User Info */}
         <div className="flex items-center space-x-3">

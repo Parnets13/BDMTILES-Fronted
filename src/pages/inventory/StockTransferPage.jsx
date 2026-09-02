@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Modal, InputNumber, Row, Col, Card, Statistic, Tooltip } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, CarOutlined, SwapOutlined, InboxOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   requested: 'orange', approved: 'blue', dispatched: 'cyan', in_transit: 'geekblue',
@@ -32,6 +33,13 @@ const StockTransferPage = () => {
 
   useEffect(() => { fetchTransfers(); }, [fetchTransfers]);
 
+  const openView = async record => {
+    try {
+      const res = await api.get(`/stock-transfers/${record._id}`);
+      if (res.success) setViewRecord(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
   const handleAction = async (id, action, body = {}) => {
     try {
       let res;
@@ -54,7 +62,7 @@ const StockTransferPage = () => {
     { title: 'Status', dataIndex: 'status', width: 100, render: s => <Tag color={STATUS_COLORS[s]}>{s.replace('_', ' ')}</Tag> },
     { title: 'Actions', width: 150, render: (_, r) => (
       <Space size="small">
-        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(r)} /></Tooltip>
+        <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
         {r.status === 'requested' && <>
           <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleAction(r._id, 'approve')} /></Tooltip>
           <Tooltip title="Reject"><Button type="text" size="small" icon={<CloseCircleOutlined />} className="text-red-500" onClick={() => handleAction(r._id, 'reject', { remarks: 'Rejected' })} /></Tooltip>
@@ -120,7 +128,7 @@ const StockTransferPage = () => {
               <tbody>{viewRecord.items?.map((item, i) => (
                 <tr key={i} className="border-t border-gray-100">
                   <td className="px-2 py-1.5 text-gray-400">{i+1}</td>
-                  <td className="px-2 py-1.5"><div className="flex items-center gap-1">{item.productImage && <img src={item.productImage} className="w-5 h-5 rounded object-cover" />}<div><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></div></div></td>
+                  <td className="px-2 py-1.5"><div className="flex items-center gap-1"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="xs" /><div><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></div></div></td>
                   <td className="px-2 py-1.5">{item.shade || '—'}</td>
                   <td className="px-2 py-1.5 font-medium">{item.requestedQty} {item.unit}</td>
                   <td className="px-2 py-1.5">{item.dispatchedQty || '—'}</td>
@@ -239,7 +247,7 @@ const CreateTransferModal = ({ open, onClose, onSuccess }) => {
               <div className="absolute z-50 left-0 top-full mt-1 w-full bg-white border rounded-lg shadow-xl max-h-48 overflow-y-auto">
                 {products.filter(p => !items.some(i => i.product === p._id)).map(p => (
                   <div key={p._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer border-b border-gray-50 flex items-center gap-2" onClick={() => addProduct(p)}>
-                    {p.images?.[0] && <img src={p.images[0]} className="w-7 h-7 rounded object-cover border" />}
+                    <ProductImage src={p.images?.[0]} size="sm" />
                     <div className="flex-1"><div className="text-sm font-medium">{p.itemName}</div><div className="text-[10px] text-gray-400">{p.productCode}</div></div>
                   </div>
                 ))}
@@ -254,7 +262,7 @@ const CreateTransferModal = ({ open, onClose, onSuccess }) => {
             <thead className="bg-blue-50"><tr>{['Product','Shade','Batch','Qty','Unit',''].map(h => <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-600">{h}</th>)}</tr></thead>
             <tbody>{items.map((item, idx) => (
               <tr key={idx} className="border-t border-gray-100">
-                <td className="px-2 py-1.5"><div className="flex items-center gap-1">{item.productImage && <img src={item.productImage} className="w-6 h-6 rounded object-cover" />}<div><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></div></div></td>
+                <td className="px-2 py-1.5"><div className="flex items-center gap-1"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="sm" /><div><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></div></div></td>
                 <td className="px-2 py-1.5"><Input size="small" value={item.shade} onChange={e => { const n = [...items]; n[idx].shade = e.target.value; setItems(n); }} placeholder="—" className="w-16" /></td>
                 <td className="px-2 py-1.5"><Input size="small" value={item.batch} onChange={e => { const n = [...items]; n[idx].batch = e.target.value; setItems(n); }} placeholder="—" className="w-16" /></td>
                 <td className="px-2 py-1.5"><InputNumber size="small" min={1} value={item.requestedQty} onChange={v => { const n = [...items]; n[idx].requestedQty = v || 1; setItems(n); }} className="w-16" /></td>

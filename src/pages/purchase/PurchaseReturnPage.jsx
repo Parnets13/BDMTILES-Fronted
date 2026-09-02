@@ -5,11 +5,12 @@ import {
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined,
-  EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, UndoOutlined
+  EyeOutlined, CheckCircleOutlined, CloseCircleOutlined, UndoOutlined, RollbackOutlined
 } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { ProductImage } from '../../components/ImageLightbox.jsx';
 import { createIdempotencyKey } from '../../config/api.js';
 
 const STATUS_COLORS = {
@@ -17,6 +18,7 @@ const STATUS_COLORS = {
   approved: 'blue',
   stock_deducted: 'cyan',
   debit_issued: 'green',
+  reversed: 'volcano',
   cancelled: 'red',
 };
 
@@ -69,6 +71,13 @@ const PurchaseReturnPage = () => {
 
   useEffect(() => { fetchReturns(); }, [fetchReturns]);
 
+  const openView = async record => {
+    try {
+      const res = await purchaseService.getReturn(record._id);
+      if (res.success) setViewRecord(res.data);
+    } catch (err) { message.error(err.message); }
+  };
+
   const handleApprove = async () => {
     setApproveLoading(true);
     try {
@@ -80,6 +89,21 @@ const PurchaseReturnPage = () => {
       }
     } catch (err) { message.error(err.message); }
     finally { setApproveLoading(false); }
+  };
+
+  const handleReverse = (record) => {
+    let reason = '';
+    Modal.confirm({
+      title: 'Reverse Posted Purchase Return?',
+      content: <Input.TextArea className="mt-3" rows={3} placeholder="Reversal reason (required)" onChange={e => { reason = e.target.value; }} />,
+      okText: 'Reverse Stock & Ledger',
+      okType: 'danger',
+      onOk: async () => {
+        if (!reason.trim()) { message.error('Enter a reversal reason.'); return Promise.reject(); }
+        const res = await purchaseService.reverseReturn(record._id, { reason: reason.trim() });
+        if (res.success) { message.success(res.message); fetchReturns(); loadStats(); }
+      },
+    });
   };
 
   const handleCancel = async (id) => {
@@ -125,10 +149,14 @@ const PurchaseReturnPage = () => {
       render: (_, r) => (
         <Space size="small">
           <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600"
-            onClick={() => setViewRecord(r)} />
+            onClick={() => openView(r)} />
           {r.status === 'draft' && (
             <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600"
               onClick={() => { setApproveRecord(r); setApproveRemarks(''); }} />
+          )}
+          {r.status === 'debit_issued' && (
+            <Button type="text" size="small" icon={<RollbackOutlined />} className="text-orange-600"
+              onClick={() => handleReverse(r)} />
           )}
           {r.status === 'draft' && (
             <Button type="text" size="small" icon={<CloseCircleOutlined />} className="text-red-500"
@@ -243,12 +271,9 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
   const [warehouses, setWarehouses] = useState([]);
   const [form, setForm] = useState({
     returnDate: new Date().toISOString().split('T')[0],
-    purchaseOrder: '', grn: '', remarks: '',
+    purchaseOrder: '', grn: '', supplierInvoice: '', remarks: '',
   });
-  const [items, setItems] = useState([
-    { product: '', productName: '', shade: '', batch: '', returnQty: 1,
-      unit: 'Box', rate: 0, gstPercentage: 18, reason: 'quality_issue', reasonDetails: '', warehouse: '' }
-  ]);
+  const [items, setItems] = useState([]);
 
   useEffect(() => {
     if (open && !wasOpenRef.current) {
@@ -266,7 +291,7 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
     setSelectedSupplier(sup);
     setSelectedGRN(null);
     setAvailableGRNs([]);
-    setForm(f => ({ ...f, grn: '', purchaseOrder: '' }));
+    setForm(f => ({ ...f, grn: '', purchaseOrder: '', supplierInvoice: '' }));
     if (supplierId) {
       try {
         const res = await purchaseService.getGRNsForSupplier(supplierId);
@@ -278,17 +303,34 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
   const handleGRNChange = (grnId) => {
     const grn = availableGRNs.find(g => g._id === grnId);
     setSelectedGRN(grn);
-    setForm(f => ({ ...f, grn: grnId, purchaseOrder: grn?.purchaseOrder || '' }));
-    // Pre-fill items from GRN
+    setForm(f => ({
+      ...f,
+      grn: grnId,
+      purchaseOrder: grn?.purchaseOrder || '',
+      supplierInvoice: grn?.supplierInvoice || '',
+    }));
     if (grn?.items?.length) {
       setItems(grn.items.map(i => ({
+        supplierInvoiceItem: i.supplierInvoiceItem,
+        grnItem: i.grnItem,
+        purchaseOrderItem: i.purchaseOrderItem,
         product: i.product?._id || i.product || '',
         productName: i.productName || i.product?.itemName || '',
+        productCode: i.productCode || i.product?.productCode || '',
+        productImage: i.productImage || i.product?.images?.[0] || i.images?.[0] || '',
         shade: i.shade || '', batch: i.batch || '',
-        returnQty: 1, unit: i.unit || 'Box', rate: i.rate || 0,
-        gstPercentage: i.gstPercentage || 18, reason: 'quality_issue',
-        reasonDetails: '', warehouse: i.warehouse?._id || i.warehouse || '',
+        invoiceQuantity: i.invoiceQuantity,
+        remainingReturnQty: i.remainingReturnQty,
+        returnQty: 0, unit: i.unit || 'Box', rate: i.rate || 0,
+        discountAmount: i.discountAmount || 0,
+        taxableAmount: i.taxableAmount || 0,
+        gstPercentage: i.gstPercentage || 0,
+        gstAmount: i.gstAmount || 0,
+        totalAmount: i.totalAmount || 0,
+        reason: 'quality_issue', reasonDetails: '', warehouse: i.warehouse?._id || i.warehouse || '',
       })));
+    } else {
+      setItems([]);
     }
   };
 
@@ -296,33 +338,35 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
     setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: value } : item));
   };
 
-  const addItem = () => setItems(prev => [...prev, {
-    product: '', productName: '', shade: '', batch: '', returnQty: 1,
-    unit: 'Box', rate: 0, gstPercentage: 18, reason: 'quality_issue', reasonDetails: '', warehouse: '',
-  }]);
-
   const removeItem = (idx) => setItems(prev => prev.filter((_, i) => i !== idx));
 
   const calcTotals = () => {
-    let subtotal = 0, totalTax = 0;
-    items.forEach(item => {
-      const taxable = item.returnQty * item.rate;
-      const gst = (taxable * (item.gstPercentage || 18)) / 100;
-      subtotal += taxable; totalTax += gst;
+    let subtotal = 0, totalTax = 0, grandTotal = 0;
+    items.filter(item => item.returnQty > 0).forEach(item => {
+      const ratio = Number(item.returnQty || 0) / Number(item.invoiceQuantity || 1);
+      subtotal += Number(item.taxableAmount || 0) * ratio;
+      totalTax += Number(item.gstAmount || 0) * ratio;
+      grandTotal += Number(item.totalAmount || 0) * ratio;
     });
-    return { subtotal, totalTax, grandTotal: subtotal + totalTax };
+    return { subtotal, totalTax, grandTotal };
   };
 
   const handleSubmit = async () => {
+    const validItems = items.filter(i => Number(i.returnQty) > 0);
     if (!selectedSupplier) { message.error('Select a supplier'); return; }
-    if (!items.length || items.some(i => !i.product)) { message.error('Add at least one item with a product'); return; }
+    if (!selectedGRN || !form.supplierInvoice) { message.error('Select a posted GRN with a verified supplier invoice'); return; }
+    if (!validItems.length) { message.error('Enter a return quantity for at least one invoice line'); return; }
     setLoading(true);
     try {
-      const { subtotal, totalTax, grandTotal } = calcTotals();
       const payload = {
         supplier: selectedSupplier._id,
         ...form,
-        items, subtotal, totalTax, grandTotal,
+        items: validItems.map(item => ({
+          supplierInvoiceItem: item.supplierInvoiceItem,
+          returnQty: item.returnQty,
+          reason: item.reason,
+          reasonDetails: item.reasonDetails,
+        })),
       };
       const res = await purchaseService.createReturn(payload, returnSubmissionKey.current);
       if (res.success) {
@@ -336,8 +380,8 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
 
   const closeAndReset = () => {
     setSelectedSupplier(null); setSelectedGRN(null); setAvailableGRNs([]);
-    setForm({ returnDate: new Date().toISOString().split('T')[0], purchaseOrder: '', grn: '', remarks: '' });
-    setItems([{ product: '', productName: '', shade: '', batch: '', returnQty: 1, unit: 'Box', rate: 0, gstPercentage: 18, reason: 'quality_issue', reasonDetails: '', warehouse: '' }]);
+    setForm({ returnDate: new Date().toISOString().split('T')[0], purchaseOrder: '', grn: '', supplierInvoice: '', remarks: '' });
+    setItems([]);
     onClose();
   };
 
@@ -370,11 +414,11 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
         {/* Link GRN */}
         {availableGRNs.length > 0 && (
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Link Against GRN (optional — auto-fills items)</label>
-            <Select className="w-full" placeholder="Select GRN..." onChange={handleGRNChange} allowClear
+            <label className="text-xs text-gray-500 block mb-1">Posted GRN / Verified Supplier Invoice *</label>
+            <Select className="w-full" placeholder="Select posted GRN and invoice..." onChange={handleGRNChange}
               options={availableGRNs.map(g => ({
                 value: g._id,
-                label: `${g.grnNumber} — ${new Date(g.grnDate || g.createdAt).toLocaleDateString('en-IN')}${g.supplierInvoiceNo ? ` — Inv: ${g.supplierInvoiceNo}` : ''}`
+                label: `${g.grnNumber} — ${new Date(g.grnDate || g.createdAt).toLocaleDateString('en-IN')} — Inv: ${g.supplierInvoiceNumber}`
               }))} />
           </div>
         )}
@@ -382,15 +426,14 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
         {/* Items Table */}
         <div>
           <div className="flex justify-between items-center mb-2">
-            <label className="text-sm font-semibold text-gray-700">Return Items *</label>
-            <Button size="small" icon={<PlusOutlined />} onClick={addItem}>Add Item</Button>
+            <label className="text-sm font-semibold text-gray-700">Return Items (pricing and tax are derived from the verified invoice)</label>
           </div>
           <div className="border border-gray-200 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-xs">
                 <thead className="bg-red-50">
                   <tr>
-                    {['Product / Name', 'Shade', 'Batch', 'Qty', 'Rate', 'GST%', 'Reason', 'Warehouse', ''].map(h => (
+                    {['Image', 'Product / Name', 'Shade', 'Batch', 'Qty', 'Rate', 'GST%', 'Reason', 'Warehouse', ''].map(h => (
                       <th key={h} className="px-2 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -398,30 +441,28 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
                 <tbody>
                   {items.map((item, idx) => (
                     <tr key={idx} className="border-t border-gray-100">
+                      <td className="px-2 py-1.5"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                       <td className="px-2 py-1.5">
-                        <Input value={item.productName}
-                          onChange={e => updateItem(idx, 'productName', e.target.value)}
-                          placeholder="Product name" className="w-40" />
+                        <div className="w-40">
+                          <div className="font-medium">{item.productName}</div>
+                          <div className="text-gray-400">{item.productCode}</div>
+                        </div>
                       </td>
                       <td className="px-2 py-1.5">
-                        <Input value={item.shade} onChange={e => updateItem(idx, 'shade', e.target.value)}
-                          placeholder="Shade" className="w-20" />
+                        <span className="w-20 inline-block">{item.shade || '—'}</span>
                       </td>
                       <td className="px-2 py-1.5">
-                        <Input value={item.batch} onChange={e => updateItem(idx, 'batch', e.target.value)}
-                          placeholder="Batch" className="w-20" />
+                        <span className="w-20 inline-block">{item.batch || '—'}</span>
                       </td>
                       <td className="px-2 py-1.5">
-                        <InputNumber min={1} value={item.returnQty}
-                          onChange={v => updateItem(idx, 'returnQty', v || 1)} className="w-16" />
+                        <InputNumber min={0} step={0.0001} max={item.remainingReturnQty} value={item.returnQty}
+                          onChange={v => updateItem(idx, 'returnQty', v || 0)} className="w-20" />
                       </td>
                       <td className="px-2 py-1.5">
-                        <InputNumber min={0} value={item.rate}
-                          onChange={v => updateItem(idx, 'rate', v || 0)} className="w-20" prefix="₹" />
+                        <InputNumber value={item.rate} className="w-20" prefix="₹" disabled />
                       </td>
                       <td className="px-2 py-1.5">
-                        <InputNumber min={0} max={28} value={item.gstPercentage}
-                          onChange={v => updateItem(idx, 'gstPercentage', v || 18)} className="w-14" />
+                        <InputNumber value={item.gstPercentage} className="w-14" disabled />
                       </td>
                       <td className="px-2 py-1.5">
                         <Select value={item.reason} onChange={v => updateItem(idx, 'reason', v)}
@@ -429,9 +470,8 @@ const CreateReturnModal = ({ open, onClose, suppliers, onSuccess }) => {
                       </td>
                       <td className="px-2 py-1.5">
                         <Select value={item.warehouse || undefined}
-                          onChange={v => updateItem(idx, 'warehouse', v)}
                           options={warehouses.map(w => ({ value: w._id, label: w.name }))}
-                          placeholder="Warehouse" className="w-32" allowClear />
+                          placeholder="Warehouse" className="w-32" disabled />
                       </td>
                       <td className="px-2 py-1.5">
                         {items.length > 1 && (
@@ -507,7 +547,7 @@ const ViewReturnModal = ({ record, onClose }) => (
           <table className="w-full text-xs border border-gray-200 rounded">
             <thead className="bg-gray-50">
               <tr>
-                {['Product', 'Shade', 'Batch', 'Qty', 'Rate', 'GST', 'Total', 'Reason'].map(h => (
+                {['Image', 'Product', 'Shade', 'Batch', 'Qty', 'Rate', 'GST', 'Total', 'Reason'].map(h => (
                   <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-600">{h}</th>
                 ))}
               </tr>
@@ -515,6 +555,7 @@ const ViewReturnModal = ({ record, onClose }) => (
             <tbody>
               {record.items.map((item, i) => (
                 <tr key={i} className="border-t border-gray-100">
+                  <td className="px-2 py-1.5"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                   <td className="px-2 py-1.5">{item.productName || item.product?.itemName || '—'}</td>
                   <td className="px-2 py-1.5">{item.shade || '—'}</td>
                   <td className="px-2 py-1.5">{item.batch || '—'}</td>
