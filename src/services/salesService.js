@@ -74,6 +74,7 @@ const salesService = {
   // Quotations
   getQuotations: (params) => api.get('/quotations', { params }),
   getQuotation: (id) => api.get(`/quotations/${id}`),
+  getQuotationProducts: (params) => api.get('/quotations/product-browser', { params }),
   createQuotation: (data) => api.post('/quotations', data),
   updateQuotation: (id, data) => api.put(`/quotations/${id}`, data),
   previewQuotationPricing: (data) => api.post('/quotations/price-preview', data),
