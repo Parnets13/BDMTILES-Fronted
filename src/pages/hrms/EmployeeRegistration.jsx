@@ -406,42 +406,226 @@ const EmployeeRegistration = () => {
 
                 <Divider />
                 <h3 className="text-base font-semibold text-gray-700 mb-3">App Access</h3>
+
+                {/* ── Picking & Sorting mobile app callout ── */}
+                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <span className="text-2xl">📱</span>
+                    <div className="flex-1">
+                      <p className="font-semibold text-blue-800 mb-1">
+                        BDM Tiles — Picking &amp; Sorting mobile app
+                      </p>
+                      <p className="text-sm text-blue-700 mb-3">
+                        Enable app access to let this employee log in to the warehouse mobile app.
+                        The credentials you set here are their login details. They will be prompted
+                        to change the temporary password on first login.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                        <div className="rounded bg-white border border-blue-200 p-3">
+                          <p className="font-semibold text-blue-800 mb-1">📦 Picking/Sorting Staff</p>
+                          <p className="text-gray-600 text-xs">
+                            Role: <code className="bg-blue-50 px-1 rounded">picking_staff</code>
+                          </p>
+                          <p className="text-gray-600 text-xs mt-1">
+                            Grants: assign self, start picking, record picked/short/damaged quantities,
+                            confirm barcode · shade · batch.
+                          </p>
+                        </div>
+                        <div className="rounded bg-white border border-purple-200 p-3">
+                          <p className="font-semibold text-purple-800 mb-1">🔀 Sorting Staff</p>
+                          <p className="text-gray-600 text-xs">
+                            Role: <code className="bg-purple-50 px-1 rounded">sorting_staff</code>
+                          </p>
+                          <p className="text-gray-600 text-xs mt-1">
+                            Grants: verify sorting quantities, record discrepancies, pack (boxes + weight),
+                            mark ready for dispatch.
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        💡 <strong>Warehouse Manager</strong> role gets full access to both picking and sorting.
+                        Use <strong>picking_staff</strong> or <strong>sorting_staff</strong> for floor-level employees.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 <Alert
                   className="mb-4"
-                  type="info"
+                  type={editingEmployee?.appAccess?.linked ? 'success' : 'info'}
                   showIcon
-                  message={editingEmployee?.appAccess?.linked ? `Linked account: ${editingEmployee.appAccess.status}` : 'Optional linked app account'}
-                  description="Disabling access revokes the account without deleting it. Inactive and terminated employees cannot retain active access."
+                  message={
+                    editingEmployee?.appAccess?.linked
+                      ? `Linked account — ${editingEmployee.appAccess.role ?? 'role unknown'} · ${editingEmployee.appAccess.status}`
+                      : 'No app account linked yet'
+                  }
+                  description={
+                    editingEmployee?.appAccess?.linked
+                      ? `Username: ${editingEmployee.appAccess.username}  ·  Email: ${editingEmployee.appAccess.email}${editingEmployee.appAccess.mustChangePassword ? '  ·  ⚠ Password change required on next login' : ''}`
+                      : 'Enable the toggle below to create login credentials for the BDM Tiles Picking & Sorting app. The employee must change their temporary password on first login.'
+                  }
                 />
-                <Form.Item name={['appAccess', 'enabled']} label="Enable app access" valuePropName="checked"><Switch /></Form.Item>
+
+                <Form.Item
+                  name={['appAccess', 'enabled']}
+                  label="Enable app access (Picking & Sorting mobile app)"
+                  valuePropName="checked">
+                  <Switch />
+                </Form.Item>
+
                 {appAccessEnabled && (
-                  <Row gutter={16}>
-                    <Col xs={24} md={5}><Form.Item name={['appAccess', 'role']} label="Operational Role" rules={[{ required: true }]}><Select options={roleOptions} /></Form.Item></Col>
-                    <Col xs={24} md={5}><Form.Item name={['appAccess', 'username']} label="Username" rules={[{ required: true }]}><Input autoComplete="off" /></Form.Item></Col>
-                    <Col xs={24} md={5}><Form.Item name={['appAccess', 'email']} label="App Email" rules={[{ required: true, type: 'email' }]}><Input autoComplete="off" /></Form.Item></Col>
-                    <Col xs={24} md={4}><Form.Item name={['appAccess', 'phone']} label="App Phone" rules={[{ required: true }]}><Input /></Form.Item></Col>
-                    <Col xs={24} md={5}>
-                      <Form.Item
-                        name={['appAccess', 'temporaryPassword']}
-                        label={editingEmployee?.appAccess?.linked ? 'Reset Temporary Password' : 'Temporary Password'}
-                        rules={[
-                          ...(editingEmployee?.appAccess?.linked ? [] : [{ required: true, message: 'Temporary password is required' }]),
-                          { min: 10, message: 'Use at least 10 characters' },
-                          {
-                            validator: (_, value) => !value || (
-                              /[a-z]/.test(value)
-                              && /[A-Z]/.test(value)
-                              && /\d/.test(value)
-                              && /[^A-Za-z0-9]/.test(value)
-                            ) ? Promise.resolve() : Promise.reject(new Error('Include uppercase, lowercase, number, and special character')),
-                          },
-                        ]}
-                        extra={editingEmployee?.appAccess?.linked ? 'Leave blank to keep the current password.' : 'The user must change this later.'}
-                      >
-                        <Input.Password autoComplete="new-password" />
-                      </Form.Item>
-                    </Col>
-                  </Row>
+                  <>
+                    {/* Role selector with picking/sorting highlight */}
+                    <Row gutter={16} className="mb-2">
+                      <Col xs={24} md={5}>
+                        <Form.Item
+                          name={['appAccess', 'role']}
+                          label="Operational Role"
+                          rules={[{ required: true, message: 'Select a role' }]}
+                          extra={
+                            <span className="text-xs text-gray-500">
+                              For warehouse staff use <strong>Picking/Sorting Staff</strong> or <strong>Sorting Staff</strong>
+                            </span>
+                          }>
+                          <Select
+                            options={roleOptions.map((option) => ({
+                              ...option,
+                              label: (
+                                <span className="flex items-center gap-1">
+                                  {option.value === 'picking_staff' && <span>📦 </span>}
+                                  {option.value === 'sorting_staff' && <span>🔀 </span>}
+                                  {option.value === 'warehouse_manager' && <span>🏭 </span>}
+                                  {option.label}
+                                </span>
+                              ),
+                            }))}
+                            placeholder="Select role…"
+                            optionRender={(option) => (
+                              <div>
+                                <span className="font-medium">
+                                  {option.data.value === 'picking_staff' && '📦 '}
+                                  {option.data.value === 'sorting_staff' && '🔀 '}
+                                  {option.data.value === 'warehouse_manager' && '🏭 '}
+                                  {option.data.label}
+                                </span>
+                                {(option.data.value === 'picking_staff') && (
+                                  <div className="text-xs text-gray-500 mt-0.5">picking.management · sorting.management · stock.view</div>
+                                )}
+                                {(option.data.value === 'sorting_staff') && (
+                                  <div className="text-xs text-gray-500 mt-0.5">sorting.management · dispatch.management · stock.view</div>
+                                )}
+                                {(option.data.value === 'warehouse_manager') && (
+                                  <div className="text-xs text-gray-500 mt-0.5">Full picking + sorting + dispatch + delivery access</div>
+                                )}
+                              </div>
+                            )}
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={5}>
+                        <Form.Item
+                          name={['appAccess', 'username']}
+                          label="Username"
+                          rules={[{ required: true, message: 'Username is required' }]}
+                          extra="Employee uses this to log in">
+                          <Input autoComplete="off" placeholder="e.g. ravi.picker" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={5}>
+                        <Form.Item
+                          name={['appAccess', 'email']}
+                          label="App Email"
+                          rules={[{ required: true, type: 'email', message: 'Valid email required' }]}
+                          extra="Can also be used to log in">
+                          <Input autoComplete="off" placeholder="employee@company.com" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={4}>
+                        <Form.Item
+                          name={['appAccess', 'phone']}
+                          label="App Phone"
+                          rules={[{ required: true, message: 'Phone is required' }]}>
+                          <Input placeholder="10-digit mobile" />
+                        </Form.Item>
+                      </Col>
+                      <Col xs={24} md={5}>
+                        <Form.Item
+                          name={['appAccess', 'temporaryPassword']}
+                          label={editingEmployee?.appAccess?.linked ? 'Reset Temporary Password' : 'Temporary Password'}
+                          rules={[
+                            ...(editingEmployee?.appAccess?.linked ? [] : [{ required: true, message: 'Temporary password is required' }]),
+                            { min: 10, message: 'Use at least 10 characters' },
+                            {
+                              validator: (_, value) => !value || (
+                                /[a-z]/.test(value)
+                                && /[A-Z]/.test(value)
+                                && /\d/.test(value)
+                                && /[^A-Za-z0-9]/.test(value)
+                              ) ? Promise.resolve() : Promise.reject(new Error('Include uppercase, lowercase, number, and special character')),
+                            },
+                          ]}
+                          extra={
+                            editingEmployee?.appAccess?.linked
+                              ? 'Leave blank to keep the current password.'
+                              : '⚠ Employee must change this on first login (min 10 chars, mixed case + number + special).'
+                          }>
+                          <Input.Password autoComplete="new-password" placeholder="Min 10 chars" />
+                        </Form.Item>
+                      </Col>
+                    </Row>
+
+                    {/* Quick-reference card shown when role is chosen */}
+                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev?.appAccess?.role !== curr?.appAccess?.role}>
+                      {({ getFieldValue }) => {
+                        const role = getFieldValue(['appAccess', 'role']);
+                        if (!role) return null;
+                        const isPickingStaff = role === 'picking_staff';
+                        const isSortingStaff = role === 'sorting_staff';
+                        const isWarehouseManager = role === 'warehouse_manager';
+                        if (!isPickingStaff && !isSortingStaff && !isWarehouseManager) return null;
+                        return (
+                          <div className={`rounded-lg border p-3 mb-4 text-sm ${
+                            isWarehouseManager ? 'bg-indigo-50 border-indigo-200' :
+                            isSortingStaff ? 'bg-purple-50 border-purple-200' :
+                            'bg-blue-50 border-blue-200'
+                          }`}>
+                            <p className={`font-semibold mb-1 ${
+                              isWarehouseManager ? 'text-indigo-700' :
+                              isSortingStaff ? 'text-purple-700' :
+                              'text-blue-700'
+                            }`}>
+                              {isPickingStaff && '📦 Picking/Sorting Staff — what this employee can do in the app:'}
+                              {isSortingStaff && '🔀 Sorting Staff — what this employee can do in the app:'}
+                              {isWarehouseManager && '🏭 Warehouse Manager — what this employee can do in the app:'}
+                            </p>
+                            <ul className="list-disc list-inside text-gray-600 space-y-0.5 text-xs">
+                              {(isPickingStaff || isWarehouseManager) && (
+                                <>
+                                  <li>View all pick lists, filter by status and priority</li>
+                                  <li>Assign pick list to themselves and start picking</li>
+                                  <li>Record picked / short / damaged quantities per item</li>
+                                  <li>Confirm barcode, shade and batch for each item</li>
+                                  <li>Submit picking completion (releases short/damaged from reservation)</li>
+                                </>
+                              )}
+                              {(isSortingStaff || isWarehouseManager) && (
+                                <>
+                                  <li>View pick lists awaiting sort (verified status)</li>
+                                  <li>Enter sorted / short / damaged quantities with identity checks</li>
+                                  <li>Record sorting discrepancies (evidence only — no stock moved)</li>
+                                  <li>Pack: enter total boxes and weight</li>
+                                  <li>Mark pick list ready for dispatch</li>
+                                </>
+                              )}
+                              {isWarehouseManager && (
+                                <li>Full dispatch management and delivery assignment access</li>
+                              )}
+                            </ul>
+                          </div>
+                        );
+                      }}
+                    </Form.Item>
+                  </>
                 )}
 
                 <Divider />
