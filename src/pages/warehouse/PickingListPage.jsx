@@ -1,14 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Steps, Checkbox } from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, UserOutlined, PlayCircleOutlined, CheckCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, EyeOutlined, UserOutlined, UsergroupAddOutlined, PlusOutlined, PlayCircleOutlined, CheckCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
+import salesService from '../../services/salesService.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
   generated: 'default', assigned: 'orange', in_progress: 'blue', picked: 'cyan',
   verified: 'geekblue', sorted: 'purple', packed: 'lime', ready_for_dispatch: 'green',
+  loaded: 'volcano', cancelled: 'red',
 };
-const STATUS_STEPS = ['generated', 'assigned', 'in_progress', 'picked', 'verified', 'sorted', 'packed', 'ready_for_dispatch'];
+// Linear workflow steps (cancelled is a terminal side-state, not part of the progression).
+const STATUS_STEPS = ['generated', 'assigned', 'in_progress', 'picked', 'verified', 'sorted', 'packed', 'ready_for_dispatch', 'loaded'];
 
 const PickingListPage = () => {
   const [pickLists, setPickLists] = useState([]);
@@ -21,6 +24,19 @@ const PickingListPage = () => {
   const [completionRecord, setCompletionRecord] = useState(null);
   const [completionItems, setCompletionItems] = useState([]);
   const [savingCompletion, setSavingCompletion] = useState(false);
+
+  // Generate pick list (from a confirmed/approved sales order)
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [orderOptions, setOrderOptions] = useState([]);
+  const [orderSearch, setOrderSearch] = useState('');
+  const [selectedOrderId, setSelectedOrderId] = useState(undefined);
+  const [generating, setGenerating] = useState(false);
+
+  // Assign pick list to a staff member
+  const [assignRecord, setAssignRecord] = useState(null);
+  const [staffOptions, setStaffOptions] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(undefined);
+  const [assigning, setAssigning] = useState(false);
 
   const loadStats = () => api.get('/pick-lists/stats').then(res => { if (res.success) setStats(res.data); }).catch(() => {});
   useEffect(() => { loadStats(); }, []);
@@ -48,6 +64,78 @@ const PickingListPage = () => {
         loadStats();
       }
     } catch (err) { message.error(err.message); }
+  };
+
+  // ── Generate Pick List from a sales order ──────────────────────────────────
+  const fetchGeneratableOrders = useCallback(async (searchText = '') => {
+    try {
+      // Confirmed/approved orders with reserved stock can be turned into pick lists.
+      const res = await salesService.getOrders({ status: 'confirmed,approved', search: searchText, limit: 50 });
+      if (res.success) {
+        setOrderOptions((res.data || []).map(o => ({
+          value: o._id,
+          label: `${o.orderNumber} — ${o.dealerName || o.customerName || 'Dealer'} (${o.status})`,
+        })));
+      }
+    } catch (err) { message.error(err.message); }
+  }, []);
+
+  const openGenerate = () => {
+    setSelectedOrderId(undefined);
+    setOrderSearch('');
+    setGenerateOpen(true);
+    fetchGeneratableOrders('');
+  };
+
+  const submitGenerate = async () => {
+    if (!selectedOrderId) return message.error('Select a sales order to generate a pick list.');
+    setGenerating(true);
+    try {
+      const res = await api.post(`/pick-lists/generate/${selectedOrderId}`, {});
+      if (res.success) {
+        message.success(res.message || `${res.data?.pickListNumber || 'Pick list'} generated.`);
+        setGenerateOpen(false);
+        fetchPickLists();
+        loadStats();
+      }
+    } catch (err) { message.error(err.message); }
+    finally { setGenerating(false); }
+  };
+
+  // ── Assign a pick list to a staff member ───────────────────────────────────
+  const loadStaff = useCallback(async () => {
+    try {
+      const res = await api.get('/pick-lists/assignable-staff');
+      if (res.success) {
+        setStaffOptions((res.data || []).map(u => ({ value: u._id, label: u.name })));
+      }
+    } catch (err) { message.error(err.message); }
+  }, []);
+
+  const openAssign = (record) => {
+    setAssignRecord(record);
+    setSelectedStaff(record.assignedTo?._id || record.assignedTo || undefined);
+    if (!staffOptions.length) loadStaff();
+  };
+
+  const submitAssign = async () => {
+    if (!assignRecord) return;
+    if (!selectedStaff) return message.error('Select a staff member.');
+    const staff = staffOptions.find(s => s.value === selectedStaff);
+    setAssigning(true);
+    try {
+      const res = await api.patch(`/pick-lists/${assignRecord._id}/assign`, {
+        assignedTo: selectedStaff,
+        assignedToName: staff?.label,
+      });
+      if (res.success) {
+        message.success(res.message || 'Pick list assigned.');
+        setAssignRecord(null);
+        fetchPickLists();
+        loadStats();
+      }
+    } catch (err) { message.error(err.message); }
+    finally { setAssigning(false); }
   };
 
   const openView = async record => {
@@ -136,6 +224,7 @@ const PickingListPage = () => {
       <Space size="small" wrap>
         <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(record)} /></Tooltip>
         {record.status === 'generated' && <Tooltip title="Assign to me"><Button type="text" size="small" icon={<UserOutlined />} className="text-orange-500" onClick={() => handleAction(record._id, 'assign')} /></Tooltip>}
+        {record.status === 'generated' && <Tooltip title="Assign to staff"><Button type="text" size="small" icon={<UsergroupAddOutlined />} className="text-purple-600" onClick={() => openAssign(record)} /></Tooltip>}
         {record.status === 'assigned' && <Tooltip title="Start picking"><Button type="text" size="small" icon={<PlayCircleOutlined />} className="text-blue-600" onClick={() => handleAction(record._id, 'start')} /></Tooltip>}
         {record.status === 'in_progress' && <Tooltip title="Record item verification"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-cyan-600" onClick={() => openCompletion(record)} /></Tooltip>}
         {record.status === 'picked' && <Tooltip title="Supervisor verify"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-indigo-600" onClick={() => handleAction(record._id, 'verify')} /></Tooltip>}
@@ -147,9 +236,15 @@ const PickingListPage = () => {
 
   return (
     <div>
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-800">Picking List</h1>
-        <p className="text-sm text-gray-500 mt-0.5">Assign, pick and verify reserved stock before handing it to sorting</p>
+      <div className="mb-5 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Picking List</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Assign, pick and verify reserved stock before handing it to sorting</p>
+        </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={openGenerate}
+          style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+          Generate Pick List
+        </Button>
       </div>
 
       <Row gutter={12} className="mb-4">
@@ -231,6 +326,54 @@ const PickingListPage = () => {
           </div>
         </Modal>
       )}
+
+      {/* Generate Pick List from a confirmed/approved sales order */}
+      <Modal
+        open={generateOpen}
+        title="Generate Pick List"
+        onCancel={() => setGenerateOpen(false)}
+        onOk={submitGenerate}
+        confirmLoading={generating}
+        okText="Generate"
+        okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+      >
+        <p className="text-sm text-gray-500 mb-3">
+          Pick a confirmed or approved sales order with reserved stock. A pick list will be generated from its reservation.
+        </p>
+        <Select
+          showSearch
+          value={selectedOrderId}
+          placeholder="Search sales order # or dealer…"
+          className="w-full"
+          filterOption={false}
+          onSearch={(text) => { setOrderSearch(text); fetchGeneratableOrders(text); }}
+          onChange={setSelectedOrderId}
+          options={orderOptions}
+          notFoundContent={orderSearch ? 'No matching orders' : 'Type to search'}
+        />
+      </Modal>
+
+      {/* Assign a pick list to a staff member */}
+      <Modal
+        open={!!assignRecord}
+        title={assignRecord ? `Assign ${assignRecord.pickListNumber}` : 'Assign'}
+        onCancel={() => setAssignRecord(null)}
+        onOk={submitAssign}
+        confirmLoading={assigning}
+        okText="Assign"
+      >
+        <p className="text-sm text-gray-500 mb-3">Assign this pick list to a warehouse staff member.</p>
+        <Select
+          showSearch
+          value={selectedStaff}
+          placeholder="Select staff…"
+          className="w-full"
+          optionFilterProp="label"
+          onChange={setSelectedStaff}
+          options={staffOptions}
+          notFoundContent="No assignable staff found"
+        />
+      </Modal>
     </div>
   );
 };

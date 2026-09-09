@@ -5,8 +5,16 @@ import api from '../../config/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
-const STATUS_COLORS = { verified: 'geekblue', sorted: 'purple', packed: 'lime', ready_for_dispatch: 'green' };
+const STATUS_COLORS = {
+  generated: 'default', assigned: 'orange', in_progress: 'blue', picked: 'cyan',
+  verified: 'geekblue', sorted: 'purple', packed: 'lime', ready_for_dispatch: 'green',
+  loaded: 'volcano', cancelled: 'red',
+};
 const PRIORITY_COLORS = { normal: 'default', urgent: 'orange', vip: 'red' };
+
+// The sorting queue defaults to these statuses; "All" (undefined) shows every status.
+const SORTING_STATUSES = 'verified,sorted,packed,ready_for_dispatch';
+const STATUS_OPTIONS = Object.keys(STATUS_COLORS).map(value => ({ value, label: value.replace(/_/g, ' ') }));
 
 const SortingList = () => {
   const { hasPermission } = useAuth();
@@ -15,6 +23,7 @@ const SortingList = () => {
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [priorityFilter, setPriorityFilter] = useState(undefined);
+  const [statusFilter, setStatusFilter] = useState(undefined);
   const [packRecord, setPackRecord] = useState(null);
   const [packForm, setPackForm] = useState({ totalBoxes: 0, totalWeight: 0, deliveryRoute: '' });
   const [detail, setDetail] = useState(null);
@@ -27,14 +36,16 @@ const SortingList = () => {
   const fetchPickLists = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/pick-lists', { params: { page: pagination.current, limit: pagination.pageSize, search, priority: priorityFilter, status: 'verified,sorted,packed,ready_for_dispatch' } });
+      // statusFilter set → that single status; otherwise the sorting queue statuses.
+      const status = statusFilter || SORTING_STATUSES;
+      const res = await api.get('/pick-lists', { params: { page: pagination.current, limit: pagination.pageSize, search, priority: priorityFilter, status } });
       if (res.success) {
         setPickLists(res.data || []);
         setPagination(current => ({ ...current, total: res.pagination?.totalItems || 0 }));
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, priorityFilter, search]);
+  }, [pagination.current, pagination.pageSize, priorityFilter, search, statusFilter]);
 
   useEffect(() => { fetchPickLists(); }, [fetchPickLists]);
 
@@ -112,6 +123,7 @@ const SortingList = () => {
     { title: 'SO #', dataIndex: 'orderNumber', width: 105 },
     { title: 'Dealer', dataIndex: 'dealerName', width: 160 },
     { title: 'Route', dataIndex: 'deliveryRoute', width: 130, render: value => value ? <Tag color="blue">{value}</Tag> : 'Unassigned' },
+    { title: 'Assigned', key: 'assigned', width: 110, render: (_, record) => record.assignedToName || record.assignedTo?.name || <span className="text-gray-400">Unassigned</span> },
     { title: 'Priority', dataIndex: 'priority', width: 90, render: value => <Tag color={PRIORITY_COLORS[value]}>{value}</Tag> },
     { title: 'Picked Qty', dataIndex: 'totalPickedQty', width: 90 },
     { title: 'Boxes', dataIndex: 'totalBoxes', width: 70, render: value => value || '—' },
@@ -131,7 +143,7 @@ const SortingList = () => {
   return <div>
     <div className="flex justify-between items-center mb-5"><div><h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><SwapOutlined className="text-purple-600 text-xl" /> Sorting List</h1><p className="text-sm text-gray-500 mt-0.5">Authoritative item sorting, discrepancy evidence, packing and dispatch-ready handoff</p></div><Button icon={<ReloadOutlined />} onClick={fetchPickLists}>Refresh</Button></div>
     <Row gutter={16} className="mb-4"><Col span={6}><Card size="small"><Statistic title="Awaiting Sort" value={counts('verified')} /></Card></Col><Col span={6}><Card size="small"><Statistic title="Sorted" value={counts('sorted')} /></Card></Col><Col span={6}><Card size="small"><Statistic title="Packed" value={counts('packed')} /></Card></Col><Col span={6}><Card size="small"><Statistic title="Ready" value={counts('ready_for_dispatch')} /></Card></Col></Row>
-    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 flex gap-3"><Input placeholder="Search pick list, order or dealer..." prefix={<SearchOutlined />} value={search} onChange={event => setSearch(event.target.value)} className="w-64" allowClear /><Select placeholder="Priority" allowClear value={priorityFilter} onChange={setPriorityFilter} className="w-32" options={Object.keys(PRIORITY_COLORS).map(value => ({ value, label: value }))} /><Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setPriorityFilter(undefined); }}>Reset</Button></div>
+    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 flex gap-3"><Input placeholder="Search pick list, order or dealer..." prefix={<SearchOutlined />} value={search} onChange={event => setSearch(event.target.value)} className="w-64" allowClear /><Select placeholder="All statuses" allowClear value={statusFilter} onChange={setStatusFilter} className="w-44" options={STATUS_OPTIONS} /><Select placeholder="Priority" allowClear value={priorityFilter} onChange={setPriorityFilter} className="w-32" options={Object.keys(PRIORITY_COLORS).map(value => ({ value, label: value }))} /><Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setPriorityFilter(undefined); setStatusFilter(undefined); }}>Reset</Button></div>
     <div className="bg-white rounded-lg border border-gray-200"><Table columns={columns} dataSource={pickLists} rowKey="_id" loading={loading} size="middle" scroll={{ x: 1100 }} pagination={{ ...pagination, showSizeChanger: true }} onChange={page => setPagination(current => ({ ...current, current: page.current, pageSize: page.pageSize }))} /></div>
 
     {detail && <Modal open title={`Sorting Details — ${detail.pickListNumber}`} onCancel={() => setDetail(null)} width={1120} footer={detail.status === 'verified' && canManage ? [<Button key="cancel" onClick={() => setDetail(null)}>Cancel</Button>, <Button key="save" type="primary" loading={saving} onClick={submitSorting}>Complete verified sorting</Button>] : <Button onClick={() => setDetail(null)}>Close</Button>}>

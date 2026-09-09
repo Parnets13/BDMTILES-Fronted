@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Card,
+  Checkbox,
   Col,
   DatePicker,
   Divider,
@@ -16,7 +17,6 @@ import {
   Select,
   Space,
   Statistic,
-  Switch,
   Table,
   Tag,
   Tooltip,
@@ -36,7 +36,10 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import hrmsService from '../../services/hrmsService.js';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
-const DESIGNATIONS = ['Manager', 'Executive', 'Sr. Executive', 'Assistant', 'Supervisor', 'Driver', 'Helper', 'Accountant', 'Director', 'Intern'];
+// Non-app HR designations for staff who do NOT need mobile/app access.
+// App-role designations (Picking Staff, Sorting/Loading Staff, etc.) come from the
+// backend role catalog (roleOptions) so that Designation === Access, single source of truth.
+const NON_APP_DESIGNATIONS = ['Driver', 'Helper', 'Accountant', 'Office Assistant', 'Intern'];
 const EMPLOYMENT_TYPES = ['Full Time', 'Part Time', 'Contract', 'Daily Wage'];
 const SHIFTS = ['General', 'Morning (6AM-2PM)', 'Evening (2PM-10PM)', 'Night (10PM-6AM)'];
 const GENDERS = ['Male', 'Female', 'Other'];
@@ -62,7 +65,6 @@ const EmployeeRegistration = () => {
   const [form] = Form.useForm();
   const [exitForm] = Form.useForm();
   const [salaryCalc, setSalaryCalc] = useState({ gross: 0, totalDeductions: 0, net: 0 });
-  const appAccessEnabled = Form.useWatch(['appAccess', 'enabled'], form);
 
   const branchOptions = useMemo(() => (user?.assignedBranches || [])
     .filter((branch) => branch?.status === 'active')
@@ -70,6 +72,40 @@ const EmployeeRegistration = () => {
       value: branchValue(branch),
       label: `${branch.branchCode ? `${branch.branchCode} — ` : ''}${branch.name}`,
     })), [user?.assignedBranches]);
+
+  // ── Multi-select Designation === Access ────────────────────────────────────
+  // An employee can hold SEVERAL app-access designations at once (e.g. Picking +
+  // Sorting + Loading). Checked roles are stored in appAccess.roles[]; the app
+  // grants the union of their permissions. roleOptions come from the backend:
+  // [{ value: 'picking_staff', label: 'Picking Staff' }, ...]
+  const roleToLabel = useMemo(() => {
+    const map = {};
+    roleOptions.forEach((option) => { map[option.value] = option.label; });
+    return map;
+  }, [roleOptions]);
+
+  // Checkbox options for the multi-select — one box per assignable app role.
+  const accessRoleCheckboxes = useMemo(
+    () => roleOptions.map((option) => ({ value: option.value, label: option.label })),
+    [roleOptions],
+  );
+
+  // Human-readable permission preview for a set of selected roles.
+  const rolePermissionPreview = useCallback((roles = []) => {
+    const preview = {
+      picking_staff: 'Picking: pick lists, picked/short/damaged, barcode·shade·batch',
+      sorting_staff: 'Sorting + Loading: sort, pack, ready for dispatch, scan-verify loading',
+      warehouse_manager: 'Full warehouse: picking, sorting, loading, dispatch, delivery',
+    };
+    return roles.map((role) => preview[role] || roleToLabel[role] || role);
+  }, [roleToLabel]);
+
+  // Watch the selected roles so the preview + derived designation stay live.
+  const selectedRoles = Form.useWatch(['appAccess', 'roles'], form) || [];
+  const hasAppAccess = selectedRoles.length > 0;
+  // The stored `designation` string is derived from the selected role labels so
+  // the employee table stays readable and designation always mirrors access.
+  const designationSummary = selectedRoles.map((role) => roleToLabel[role] || role).join(', ');
 
   const fetchStats = useCallback(async () => {
     if (!activeBranchId) return setStats({ total: 0, active: 0, inactive: 0, onNotice: 0, terminated: 0 });
@@ -141,7 +177,7 @@ const EmployeeRegistration = () => {
     employmentType: 'Full Time',
     shift: 'General',
     leaveBalance: { casual: 12, sick: 6, earned: 0, unpaid: 0 },
-    appAccess: { enabled: false },
+    appAccess: { enabled: false, roles: [] },
   });
 
   const closeDrawer = () => {
@@ -153,14 +189,22 @@ const EmployeeRegistration = () => {
   const openDrawer = (employee = null) => {
     setEditingEmployee(employee);
     if (employee) {
+      // Pre-check the multi-select boxes from the roles the linked user satisfies.
+      const grantedRoles = employee.appAccess?.roles || [];
+      // Designation mirrors access when app roles exist; else keep the HR title.
+      // The designation Select uses mode="tags" (array value).
+      const designation = grantedRoles.length
+        ? [grantedRoles.map((role) => roleToLabel[role] || role).join(', ')]
+        : (employee.designation ? [employee.designation] : []);
       form.setFieldsValue({
         ...employee,
+        designation,
         branchId: branchValue(employee.branchId),
         dateOfBirth: employee.dateOfBirth ? dayjs(employee.dateOfBirth) : null,
         dateOfJoining: employee.dateOfJoining ? dayjs(employee.dateOfJoining) : null,
         appAccess: {
+          roles: grantedRoles,
           enabled: Boolean(employee.appAccess?.enabled),
-          role: employee.appAccess?.role,
           username: employee.appAccess?.username,
           email: employee.appAccess?.email || employee.email,
           phone: employee.appAccess?.phone || employee.mobile,
@@ -180,11 +224,32 @@ const EmployeeRegistration = () => {
     try {
       setLoading(true);
       const values = await form.validateFields();
+      const appAccess = values.appAccess || {};
+      // Multi-select designations drive access: the ticked roles ARE the access.
+      // antd Checkbox.Group yields an array; ignore any empty/falsy entries.
+      const roles = (appAccess.roles || []).filter(Boolean);
+      // Designation string mirrors the access (or the free-typed HR title for
+      // non-app staff). The `designation` field uses mode="tags" so it's an array.
+      const rawDesignation = Array.isArray(values.designation) ? values.designation[0] : values.designation;
+      const designation = roles.length
+        ? roles.map((role) => roleToLabel[role] || role).join(', ')
+        : (rawDesignation || '');
       const payload = {
         ...values,
+        designation,
         dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null,
         dateOfJoining: values.dateOfJoining ? values.dateOfJoining.format('YYYY-MM-DD') : null,
+        appAccess: {
+          ...appAccess,
+          roles,
+          enabled: roles.length > 0,
+        },
       };
+      if (!designation) {
+        setLoading(false);
+        message.error('Select a designation or at least one app-access role.');
+        return;
+      }
       const response = editingEmployee
         ? await hrmsService.updateEmployee(editingEmployee._id, payload)
         : await hrmsService.createEmployee(payload);
@@ -383,7 +448,28 @@ const EmployeeRegistration = () => {
                 <Divider />
                 <h3 className="text-base font-semibold text-gray-700 mb-3">Employment Details</h3>
                 <Row gutter={16}>
-                  <Col xs={24} md={4}><Form.Item name="designation" label="Designation" rules={[{ required: true }]}><Select options={DESIGNATIONS.map((value) => ({ value, label: value }))} showSearch /></Form.Item></Col>
+                  <Col xs={24} md={4}>
+                    <Form.Item
+                      name="designation"
+                      label="Designation"
+                      rules={[{ required: true }]}
+                      extra={
+                        hasAppAccess
+                          ? <span className="text-xs text-green-600">Auto-set from App Access below</span>
+                          : <span className="text-xs text-gray-400">e.g. Driver, Accountant — or set App Access below</span>
+                      }>
+                      <Select
+                        options={NON_APP_DESIGNATIONS.map((value) => ({ value, label: value }))}
+                        showSearch
+                        allowClear
+                        // Free-form allowed for HR titles not in the list.
+                        mode="tags"
+                        maxCount={1}
+                        placeholder="Select or type designation"
+                        disabled={hasAppAccess}
+                      />
+                    </Form.Item>
+                  </Col>
                   <Col xs={24} md={4}><Form.Item name="department" label="Department" rules={[{ required: true }]}><Select options={DEPARTMENTS.map((value) => ({ value, label: value }))} showSearch /></Form.Item></Col>
                   <Col xs={24} md={4}><Form.Item name="dateOfJoining" label="Joining Date" rules={[{ required: true }]}><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
                   <Col xs={24} md={4}><Form.Item name="employmentType" label="Employment Type"><Select options={EMPLOYMENT_TYPES.map((value) => ({ value, label: value }))} /></Form.Item></Col>
@@ -422,29 +508,29 @@ const EmployeeRegistration = () => {
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
                         <div className="rounded bg-white border border-blue-200 p-3">
-                          <p className="font-semibold text-blue-800 mb-1">📦 Picking/Sorting Staff</p>
+                          <p className="font-semibold text-blue-800 mb-1">📦 Picking Staff</p>
                           <p className="text-gray-600 text-xs">
                             Role: <code className="bg-blue-50 px-1 rounded">picking_staff</code>
                           </p>
                           <p className="text-gray-600 text-xs mt-1">
                             Grants: assign self, start picking, record picked/short/damaged quantities,
-                            confirm barcode · shade · batch.
+                            confirm barcode · shade · batch, and sorting.
                           </p>
                         </div>
                         <div className="rounded bg-white border border-purple-200 p-3">
-                          <p className="font-semibold text-purple-800 mb-1">🔀 Sorting Staff</p>
+                          <p className="font-semibold text-purple-800 mb-1">🔀 Sorting / Loading Staff</p>
                           <p className="text-gray-600 text-xs">
                             Role: <code className="bg-purple-50 px-1 rounded">sorting_staff</code>
                           </p>
                           <p className="text-gray-600 text-xs mt-1">
                             Grants: verify sorting quantities, record discrepancies, pack (boxes + weight),
-                            mark ready for dispatch.
+                            mark ready for dispatch, and scan-verify vehicle loading.
                           </p>
                         </div>
                       </div>
                       <p className="text-xs text-blue-600 mt-2">
-                        💡 <strong>Warehouse Manager</strong> role gets full access to both picking and sorting.
-                        Use <strong>picking_staff</strong> or <strong>sorting_staff</strong> for floor-level employees.
+                        💡 Tick every designation this employee works as — they can do all of them in the app.
+                        Selecting multiple grants the <strong>combined</strong> permissions.
                       </p>
                     </div>
                   </div>
@@ -466,62 +552,39 @@ const EmployeeRegistration = () => {
                   }
                 />
 
+                {/* Multi-select designations = app access. Ticking any box grants access. */}
                 <Form.Item
-                  name={['appAccess', 'enabled']}
-                  label="Enable app access (Picking & Sorting mobile app)"
-                  valuePropName="checked">
-                  <Switch />
+                  name={['appAccess', 'roles']}
+                  label="Designations / Access (select one or more)"
+                  extra="Each ticked designation adds its permissions. Leave all unticked for no app access.">
+                  <Checkbox.Group className="w-full">
+                    <Row gutter={[12, 12]}>
+                      {accessRoleCheckboxes.map((option) => (
+                        <Col xs={24} sm={12} md={8} key={option.value}>
+                          <Checkbox value={option.value} className="w-full">
+                            {option.label}
+                          </Checkbox>
+                        </Col>
+                      ))}
+                    </Row>
+                  </Checkbox.Group>
                 </Form.Item>
 
-                {appAccessEnabled && (
+                {hasAppAccess && (
                   <>
-                    {/* Role selector with picking/sorting highlight */}
+                    {/* Combined-permission preview for every ticked designation. */}
+                    <div className="mb-3 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm">
+                      <p className="font-semibold text-green-800 mb-1">
+                        Combined app access ({selectedRoles.length} designation{selectedRoles.length > 1 ? 's' : ''})
+                      </p>
+                      <ul className="list-disc list-inside text-xs text-green-700 space-y-0.5">
+                        {rolePermissionPreview(selectedRoles).map((line, index) => (
+                          <li key={index}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+
                     <Row gutter={16} className="mb-2">
-                      <Col xs={24} md={5}>
-                        <Form.Item
-                          name={['appAccess', 'role']}
-                          label="Operational Role"
-                          rules={[{ required: true, message: 'Select a role' }]}
-                          extra={
-                            <span className="text-xs text-gray-500">
-                              For warehouse staff use <strong>Picking/Sorting Staff</strong> or <strong>Sorting Staff</strong>
-                            </span>
-                          }>
-                          <Select
-                            options={roleOptions.map((option) => ({
-                              ...option,
-                              label: (
-                                <span className="flex items-center gap-1">
-                                  {option.value === 'picking_staff' && <span>📦 </span>}
-                                  {option.value === 'sorting_staff' && <span>🔀 </span>}
-                                  {option.value === 'warehouse_manager' && <span>🏭 </span>}
-                                  {option.label}
-                                </span>
-                              ),
-                            }))}
-                            placeholder="Select role…"
-                            optionRender={(option) => (
-                              <div>
-                                <span className="font-medium">
-                                  {option.data.value === 'picking_staff' && '📦 '}
-                                  {option.data.value === 'sorting_staff' && '🔀 '}
-                                  {option.data.value === 'warehouse_manager' && '🏭 '}
-                                  {option.data.label}
-                                </span>
-                                {(option.data.value === 'picking_staff') && (
-                                  <div className="text-xs text-gray-500 mt-0.5">picking.management · sorting.management · stock.view</div>
-                                )}
-                                {(option.data.value === 'sorting_staff') && (
-                                  <div className="text-xs text-gray-500 mt-0.5">sorting.management · dispatch.management · stock.view</div>
-                                )}
-                                {(option.data.value === 'warehouse_manager') && (
-                                  <div className="text-xs text-gray-500 mt-0.5">Full picking + sorting + dispatch + delivery access</div>
-                                )}
-                              </div>
-                            )}
-                          />
-                        </Form.Item>
-                      </Col>
                       <Col xs={24} md={5}>
                         <Form.Item
                           name={['appAccess', 'username']}
@@ -574,57 +637,6 @@ const EmployeeRegistration = () => {
                       </Col>
                     </Row>
 
-                    {/* Quick-reference card shown when role is chosen */}
-                    <Form.Item noStyle shouldUpdate={(prev, curr) => prev?.appAccess?.role !== curr?.appAccess?.role}>
-                      {({ getFieldValue }) => {
-                        const role = getFieldValue(['appAccess', 'role']);
-                        if (!role) return null;
-                        const isPickingStaff = role === 'picking_staff';
-                        const isSortingStaff = role === 'sorting_staff';
-                        const isWarehouseManager = role === 'warehouse_manager';
-                        if (!isPickingStaff && !isSortingStaff && !isWarehouseManager) return null;
-                        return (
-                          <div className={`rounded-lg border p-3 mb-4 text-sm ${
-                            isWarehouseManager ? 'bg-indigo-50 border-indigo-200' :
-                            isSortingStaff ? 'bg-purple-50 border-purple-200' :
-                            'bg-blue-50 border-blue-200'
-                          }`}>
-                            <p className={`font-semibold mb-1 ${
-                              isWarehouseManager ? 'text-indigo-700' :
-                              isSortingStaff ? 'text-purple-700' :
-                              'text-blue-700'
-                            }`}>
-                              {isPickingStaff && '📦 Picking/Sorting Staff — what this employee can do in the app:'}
-                              {isSortingStaff && '🔀 Sorting Staff — what this employee can do in the app:'}
-                              {isWarehouseManager && '🏭 Warehouse Manager — what this employee can do in the app:'}
-                            </p>
-                            <ul className="list-disc list-inside text-gray-600 space-y-0.5 text-xs">
-                              {(isPickingStaff || isWarehouseManager) && (
-                                <>
-                                  <li>View all pick lists, filter by status and priority</li>
-                                  <li>Assign pick list to themselves and start picking</li>
-                                  <li>Record picked / short / damaged quantities per item</li>
-                                  <li>Confirm barcode, shade and batch for each item</li>
-                                  <li>Submit picking completion (releases short/damaged from reservation)</li>
-                                </>
-                              )}
-                              {(isSortingStaff || isWarehouseManager) && (
-                                <>
-                                  <li>View pick lists awaiting sort (verified status)</li>
-                                  <li>Enter sorted / short / damaged quantities with identity checks</li>
-                                  <li>Record sorting discrepancies (evidence only — no stock moved)</li>
-                                  <li>Pack: enter total boxes and weight</li>
-                                  <li>Mark pick list ready for dispatch</li>
-                                </>
-                              )}
-                              {isWarehouseManager && (
-                                <li>Full dispatch management and delivery assignment access</li>
-                              )}
-                            </ul>
-                          </div>
-                        );
-                      }}
-                    </Form.Item>
                   </>
                 )}
 

@@ -138,7 +138,7 @@ const AssignmentScopeField = ({
 };
 
 const UserManagement = () => {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [metadataLoading, setMetadataLoading] = useState(false);
@@ -172,10 +172,17 @@ const UserManagement = () => {
       < (roleInfo[currentUser?.role]?.rank ?? Number.NEGATIVE_INFINITY);
   });
   const branches = assignmentOptions.branches;
-  const allPermissionOptions = Object.values(permissionsConfig)
-    .flat()
-    .filter((permission) => permission.id !== '*')
-    .map((permission) => ({ value: permission.id, label: permission.name }));
+  // Grouped permission options so the Add/Edit modal list mirrors the drawer —
+  // each backend category (including "Picking & Sorting App") shows as its own
+  // labeled section, with the app's Picking / Sorting / Loading permissions listed.
+  const allPermissionOptions = Object.entries(permissionsConfig)
+    .map(([category, permissions]) => ({
+      label: category,
+      options: (permissions || [])
+        .filter((permission) => permission.id !== '*')
+        .map((permission) => ({ value: permission.id, label: permission.name })),
+    }))
+    .filter((group) => group.options.length > 0);
 
   const fetchUsers = useCallback(async (page = 1, pageSize = 10) => {
     setLoading(true);
@@ -326,12 +333,14 @@ const UserManagement = () => {
       values.assignmentScopes = scopes;
 
       setLoading(true);
+      const editedUserId = selectedUser?._id;
       const response = selectedUser
-        ? await userService.updateUser(selectedUser._id, values)
+        ? await userService.updateUser(editedUserId, values)
         : await userService.createUser(values);
       if (response.success) {
         message.success(selectedUser ? 'User updated' : 'User created');
         closeUserModal();
+        await refreshSelfIfNeeded(editedUserId);
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
@@ -374,14 +383,25 @@ const UserManagement = () => {
     }
   };
 
+  // When the edited user is the currently logged-in user, refresh the auth session
+  // so their OWN sidebar/menu reflects the new permissions immediately (otherwise
+  // the sidebar stays stale until a full page reload / re-login).
+  const refreshSelfIfNeeded = async (editedUserId) => {
+    if (editedUserId && currentUser?._id === editedUserId) {
+      try { await refreshUser(); } catch { /* non-fatal: menu updates on next load */ }
+    }
+  };
+
   const handleSavePermissions = async (permissions) => {
     try {
+      const editedUserId = selectedUser._id;
       const safePermissions = permissions.filter((permission) => permission !== '*');
-      const response = await userService.updatePermissions(selectedUser._id, { permissions: safePermissions });
+      const response = await userService.updatePermissions(editedUserId, { permissions: safePermissions });
       if (response.success) {
         message.success('Custom permissions updated');
         setPermissionDrawerOpen(false);
         setSelectedUser(null);
+        await refreshSelfIfNeeded(editedUserId);
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
@@ -391,11 +411,13 @@ const UserManagement = () => {
 
   const handleResetPermissions = async () => {
     try {
-      const response = await userService.resetPermissions(selectedUser._id);
+      const editedUserId = selectedUser._id;
+      const response = await userService.resetPermissions(editedUserId);
       if (response.success) {
         message.success('Permissions reset to role defaults');
         setPermissionDrawerOpen(false);
         setSelectedUser(null);
+        await refreshSelfIfNeeded(editedUserId);
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
