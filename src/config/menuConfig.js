@@ -43,6 +43,9 @@ import {
   Clock,
   Briefcase,
   ReceiptIcon,
+  Globe,
+  Image,
+  Megaphone,
 } from 'lucide-react';
 
 /**
@@ -110,6 +113,57 @@ const menuConfig = {
         path: '/system/access-policies',
         permission: 'access.policy.manage',
         roles: ['super_admin', 'owner'],
+      },
+    ],
+  },
+  webManagement: {
+    id: 'web-management',
+    title: 'Web Management',
+    icon: Globe,
+    hasSubmenu: true,
+    modulePermissions: ['webmanagement.manage'],
+    items: [
+      {
+        id: 'web-site-settings',
+        title: 'Site Settings',
+        icon: Settings,
+        path: '/web-management/site-settings',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-marquee',
+        title: 'Top Bar (Scrolling)',
+        icon: Megaphone,
+        path: '/web-management/top-bar',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-banners',
+        title: 'Home Banner',
+        icon: Image,
+        path: '/web-management/banners',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-categories',
+        title: 'Category Management',
+        icon: Archive,
+        path: '/web-management/categories',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-pincodes',
+        title: 'Delivery Pincodes',
+        icon: MapPin,
+        path: '/web-management/pincodes',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-testimonials',
+        title: 'Testimonials',
+        icon: MessageCircle,
+        path: '/web-management/testimonials',
+        permission: 'webmanagement.manage',
       },
     ],
   },
@@ -1146,6 +1200,7 @@ export const getRoleMenuSections = () => {
   const allSections = [
     menuConfig.dashboard,
     menuConfig.system,
+    menuConfig.webManagement,
     menuConfig.masters,
     menuConfig.salesPurchase,
     menuConfig.inventory,
