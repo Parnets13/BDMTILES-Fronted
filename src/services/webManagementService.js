@@ -31,6 +31,12 @@ const webManagementService = {
   updateTestimonial: (id, data) => api.put(`${base}/testimonials/${id}`, data),
   deleteTestimonial: (id) => api.delete(`${base}/testimonials/${id}`),
 
+  // Video Testimonials
+  getVideoTestimonials: (params) => api.get(`${base}/video-testimonials`, { params }),
+  createVideoTestimonial: (data) => api.post(`${base}/video-testimonials`, data),
+  updateVideoTestimonial: (id, data) => api.put(`${base}/video-testimonials/${id}`, data),
+  deleteVideoTestimonial: (id) => api.delete(`${base}/video-testimonials/${id}`),
+
   // Top-bar scrolling marquee items
   getMarquee: (params) => api.get(`${base}/marquee`, { params }),
   createMarquee: (data) => api.post(`${base}/marquee`, data),
@@ -41,8 +47,9 @@ const webManagementService = {
   getSiteSettings: () => api.get(`${base}/site-settings`),
   updateSiteSettings: (data) => api.put(`${base}/site-settings`, data),
 
-  // Serviceable delivery pincodes
-  getPincodes: (params) => api.get(`${base}/pincodes`, { params }),
+  // Pincode delivery requests submitted by customers from the website
+  getPincodeRequests: (params) => api.get(`${base}/pincode-requests`, { params }),
+  updatePincodeRequest: (id, data) => api.patch(`${base}/pincode-requests/${id}`, data),
   createPincode: (data) => api.post(`${base}/pincodes`, data),
   updatePincode: (id, data) => api.put(`${base}/pincodes/${id}`, data),
   deletePincode: (id) => api.delete(`${base}/pincodes/${id}`),
@@ -71,6 +78,14 @@ const webManagementService = {
     const formData = new FormData();
     files.forEach((file) => formData.append('images', file));
     return api.post(`${base}/upload-images`, formData);
+  },
+
+  // Video upload for video testimonials. Field name: 'video'. Returns { success, data: '/uploads/web-videos/<file>' }.
+  // Timeout extended to 10 minutes to handle large video files.
+  uploadVideo: (file) => {
+    const formData = new FormData();
+    formData.append('video', file);
+    return api.post(`${base}/upload-video`, formData, { timeout: 600000 });
   },
 };
 

@@ -15,9 +15,13 @@ import CustomerMaster from './pages/masters/CustomerMaster.jsx';
 import HomeBannerPage from './pages/web-management/HomeBannerPage.jsx';
 import WebCategoryPage from './pages/web-management/WebCategoryPage.jsx';
 import TestimonialPage from './pages/web-management/TestimonialPage.jsx';
+import VideoTestimonialPage from './pages/web-management/VideoTestimonialPage.jsx';
 import SiteSettingsPage from './pages/web-management/SiteSettingsPage.jsx';
 import MarqueePage from './pages/web-management/MarqueePage.jsx';
 import DeliveryPincodePage from './pages/web-management/DeliveryPincodePage.jsx';
+import TileRoomPage from './pages/web-management/TileRoomPage.jsx';
+import TileTypePage from './pages/web-management/TileTypePage.jsx';
+import TileSizePage from './pages/web-management/TileSizePage.jsx';
 import CategorySetup from './pages/masters/CategorySetup.jsx';
 import ProductMaster from './pages/masters/ProductMaster.jsx';
 import PriceListPage from './pages/masters/PriceListPage.jsx';
@@ -255,7 +259,11 @@ const App = () => {
         <Route path="/web-management/banners" element={<ProtectedRoute requiredPermission="webmanagement.manage"><HomeBannerPage /></ProtectedRoute>} />
         <Route path="/web-management/categories" element={<ProtectedRoute requiredPermission="webmanagement.manage"><WebCategoryPage /></ProtectedRoute>} />
         <Route path="/web-management/pincodes" element={<ProtectedRoute requiredPermission="webmanagement.manage"><DeliveryPincodePage /></ProtectedRoute>} />
+        <Route path="/web-management/tile-rooms" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileRoomPage /></ProtectedRoute>} />
+        <Route path="/web-management/tile-types" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileTypePage /></ProtectedRoute>} />
+        <Route path="/web-management/tile-sizes" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileSizePage /></ProtectedRoute>} />
         <Route path="/web-management/testimonials" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TestimonialPage /></ProtectedRoute>} />
+        <Route path="/web-management/video-testimonials" element={<ProtectedRoute requiredPermission="webmanagement.manage"><VideoTestimonialPage /></ProtectedRoute>} />
 
         {/* Master Management */}
         <Route

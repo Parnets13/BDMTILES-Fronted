@@ -2,18 +2,43 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Modal, Form, Input, InputNumber, Select, Switch, Slider, Tag, Space, message, Popconfirm, Tooltip, Image } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import WebImageUpload from './WebImageUpload.jsx';
+import VideoUpload from './VideoUpload.jsx';
 import { resolveUploadUrl } from '../../config/api.js';
 
 // Curated Font Awesome icons offered for storefront content (top-bar strip, etc.).
 // The CRM loads the same Font Awesome CDN as the website, so these preview
 // exactly as they render on the storefront.
 export const ICON_OPTIONS = [
+  // ── Room icons (used by Shop by Room section) ──────────────────────
+  { value: 'fa-couch', label: 'Living Room' },
+  { value: 'fa-bath', label: 'Bathroom' },
+  { value: 'fa-kitchen-set', label: 'Kitchen' },
+  { value: 'fa-bed', label: 'Bedroom' },
+  { value: 'fa-warehouse', label: 'Balcony / Parking' },
+  { value: 'fa-building', label: 'Exterior / Facade' },
+  { value: 'fa-door-open', label: 'Entrance / Foyer' },
+  { value: 'fa-stairs', label: 'Staircase' },
+  { value: 'fa-umbrella-beach', label: 'Terrace / Outdoor' },
+  { value: 'fa-fire', label: 'Fireplace / Lounge' },
+  { value: 'fa-utensils', label: 'Dining Room' },
+  { value: 'fa-dumbbell', label: 'Gym / Utility' },
+  { value: 'fa-mosque', label: 'Pooja Room' },
+  { value: 'fa-car-garage', label: 'Garage' },
+  { value: 'fa-tree', label: 'Garden / Patio' },
+  // ── Tile type & commercial icons ───────────────────────────────────
+  { value: 'fa-border-all', label: 'Tiles / Grid' },
+  { value: 'fa-trowel-bricks', label: 'Construction / Civil' },
+  { value: 'fa-cubes', label: 'Bulk / No Minimum' },
+  { value: 'fa-store', label: 'Showroom / Store' },
+  { value: 'fa-briefcase', label: 'Commercial / Office' },
+  { value: 'fa-hospital', label: 'Hospital / Healthcare' },
+  { value: 'fa-school', label: 'School / Institution' },
+  // ── Value-proposition icons (used in top-bar / marquee) ────────────
   { value: 'fa-hand-holding-dollar', label: 'Pay on Delivery' },
   { value: 'fa-truck-fast', label: 'Fast Delivery' },
   { value: 'fa-truck', label: 'Delivery Truck' },
   { value: 'fa-percent', label: 'Discount / Cashback' },
   { value: 'fa-shield-halved', label: 'Genuine / Secure' },
-  { value: 'fa-cubes', label: 'Bulk / No Minimum' },
   { value: 'fa-circle-check', label: 'Check / Verified' },
   { value: 'fa-tags', label: 'Best Price' },
   { value: 'fa-star', label: 'Top Rated' },
@@ -25,17 +50,13 @@ export const ICON_OPTIONS = [
   { value: 'fa-indian-rupee-sign', label: 'Wholesale Price' },
   { value: 'fa-location-dot', label: 'Location' },
   { value: 'fa-phone', label: 'Call' },
-  { value: 'fa-store', label: 'Store' },
   { value: 'fa-boxes-stacked', label: 'Stock / Inventory' },
   { value: 'fa-clock', label: 'Time / Slot' },
-  { value: 'fa-fire', label: 'Hot Deal' },
-  { value: 'fa-heart', label: 'Favourite' },
+  { value: 'fa-leaf', label: 'Eco Friendly' },
+  { value: 'fa-thumbs-up', label: 'Recommended' },
   { value: 'fa-wallet', label: 'Wallet / Cash' },
   { value: 'fa-medal', label: 'Trusted' },
   { value: 'fa-hammer', label: 'Tools / Hardware' },
-  { value: 'fa-trowel-bricks', label: 'Civil / Construction' },
-  { value: 'fa-leaf', label: 'Eco Friendly' },
-  { value: 'fa-thumbs-up', label: 'Recommended' },
 ];
 
 // Default background swatches for banner cards.
@@ -176,6 +197,8 @@ const ContentManager = ({ title, subtitle, service, fields, columns, preview, ca
         return <Input.TextArea rows={3} placeholder={f.placeholder} />;
       case 'image':
         return <WebImageUpload />;
+      case 'video':
+        return <VideoUpload />;
       case 'number':
         return <InputNumber className="w-full" min={0} />;
       case 'boolean':
