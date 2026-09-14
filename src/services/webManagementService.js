@@ -50,6 +50,9 @@ const webManagementService = {
   // Pincode delivery requests submitted by customers from the website
   getPincodeRequests: (params) => api.get(`${base}/pincode-requests`, { params }),
   updatePincodeRequest: (id, data) => api.patch(`${base}/pincode-requests/${id}`, data),
+
+  // Serviceable delivery pincodes
+  getPincodes: (params) => api.get(`${base}/pincodes`, { params }),
   createPincode: (data) => api.post(`${base}/pincodes`, data),
   updatePincode: (id, data) => api.put(`${base}/pincodes/${id}`, data),
   deletePincode: (id) => api.delete(`${base}/pincodes/${id}`),

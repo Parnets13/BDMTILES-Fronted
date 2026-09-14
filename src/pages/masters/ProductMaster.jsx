@@ -100,7 +100,17 @@ const ProductMaster = () => {
   };
 
   const removeImage = (index) => {
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    const preview = imagePreviews[index];
+    // Free blob URL memory if it was a newly selected file
+    if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview);
+
+    // For newly added files: find which file index corresponds to this preview index.
+    // Existing images come first in imagePreviews, so new files start at offset = (existing count).
+    const existingCount = imagePreviews.filter(p => !p.startsWith('blob:')).length;
+    if (index >= existingCount) {
+      const fileIndex = index - existingCount;
+      setImageFiles(prev => prev.filter((_, i) => i !== fileIndex));
+    }
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -125,18 +135,30 @@ const ProductMaster = () => {
       setLoading(true);
       const values = await form.validateFields();
 
-      // Upload images first if any new files selected
-      let imageUrls = [];
+      // Upload any newly selected files first
+      let newImageUrls = [];
       if (imageFiles.length > 0) {
         const uploadRes = await productService.uploadImages(imageFiles);
         if (uploadRes.success) {
-          imageUrls = uploadRes.data;
+          newImageUrls = uploadRes.data;
         }
       }
-      // Keep existing image URLs (for edit mode)
-      if (editingProduct?.images) {
-        imageUrls = [...editingProduct.images, ...imageUrls];
-      }
+
+      // Build the final image list from imagePreviews (reflects user's removals)
+      // Split into:
+      //   - existing URLs (already on the server — not blob: objects)
+      //   - newly uploaded URLs (just returned from upload)
+      const existingUrls = imagePreviews
+        .filter(src => !src.startsWith('blob:'))            // kept existing images
+        .map(src => {
+          // Strip the API origin prefix so we store relative paths in the DB
+          const apiOrigin = (import.meta.env.VITE_API_BASE_URL || '')
+            .replace(/\/api\/v1\/?$/, '');
+          return apiOrigin && src.startsWith(apiOrigin)
+            ? src.slice(apiOrigin.length)
+            : src;
+        });
+      const imageUrls = [...existingUrls, ...newImageUrls];
 
       const productData = {
         ...values,
@@ -566,6 +588,10 @@ const ProductMaster = () => {
                 <Col span={4}><Form.Item name="isDealOfWeek" label="Deal of the Week" valuePropName="checked"><Switch /></Form.Item></Col>
                 <Col span={4}><Form.Item name="onlineVisible" label="Online Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
                 <Col span={4}><Form.Item name="dealerVisible" label="Dealer Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
+              </Row>
+              <Row gutter={16}>
+                <Col span={4}><Form.Item name="rating" label="Rating (0-5)" tooltip="Average customer rating shown on the website"><InputNumber min={0} max={5} step={0.1} className="w-full" placeholder="e.g. 4.5" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="reviewCount" label="Review Count" tooltip="Number of reviews shown on the website"><InputNumber min={0} className="w-full" placeholder="e.g. 128" /></Form.Item></Col>
               </Row>
 
               <Divider className="my-3" />

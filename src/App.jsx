@@ -12,6 +12,7 @@ import ResetPassword from './pages/auth/ResetPassword.jsx';
 import UserManagement from './pages/system/UserManagement.jsx';
 import RecycleBin from './pages/system/RecycleBin.jsx';
 import CustomerMaster from './pages/masters/CustomerMaster.jsx';
+import WalletManagementPage from './pages/wallet/WalletManagementPage.jsx';
 import HomeBannerPage from './pages/web-management/HomeBannerPage.jsx';
 import WebCategoryPage from './pages/web-management/WebCategoryPage.jsx';
 import TestimonialPage from './pages/web-management/TestimonialPage.jsx';
@@ -19,6 +20,7 @@ import VideoTestimonialPage from './pages/web-management/VideoTestimonialPage.js
 import SiteSettingsPage from './pages/web-management/SiteSettingsPage.jsx';
 import MarqueePage from './pages/web-management/MarqueePage.jsx';
 import DeliveryPincodePage from './pages/web-management/DeliveryPincodePage.jsx';
+import PincodeRequestsPage from './pages/web-management/PincodeRequestsPage.jsx';
 import TileRoomPage from './pages/web-management/TileRoomPage.jsx';
 import TileTypePage from './pages/web-management/TileTypePage.jsx';
 import TileSizePage from './pages/web-management/TileSizePage.jsx';
@@ -259,6 +261,7 @@ const App = () => {
         <Route path="/web-management/banners" element={<ProtectedRoute requiredPermission="webmanagement.manage"><HomeBannerPage /></ProtectedRoute>} />
         <Route path="/web-management/categories" element={<ProtectedRoute requiredPermission="webmanagement.manage"><WebCategoryPage /></ProtectedRoute>} />
         <Route path="/web-management/pincodes" element={<ProtectedRoute requiredPermission="webmanagement.manage"><DeliveryPincodePage /></ProtectedRoute>} />
+        <Route path="/web-management/pincode-requests" element={<ProtectedRoute requiredPermission="webmanagement.manage"><PincodeRequestsPage /></ProtectedRoute>} />
         <Route path="/web-management/tile-rooms" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileRoomPage /></ProtectedRoute>} />
         <Route path="/web-management/tile-types" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileTypePage /></ProtectedRoute>} />
         <Route path="/web-management/tile-sizes" element={<ProtectedRoute requiredPermission="webmanagement.manage"><TileSizePage /></ProtectedRoute>} />
@@ -371,6 +374,7 @@ const App = () => {
           }
         />
         <Route path="/masters/customers" element={<ProtectedRoute requiredPermission="customer.master"><CustomerMaster /></ProtectedRoute>} />
+        <Route path="/masters/wallets" element={<ProtectedRoute requiredPermission="wallet.manage"><WalletManagementPage /></ProtectedRoute>} />
         <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
 
         {/* Sales & Purchase */}

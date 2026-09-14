@@ -159,6 +159,13 @@ const menuConfig = {
         permission: 'webmanagement.manage',
       },
       {
+        id: 'web-pincode-requests',
+        title: 'Delivery Requests',
+        icon: MessageCircle,
+        path: '/web-management/pincode-requests',
+        permission: 'webmanagement.manage',
+      },
+      {
         id: 'web-testimonials',
         title: 'What our customers say',
         icon: MessageCircle,
@@ -200,7 +207,7 @@ const menuConfig = {
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master'],
+    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage'],
     items: [
       {
         id: 'product-master',
@@ -306,6 +313,13 @@ const menuConfig = {
         icon: Users,
         path: '/masters/customers',
         permission: 'customer.master',
+      },
+      {
+        id: 'bdm-cash-wallet',
+        title: 'BDM Cash Wallets',
+        icon: Wallet,
+        path: '/masters/wallets',
+        permission: 'wallet.manage',
       },
     ],
   },
