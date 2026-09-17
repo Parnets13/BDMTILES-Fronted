@@ -202,6 +202,7 @@ const FollowUpManager = () => {
         okText="Log Follow-up"
         confirmLoading={followupLoading}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+        width={760}
         destroyOnHidden
       >
         <Divider />

@@ -253,7 +253,7 @@ const SampleManagement = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
         onOk={handleIssue}
         okText="Issue"
-        width={640}
+        width={860}
         confirmLoading={loading}
         destroyOnHidden
       >
@@ -348,6 +348,7 @@ const SampleManagement = () => {
         onCancel={() => { setReturnModalOpen(false); setReturningId(null); setReturnCondition('good'); setReturnNotes(''); }}
         onOk={handleReturn}
         okText="Confirm Return"
+        width={580}
         destroyOnHidden
       >
         <div className="py-2 space-y-4">

@@ -1,14 +1,18 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip
+  Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Alert,
+  Collapse, DatePicker
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
   SendOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  SwapOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined
+  SwapOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined,
+  SyncOutlined, WarningOutlined, StopOutlined, FilterOutlined, CalendarOutlined,
+  HistoryOutlined, AuditOutlined, ShopOutlined, SafetyCertificateOutlined, UserOutlined
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
@@ -24,42 +28,274 @@ const STATUS_COLORS = {
   converted: 'purple', expired: 'orange', cancelled: 'red',
 };
 
+const EMPTY_FILTERS = {
+  search: '', status: undefined, dealer: '', dealerType: '', customer: '', customerType: undefined,
+  approvalStatus: undefined, conversionState: undefined, converted: undefined, createdBy: '',
+  dateFrom: '', dateTo: '', validityStatus: undefined, expiringWithinDays: 30, stockStatus: undefined,
+  amountMin: undefined, amountMax: undefined, sortBy: 'createdAt', sortOrder: 'desc',
+};
+const STATUS_OPTIONS = Object.keys(STATUS_COLORS).map(value => ({ value, label: value.replace(/_/g, ' ') }));
+const CUSTOMER_TYPE_OPTIONS = ['dealer', 'wholesaler', 'retail', 'distributor', 'builder'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
+const APPROVAL_OPTIONS = ['not_required', 'pending', 'approved', 'rejected'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
+const CONVERSION_OPTIONS = ['none', 'partial', 'full'].map(value => ({ value, label: value }));
+const VALIDITY_OPTIONS = ['active', 'expired', 'expiring_soon', 'no_expiry'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
+const STOCK_OPTIONS = ['available', 'partial', 'out_of_stock', 'fully_converted'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
+const SORT_OPTIONS = [
+  ['createdAt', 'Created'], ['updatedAt', 'Updated'], ['quotationDate', 'Quotation date'],
+  ['validUntil', 'Valid until'], ['quotationNumber', 'Quotation number'], ['grandTotal', 'Grand total'],
+].map(([value, label]) => ({ value, label }));
+const validityPresets = () => [7, 15, 30, 45, 60, 90].map(days => ({
+  label: `${days} days from today`, value: dayjs().add(days, 'day').startOf('day'),
+}));
+const finiteNumber = (value, fallback = 0) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+const formatNumber = (value, options = {}) => finiteNumber(value).toLocaleString('en-IN', { maximumFractionDigits: 2, ...options });
+const formatMoney = value => `₹${formatNumber(value)}`;
+const formatDate = (value, includeTime = false) => {
+  const date = dayjs(value);
+  if (!value || !date.isValid()) return '—';
+  return date.format(includeTime ? 'DD MMM YYYY, hh:mm A' : 'DD MMM YYYY');
+};
+const calendarDay = (value) => {
+  if (!value) return null;
+  const raw = String(value);
+  const date = /^\d{4}-\d{2}-\d{2}/.test(raw) ? dayjs(raw.slice(0, 10)) : dayjs(value);
+  return date.isValid() ? date.startOf('day') : null;
+};
+const formatCalendarDate = value => calendarDay(value)?.format('DD MMM YYYY') || '—';
+const quotationIsExpired = quotation => quotation?.isExpired === true || quotation?.effectiveStatus === 'expired';
+const stockReadinessFromResponse = response => response?.data?.stockReadiness || response?.data?.quotation?.stockReadiness || response?.data || null;
+const liveQuotationFieldsFromResponse = response => {
+  const envelope = response?.data || {};
+  const quotation = envelope.quotation || {};
+  return Object.fromEntries([
+    'status', 'effectiveStatus', 'validUntil', 'isExpired', 'expiresInDays',
+    'conversionState', 'conversionVersion', 'validity', 'conversion', 'updatedAt', 'stockQueuedAt',
+  ].flatMap(key => {
+    const value = quotation[key] ?? envelope[key];
+    return value === undefined ? [] : [[key, value]];
+  }));
+};
+
+const QueueModeBadge = ({ readiness }) => {
+  if (!readiness) return null;
+  const queued = readiness.queueMode === 'queued_fifo' || readiness.queued === true;
+  const approvedSent = readiness.eligibilityReason === 'sent_preserving_approved_fifo';
+  const label = queued ? (approvedSent ? 'Approved-sent FIFO' : 'FIFO queued') : 'Physical-only';
+  const title = queued
+    ? 'Competes for live stock in its preserved FIFO order.'
+    : `Live physical availability only; this quotation does not consume FIFO stock (${readiness.eligibilityReason || 'not eligible'}).`;
+  return <Tooltip title={title}><Tag color={queued ? 'blue' : 'default'}>{label}</Tag></Tooltip>;
+};
+
+// Stock snapshots on quotation items are historical only. Every current badge
+// and conversion gate consumes the server-computed live FIFO readiness.
+const computeQuotationStockStatus = (quotation) => {
+  const readiness = quotation?.stockReadiness;
+  if (!readiness) return { status: 'unknown', waiting: 0, ready: 0, total: quotation?.items?.length || 0 };
+  const status = readiness.overallStatus === 'available'
+    ? 'ready'
+    : readiness.overallStatus === 'out_of_stock'
+      ? 'waiting'
+      : readiness.overallStatus || 'unknown';
+  return {
+    status,
+    waiting: Number(readiness.partialItems || 0) + Number(readiness.outOfStockItems || 0),
+    ready: Number(readiness.availableItems || 0),
+    total: Number(readiness.totalItems || 0),
+    allocatedQty: Number(readiness.totalAllocatedQty || 0),
+    requiredQty: Number(readiness.totalRequiredQty || 0),
+    queued: Boolean(readiness.queued),
+  };
+};
+
+const QuotationStockBadge = ({ quotation }) => {
+  const { status, allocatedQty, requiredQty, queued } = computeQuotationStockStatus(quotation);
+  const title = queued
+    ? 'FIFO allocation for conversion-eligible or approved-sent quotations'
+    : `Current physical stock only (${quotation?.stockReadiness?.eligibilityReason || 'not FIFO eligible'})`;
+
+  if (status === 'fully_converted') return (
+    <Tooltip title="Every quotation quantity has been converted">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium bg-purple-100 text-purple-800 border-purple-300">
+        <span>✓</span><span>Fully Converted</span>
+      </span>
+    </Tooltip>
+  );
+  if (status === 'unknown') return (
+    <Tooltip title="Current stock status could not be calculated">
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium bg-gray-100 text-gray-500 border-gray-200">
+        <span>⚪</span><span>Unknown</span>
+      </span>
+    </Tooltip>
+  );
+  if (status === 'ready') return (
+    <Tooltip title={title}>
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium bg-green-100 text-green-800 border-green-300">
+        <span>🟢</span><span>Available</span>
+      </span>
+    </Tooltip>
+  );
+  if (status === 'partial') return (
+    <Tooltip title={title}>
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium bg-yellow-100 text-yellow-800 border-yellow-300">
+        <span>🟡</span><span>Partial ({allocatedQty}/{requiredQty})</span>
+      </span>
+    </Tooltip>
+  );
+  return (
+    <Tooltip title={title}>
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-xs font-medium bg-red-100 text-red-800 border-red-300">
+        <span>🔴</span><span>Out of Stock</span>
+      </span>
+    </Tooltip>
+  );
+};
+
 const QuotationManager = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const requestedDealerOrderRequest = searchParams.get('dealerOrderRequest');
+  const createFromRequest = searchParams.get('create') === '1' && Boolean(requestedDealerOrderRequest);
   const { confirm, alertModal } = useConfirm();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [convertingId, setConvertingId] = useState(null);
   const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState(undefined);
+  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filterLookups, setFilterLookups] = useState({ dealers: [], dealerTypes: [], creators: [] });
+  const [filterLookupsLoading, setFilterLookupsLoading] = useState(false);
+  const [detailRefreshVersion, setDetailRefreshVersion] = useState(0);
+  const quotationRequestSeq = useRef(0);
+  const quotationRequestsInFlight = useRef(0);
+  const statsRequestSeq = useRef(0);
+  const listPollGeneration = useRef(0);
+  const listPollInFlight = useRef(false);
 
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
 
-  const loadStats = () => {
-    salesService.getQuotationStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
-  };
+  useEffect(() => {
+    if (createFromRequest) setShowCreate(true);
+  }, [createFromRequest, requestedDealerOrderRequest]);
 
-  useEffect(() => { loadStats(); }, []);
+  const closeCreate = useCallback(() => {
+    setShowCreate(false);
+    if (requestedDealerOrderRequest) navigate('/sales-purchase/quotation-manager', { replace: true });
+  }, [navigate, requestedDealerOrderRequest]);
 
-  const fetchQuotations = useCallback(async () => {
-    setLoading(true);
+  const loadStats = useCallback(async () => {
+    const requestSeq = ++statsRequestSeq.current;
     try {
+      const response = await salesService.getQuotationStats();
+      if (requestSeq === statsRequestSeq.current && response.success) setStats(response.data || {});
+    } catch {
+      // Background stats refresh is best-effort; the list remains usable.
+    }
+  }, []);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
+
+  useEffect(() => {
+    let active = true;
+    setFilterLookupsLoading(true);
+    Promise.allSettled([
+      masterService.getDealers({ page: 1, limit: 200, status: 'active' }),
+      masterService.getDealerTypes({ page: 1, limit: 200 }),
+      masterService.getSalesExecutives(),
+    ]).then((results) => {
+      if (!active) return;
+      const rows = index => results[index].status === 'fulfilled' && results[index].value?.success
+        ? results[index].value.data || []
+        : [];
+      setFilterLookups({ dealers: rows(0), dealerTypes: rows(1), creators: rows(2) });
+    }).finally(() => { if (active) setFilterLookupsLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  const updateFilter = useCallback((key, value) => {
+    setFilters(current => ({ ...current, [key]: value }));
+    setPagination(current => ({ ...current, current: 1 }));
+  }, []);
+
+  const clearFilters = useCallback(() => {
+    setFilters(EMPTY_FILTERS);
+    setPagination(current => ({ ...current, current: 1 }));
+  }, []);
+
+  const fetchQuotations = useCallback(async ({ silent = false } = {}) => {
+    const requestSeq = ++quotationRequestSeq.current;
+    quotationRequestsInFlight.current += 1;
+    if (!silent) setLoading(true);
+    try {
+      const activeFilters = Object.fromEntries(Object.entries(filters).filter(([, value]) => (
+        value !== undefined && value !== null && value !== ''
+      )));
       const res = await salesService.getQuotations({
-        page: pagination.current, limit: pagination.pageSize, search, status: statusFilter,
+        page: pagination.current,
+        limit: pagination.pageSize,
+        ...activeFilters,
       });
+      if (requestSeq !== quotationRequestSeq.current) return;
       if (res.success) {
-        setQuotations(res.data);
-        setPagination(p => ({ ...p, total: res.pagination?.totalItems || 0 }));
+        setQuotations(res.data || []);
+        setPagination(p => ({ ...p, total: finiteNumber(res.pagination?.totalItems) }));
       }
-    } catch (err) { message.error(err.message); }
-    finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, statusFilter]);
+    } catch (err) {
+      if (!silent && requestSeq === quotationRequestSeq.current) message.error(err.message);
+    } finally {
+      quotationRequestsInFlight.current = Math.max(0, quotationRequestsInFlight.current - 1);
+      if (requestSeq === quotationRequestSeq.current) setLoading(false);
+    }
+  }, [pagination.current, pagination.pageSize, filters]);
 
   useEffect(() => { fetchQuotations(); }, [fetchQuotations]);
+  useEffect(() => () => {
+    quotationRequestSeq.current += 1;
+    statsRequestSeq.current += 1;
+    listPollGeneration.current += 1;
+  }, []);
+  useEffect(() => {
+    const generation = ++listPollGeneration.current;
+    let timer;
+    const schedule = () => {
+      if (generation !== listPollGeneration.current) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(run, 30000);
+    };
+    const run = async () => {
+      if (generation !== listPollGeneration.current) return;
+      if (document.visibilityState !== 'visible' || listPollInFlight.current || quotationRequestsInFlight.current > 0) {
+        schedule();
+        return;
+      }
+      listPollInFlight.current = true;
+      try {
+        await Promise.all([fetchQuotations({ silent: true }), loadStats()]);
+      } finally {
+        listPollInFlight.current = false;
+        schedule();
+      }
+    };
+    const refreshOnFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      window.clearTimeout(timer);
+      void run();
+    };
+    schedule();
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+    return () => {
+      listPollGeneration.current += 1;
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+    };
+  }, [fetchQuotations, loadStats]);
 
   const handleStatusChange = async (id, status) => {
     try {
@@ -69,43 +305,82 @@ const QuotationManager = () => {
     } catch (err) { alertModal('Error', err.message, 'error'); }
   };
 
-  const handleConvert = async (record) => {
-    if (!['approved', 'accepted'].includes(record.status)) {
-      alertModal('Conversion Not Available', 'Only approved or accepted quotations can be converted.', 'warning');
+  const handleConvert = async (record, mode = 'full') => {
+    if (!['approved', 'accepted'].includes(record.status) || record.conversionState === 'full') {
+      alertModal('Conversion Not Available', 'Only approved or accepted quotations with remaining quantity can be converted.', 'warning');
       return;
     }
-    if (record.convertedToSO || record.convertedAt) {
-      alertModal('Already Converted', 'This quotation is already linked to a Sales Order.', 'info');
-      return;
-    }
-    if (isExpired(record.validUntil)) {
+    if (quotationIsExpired(record)) {
       alertModal('Quotation Expired', 'Expired quotations cannot be converted. Create or approve a valid quotation first.', 'warning');
       return;
     }
-    const proceed = await confirm(`Convert ${record.quotationNumber} to Sales Order?`, {
-      content: 'This will create the Sales Order from the quotation pricing snapshot. Credit checks may leave it as a draft pending approval.',
-      okText: 'Convert to Sales Order',
-      type: 'info',
-    });
+    const readiness = record.stockReadiness;
+    if (!readiness || (mode === 'full' ? !readiness.allStockAvailable : !readiness.anyStockAvailable)) {
+      alertModal(
+        'Stock Not Available',
+        mode === 'full'
+          ? 'All remaining quantities must be FIFO-allocated before using Convert Full. Use Convert Available Stock for quantities allocated now.'
+          : 'No FIFO-allocated stock is currently available for this quotation.',
+        'warning'
+      );
+      return;
+    }
+    const partialLines = (readiness.items || []).filter(item => item.status === 'partial' && Number(item.allocatedQty) > 0);
+    let includePartialLines = false;
+    if (mode === 'available' && partialLines.length) {
+      includePartialLines = await confirm('Convert partial line quantities?', {
+        content: `${partialLines.map(item => `${item.productName || item.productCode}: ${item.allocatedQty} of ${item.remainingQty}`).join('\n')}\n\nOnly currently allocated stock will become a Sales Order. Later GRN stock may have a different shade or batch.`,
+        okText: 'Convert Partial Quantities',
+        type: 'warning',
+      });
+      if (!includePartialLines) return;
+    }
+    const proceed = await confirm(
+      mode === 'full' ? `Convert all remaining stock for ${record.quotationNumber}?` : `Convert available stock for ${record.quotationNumber}?`,
+      {
+        content: mode === 'full'
+          ? 'Every remaining line will be converted and reserved in one Sales Order.'
+          : `A Sales Order will be created only for the currently allocated ${readiness.totalAllocatedQty} units. Remaining demand stays in this quotation.`,
+        okText: mode === 'full' ? 'Convert Full' : 'Convert Available Stock',
+        type: 'info',
+      }
+    );
     if (!proceed) return;
     setConvertingId(record._id);
     try {
-      const res = await salesService.convertQuotation(record._id);
+      const res = await salesService.convertQuotation(record._id, { mode, includePartialLines });
       if (res.success) {
         const orderNumber = res.data.salesOrder.orderNumber;
-        message.success(res.idempotent ? `Sales Order ${orderNumber} was already created.` : `Sales Order ${orderNumber} created.`);
+        message.success(res.idempotent ? `Sales Order ${orderNumber} was already created.` : `Sales Order ${orderNumber} created and stock reserved.`);
         setViewRecord(null);
         fetchQuotations(); loadStats();
         const viewOrders = await confirm(`Open Sales Order ${orderNumber}?`, {
-          content: 'Go to the Sales Order Dashboard to view the converted order and its source quotation.',
+          content: res.data.quotation.conversionState === 'partial'
+            ? 'Remaining quotation quantities are still queued in Quotation Manager.'
+            : 'The quotation is now fully converted.',
           okText: 'View Sales Orders',
           cancelText: 'Stay Here',
           type: 'info',
         });
         if (viewOrders) navigate('/sales-purchase/sales-order-dashboard');
       }
-    } catch (err) { alertModal('Convert Failed', err.message, 'error'); }
-    finally { setConvertingId(null); }
+    } catch (err) {
+      const code = err.response?.data?.code || err.code;
+      const returnedReadiness = err.response?.data?.data?.stockReadiness || err.response?.data?.data;
+      if (returnedReadiness?.overallStatus) {
+        setQuotations(current => current.map(quotation => quotation._id === record._id
+          ? { ...quotation, stockReadiness: returnedReadiness }
+          : quotation));
+      }
+      if (err.status === 409 || err.response?.status === 409 || [
+        'INSUFFICIENT_STOCK', 'PARTIAL_LINE_CONFIRMATION_REQUIRED',
+        'QUOTATION_FULLY_CONVERTED', 'QUOTATION_NOT_ELIGIBLE',
+      ].includes(code)) {
+        await Promise.all([fetchQuotations({ silent: true }), loadStats()]);
+        setDetailRefreshVersion(version => version + 1);
+      }
+      alertModal('Convert Failed', err.message, 'error');
+    } finally { setConvertingId(null); }
   };
 
   const handleDelete = async (id) => {
@@ -118,17 +393,15 @@ const QuotationManager = () => {
     } catch (err) { alertModal('Delete Failed', err.message, 'error'); }
   };
 
-  const isExpired = (validUntil) => validUntil && new Date(validUntil) < new Date();
-
   const columns = [
     { title: 'Quotation #', dataIndex: 'quotationNumber', width: 120,
       render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'quotationDate', width: 95,
-      render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
+      render: v => <span className="text-xs">{formatCalendarDate(v)}</span> },
     { title: 'Valid Until', dataIndex: 'validUntil', width: 100,
       render: (v, r) => (
-        <span className={`text-xs ${isExpired(v) && !['converted','cancelled'].includes(r.status) ? 'text-red-500 font-medium' : ''}`}>
-          {v ? new Date(v).toLocaleDateString('en-IN') : '—'}
+        <span className={`text-xs ${quotationIsExpired(r) && !['converted','cancelled'].includes(r.status) ? 'text-red-500 font-medium' : ''}`}>
+          {formatCalendarDate(v)}
         </span>
       )},
     { title: 'Customer / Dealer', key: 'customer', width: 180,
@@ -141,58 +414,126 @@ const QuotationManager = () => {
     { title: 'Items', key: 'items', width: 55,
       render: (_, r) => <span className="text-xs">{r.items?.length || 0}</span> },
     { title: 'Total', dataIndex: 'grandTotal', width: 110,
-      render: v => <span className="font-semibold">₹{(v || 0).toLocaleString()}</span> },
-    { title: 'Status', dataIndex: 'status', width: 100,
+      render: v => <span className="font-semibold">{formatMoney(v)}</span> },
+    { title: 'Status', dataIndex: 'status', width: 110,
       render: (s, r) => {
-        const expired = s === 'sent' && isExpired(r.validUntil);
-        return <Tag color={expired ? 'orange' : STATUS_COLORS[s]}>{expired ? 'Expired' : s}</Tag>;
+        const effectiveStatus = r.effectiveStatus || s;
+        return (
+          <Space direction="vertical" size={2}>
+            <Tag color={STATUS_COLORS[effectiveStatus] || STATUS_COLORS[s]}>{effectiveStatus?.replace(/_/g, ' ')}</Tag>
+            {r.conversionState === 'partial' && <Tag color="purple">partially converted</Tag>}
+          </Space>
+        );
       }},
-    { title: 'Actions', width: 120,
-      render: (_, r) => (
-        <Space size="small">
-          <Tooltip title="View / Print">
-            <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600"
-              onClick={() => setViewRecord(r)} />
-          </Tooltip>
-          {['draft', 'approved'].includes(r.status) && (
-            <Tooltip title="Mark Sent">
-              <Button type="text" size="small" icon={<SendOutlined />} className="text-blue-500"
-                onClick={() => handleStatusChange(r._id, 'sent')} />
+    {
+      title: 'Stock Status', key: 'stockStatus', width: 145,
+      render: (_, r) => {
+        // For terminal quotations, stock status is irrelevant
+        if (['converted', 'cancelled'].includes(r.status)) {
+          return <span className="text-xs text-gray-300">—</span>;
+        }
+        return (
+          <Space direction="vertical" size={2}>
+            <QuotationStockBadge quotation={r} />
+            <QueueModeBadge readiness={r.stockReadiness} />
+          </Space>
+        );
+      },
+    },
+    { title: 'Actions', width: 180,
+      render: (_, r) => {
+        const readiness = r.stockReadiness;
+        const expired = quotationIsExpired(r);
+        const canConvertNow = ['approved', 'accepted'].includes(r.status) && !expired && r.conversionState !== 'full';
+        return (
+          <Space size="small">
+            {/* View — always */}
+            <Tooltip title="View / Print">
+              <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600"
+                onClick={() => setViewRecord(r)} />
             </Tooltip>
-          )}
-          {['approved', 'accepted'].includes(r.status) && !isExpired(r.validUntil) && !r.convertedToSO && !r.convertedAt && (
-            <Tooltip title="Convert approved/accepted quotation to Sales Order">
-              <Button type="text" size="small" icon={<SwapOutlined />} className="text-purple-600"
-                loading={convertingId === r._id} disabled={Boolean(convertingId && convertingId !== r._id)}
-                onClick={() => handleConvert(r)} />
-            </Tooltip>
-          )}
-          {['draft', 'cancelled'].includes(r.status) && (
-            <Tooltip title="Delete">
-              <Button type="text" size="small" icon={<DeleteOutlined />} className="text-red-400"
-                onClick={() => handleDelete(r._id)} />
-            </Tooltip>
-          )}
-          {!['converted', 'cancelled'].includes(r.status) && r.status !== 'draft' && (
-            <Tooltip title="Cancel">
-              <Button type="text" size="small" icon={<CloseCircleOutlined />} className="text-red-500"
-                onClick={() => handleStatusChange(r._id, 'cancelled')} />
-            </Tooltip>
-          )}
-        </Space>
-      )},
+
+            {/* draft → Send to customer */}
+            {r.status === 'draft' && (
+              <Tooltip title="Send to customer">
+                <Button type="text" size="small" icon={<SendOutlined />} className="text-blue-500"
+                  onClick={() => handleStatusChange(r._id, 'sent')} />
+              </Tooltip>
+            )}
+
+            {/* approved → Send to customer */}
+            {r.status === 'approved' && r.conversionState !== 'partial' && (
+              <Tooltip title="Send to customer">
+                <Button type="text" size="small" icon={<SendOutlined />} className="text-blue-500"
+                  onClick={() => handleStatusChange(r._id, 'sent')} />
+              </Tooltip>
+            )}
+
+            {/* sent → Mark Accepted */}
+            {r.status === 'sent' && !expired && (
+              <Tooltip title="Mark as Accepted by customer">
+                <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600"
+                  onClick={() => handleStatusChange(r._id, 'accepted')} />
+              </Tooltip>
+            )}
+
+            {/* approved / accepted → one fully reserved child Sales Order */}
+            {canConvertNow && readiness?.anyStockAvailable && !readiness.allStockAvailable && (
+              <Tooltip title="Convert only FIFO-allocated quantities; remaining demand stays in the quotation">
+                <Button type="text" size="small" icon={<WarningOutlined />} className="text-amber-600"
+                  loading={convertingId === r._id}
+                  disabled={Boolean(convertingId && convertingId !== r._id)}
+                  onClick={() => handleConvert(r, 'available')} />
+              </Tooltip>
+            )}
+            {canConvertNow && readiness?.allStockAvailable && (
+              <Tooltip title="Convert all remaining quantities">
+                <Button type="text" size="small" icon={<SwapOutlined />} className="text-purple-600"
+                  loading={convertingId === r._id}
+                  disabled={Boolean(convertingId && convertingId !== r._id)}
+                  onClick={() => handleConvert(r, 'full')} />
+              </Tooltip>
+            )}
+            {canConvertNow && !readiness?.anyStockAvailable && (
+              <Tooltip title="No FIFO-allocated stock is currently available">
+                <Button type="text" size="small" icon={<StopOutlined />} className="text-gray-400" disabled />
+              </Tooltip>
+            )}
+
+            {/* draft → Delete */}
+            {r.status === 'draft' && (
+              <Tooltip title="Delete">
+                <Button type="text" size="small" icon={<DeleteOutlined />} className="text-red-400"
+                  onClick={() => handleDelete(r._id)} />
+              </Tooltip>
+            )}
+
+            {/* non-terminal, non-draft → Cancel */}
+            {!['converted', 'cancelled', 'draft'].includes(r.status) && (
+              <Tooltip title="Cancel quotation">
+                <Button type="text" size="small" icon={<CloseCircleOutlined />} className="text-red-500"
+                  onClick={() => handleStatusChange(r._id, 'cancelled')} />
+              </Tooltip>
+            )}
+          </Space>
+        );
+      }},
   ];
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Quotation Manager</h1>
           <p className="text-sm text-gray-500 mt-0.5">Create quotations for configured Dealer Types or walk-in customers, then convert to Sales Orders</p>
         </div>
-        <Space>
+        <Space wrap>
+          <Button icon={<ReloadOutlined />} onClick={() => { fetchQuotations(); loadStats(); }}>Refresh</Button>
           <ModuleRecycleBin module="quotation" title="Deleted Quotations" onRestore={fetchQuotations} />
-          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreate(true)}>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => {
+            if (requestedDealerOrderRequest) navigate('/sales-purchase/quotation-manager', { replace: true });
+            setShowCreate(true);
+          }}>
             New Quotation
           </Button>
         </Space>
@@ -200,29 +541,105 @@ const QuotationManager = () => {
 
       {/* Stats */}
       <Row gutter={12} className="mb-4">
-        <Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileTextOutlined />} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Sent" value={stats.sent || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Accepted" value={stats.accepted || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Converted" value={stats.converted || 0} valueStyle={{ color: '#722ed1' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Expired" value={stats.expired || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Cancelled" value={stats.cancelled || 0} valueStyle={{ color: '#f5222d' }} /></Card></Col>
-        <Col span={3}><Card size="small"><Statistic title="Total Value" value={`₹${Math.round(stats.totalValue || 0).toLocaleString()}`} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} prefix={<FileTextOutlined />} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Draft" value={stats.draft || 0} valueStyle={{ color: '#666' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Pending Approval" value={stats.pendingApproval || 0} valueStyle={{ color: '#d97706' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Approved" value={stats.approved || 0} valueStyle={{ color: '#0891b2' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Sent" value={stats.sent || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Accepted" value={stats.accepted || 0} valueStyle={{ color: '#52c41a' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Converted" value={stats.converted || 0} valueStyle={{ color: '#722ed1' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Expired" value={stats.expired || 0} valueStyle={{ color: '#fa8c16' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Cancelled" value={stats.cancelled || 0} valueStyle={{ color: '#f5222d' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Total Value" value={formatMoney(Math.round(finiteNumber(stats.totalValue)))} /></Card></Col>
+      </Row>
+      <Row gutter={[12, 12]} className="mb-4">
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Live Available" value={stats.stockReadiness?.available || 0} valueStyle={{ color: '#15803d' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Live Partial Stock" value={stats.stockReadiness?.partial || 0} valueStyle={{ color: '#d97706' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Live Out of Stock" value={stats.stockReadiness?.outOfStock || 0} valueStyle={{ color: '#dc2626' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Fully Converted Qty" value={stats.stockReadiness?.fullyConverted || 0} valueStyle={{ color: '#7e22ce' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="FIFO Queued" value={stats.stockReadiness?.queued?.total || 0} valueStyle={{ color: '#2563eb' }} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Physical-only" value={stats.stockReadiness?.physicalOnly?.total || 0} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Conversion None / Partial" value={`${stats.conversionState?.none || 0} / ${stats.conversionState?.partial || 0}`} /></Card></Col>
+        <Col xs={12} sm={8} lg={3}><Card size="small"><Statistic title="Conversion Full" value={stats.conversionState?.full || 0} valueStyle={{ color: '#7e22ce' }} /></Card></Col>
       </Row>
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex flex-wrap gap-3">
-          <Input placeholder="Search quotation #, dealer, customer..."
+      {/* Server-backed filters */}
+      <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+          <Input
+            placeholder="Search quotation #, dealer, customer…"
             prefix={<SearchOutlined className="text-gray-400" />}
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }}
-            className="w-72" allowClear />
-          <Select placeholder="Status"
-            options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s }))}
-            value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-36" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+            value={filters.search}
+            onChange={event => updateFilter('search', event.target.value)}
+            className="w-full lg:w-80"
+            allowClear
+          />
+          <Select placeholder="Status" options={STATUS_OPTIONS} value={filters.status} onChange={value => updateFilter('status', value)} allowClear className="w-full lg:w-44" />
+          <Select placeholder="Customer type" options={CUSTOMER_TYPE_OPTIONS} value={filters.customerType} onChange={value => updateFilter('customerType', value)} allowClear className="w-full lg:w-44" />
+          <Select placeholder="Validity" options={VALIDITY_OPTIONS} value={filters.validityStatus} onChange={value => updateFilter('validityStatus', value)} allowClear className="w-full lg:w-44" />
+          <Button onClick={clearFilters}>Clear Filters</Button>
         </div>
+        <Collapse
+          ghost
+          className="mt-2 -mx-3"
+          items={[{
+            key: 'advanced',
+            label: <span className="text-sm font-medium text-gray-600"><FilterOutlined className="mr-2" />Advanced filters & sorting</span>,
+            children: (
+              <Row gutter={[12, 12]}>
+                <Col xs={24} sm={12} lg={6}>
+                  <label className="mb-1 block text-xs text-gray-500">Dealer</label>
+                  <Select
+                    value={filters.dealer || undefined}
+                    onChange={value => updateFilter('dealer', value || '')}
+                    allowClear showSearch optionFilterProp="label" loading={filterLookupsLoading}
+                    placeholder="Select registered dealer" className="w-full"
+                    options={filterLookups.dealers
+                      .filter(dealer => !filters.dealerType || String(dealer.dealerType?._id || dealer.dealerType) === String(filters.dealerType))
+                      .map(dealer => ({ value: dealer._id, label: `${dealer.businessName} (${dealer.dealerCode || 'No code'})` }))}
+                  />
+                </Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <label className="mb-1 block text-xs text-gray-500">Dealer type</label>
+                  <Select
+                    value={filters.dealerType || undefined}
+                    onChange={value => {
+                      const selectedDealer = filterLookups.dealers.find(dealer => dealer._id === filters.dealer);
+                      const dealerMatches = !selectedDealer || String(selectedDealer.dealerType?._id || selectedDealer.dealerType) === String(value || '');
+                      setFilters(current => ({ ...current, dealerType: value || '', ...(dealerMatches ? {} : { dealer: '' }) }));
+                      setPagination(current => ({ ...current, current: 1 }));
+                    }}
+                    allowClear showSearch optionFilterProp="label" loading={filterLookupsLoading}
+                    placeholder="Select dealer type" className="w-full"
+                    options={filterLookups.dealerTypes.map(type => ({ value: type._id, label: type.pricingTier ? `${type.name} · ${type.pricingTier}` : type.name }))}
+                  />
+                </Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Customer / dealer text</label><Input value={filters.customer} onChange={event => updateFilter('customer', event.target.value)} allowClear placeholder="Name, code or phone" /></Col>
+                <Col xs={24} sm={12} lg={6}>
+                  <label className="mb-1 block text-xs text-gray-500">Created by</label>
+                  <Select
+                    value={filters.createdBy || undefined}
+                    onChange={value => updateFilter('createdBy', value || '')}
+                    allowClear showSearch optionFilterProp="label" loading={filterLookupsLoading}
+                    placeholder="Select sales executive" className="w-full"
+                    options={filterLookups.creators.map(user => ({ value: user._id, label: user.phone ? `${user.name} · ${user.phone}` : user.name }))}
+                  />
+                </Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Approval status</label><Select options={APPROVAL_OPTIONS} value={filters.approvalStatus} onChange={value => updateFilter('approvalStatus', value)} allowClear className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Conversion state</label><Select options={CONVERSION_OPTIONS} value={filters.conversionState} onChange={value => updateFilter('conversionState', value)} allowClear className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Has conversions</label><Select options={[{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }]} value={filters.converted} onChange={value => updateFilter('converted', value)} allowClear className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Stock status</label><Select options={STOCK_OPTIONS} value={filters.stockStatus} onChange={value => updateFilter('stockStatus', value)} allowClear className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Quotation date from</label><Input type="date" value={filters.dateFrom} onChange={event => updateFilter('dateFrom', event.target.value)} /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Quotation date to</label><Input type="date" value={filters.dateTo} min={filters.dateFrom || undefined} onChange={event => updateFilter('dateTo', event.target.value)} /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Expiring within days</label><InputNumber min={1} max={365} precision={0} value={filters.expiringWithinDays} onChange={value => updateFilter('expiringWithinDays', value ?? 30)} className="w-full" /></Col>
+                <Col xs={12} sm={6} lg={3}><label className="mb-1 block text-xs text-gray-500">Amount min</label><InputNumber min={0} value={filters.amountMin} onChange={value => updateFilter('amountMin', value)} prefix="₹" className="w-full" /></Col>
+                <Col xs={12} sm={6} lg={3}><label className="mb-1 block text-xs text-gray-500">Amount max</label><InputNumber min={0} value={filters.amountMax} onChange={value => updateFilter('amountMax', value)} prefix="₹" className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Sort by</label><Select options={SORT_OPTIONS} value={filters.sortBy} onChange={value => updateFilter('sortBy', value)} className="w-full" /></Col>
+                <Col xs={24} sm={12} lg={6}><label className="mb-1 block text-xs text-gray-500">Sort order</label><Select options={[{ value: 'desc', label: 'Descending' }, { value: 'asc', label: 'Ascending' }]} value={filters.sortOrder} onChange={value => updateFilter('sortOrder', value)} className="w-full" /></Col>
+              </Row>
+            ),
+          }]}
+        />
       </div>
 
       {/* Table */}
@@ -237,7 +654,8 @@ const QuotationManager = () => {
       {/* Create Modal */}
       <AuthoritativeQuotationModal
         open={showCreate}
-        onClose={() => setShowCreate(false)}
+        dealerOrderRequestId={createFromRequest ? requestedDealerOrderRequest : null}
+        onClose={closeCreate}
         onSuccess={() => { fetchQuotations(); loadStats(); }}
       />
 
@@ -245,9 +663,11 @@ const QuotationManager = () => {
       {viewRecord && (
         <ViewQuotationModal
           quotationId={viewRecord._id}
+          refreshVersion={detailRefreshVersion}
           converting={convertingId === viewRecord._id}
           onClose={() => setViewRecord(null)}
           onConvert={handleConvert}
+          onQuotationUpdated={() => { fetchQuotations(); loadStats(); }}
           onStatusChange={(id, s) => { handleStatusChange(id, s); setViewRecord(null); }}
         />
       )}
@@ -282,6 +702,8 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
   const [productPages, setProductPages] = useState({});
   const [productHasMore, setProductHasMore] = useState({});
   const [productLoading, setProductLoading] = useState({});
+  // Per-row debounce timers — useRef so clearing never triggers re-render
+  const productSearchTimers = useRef({});
 
   useEffect(() => {
     if (open) {
@@ -300,7 +722,9 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
   const searchProduct = (idx, val) => {
     setProductSearches(p => ({ ...p, [idx]: val }));
     setProductPages(p => ({ ...p, [idx]: 1 }));
-    const timer = setTimeout(() => {
+    // Cancel previous timer for this row before scheduling new one
+    clearTimeout(productSearchTimers.current[idx]);
+    productSearchTimers.current[idx] = setTimeout(() => {
       setProductLoading(p => ({ ...p, [idx]: true }));
       salesService.searchProducts(val || '', 1, undefined, undefined, form.customerType || 'dealer').then(r => {
         if (r.success) {
@@ -308,8 +732,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
           setProductHasMore(p => ({ ...p, [idx]: (r.data || []).length >= 20 }));
         }
       }).catch(() => {}).finally(() => setProductLoading(p => ({ ...p, [idx]: false })));
-    }, val ? 300 : 0);
-    return () => clearTimeout(timer);
+    }, val ? 400 : 0);
   };
 
   const loadMoreProducts = (idx) => {
@@ -347,6 +770,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
     updateItem(idx, {
       product: prod._id, productName: prod.itemName, productCode: prod.productCode,
       productImage: prod.images?.[0] || '',
+      sqftPerBox: prod.sqftPerBox || null,
       rate: baseRate, unit: prod.unit || 'Box', gstPercentage: prod.gst || 18,
       discount, discountType, discountRuleName,
     });
@@ -383,6 +807,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
       return {
         product: p._id, productName: p.itemName, productCode: p.productCode,
         productImage: p.images?.[0] || '',
+        sqftPerBox: p.sqftPerBox || null,
         shade: '', batch: '', quantity: 1, unit: p.unit || 'Box',
         rate: baseRate, discount, discountType, discountRuleName,
         gstPercentage: p.gst || 18,
@@ -509,7 +934,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
               <table className="w-full text-xs">
                 <thead className="bg-blue-50">
                   <tr>
-                    {['Product', 'Shade', 'Batch', 'Qty', 'Unit', 'Rate', 'Disc', 'GST%', 'Total', ''].map(h => (
+                    {['Product', 'Shade', 'Batch', 'Boxes / Qty', 'Sqft', 'Unit', 'Rate', 'Disc', 'GST%', 'Total', ''].map(h => (
                       <th key={h} className="px-2 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -523,7 +948,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
                             {item.productImage && <ProductImage src={item.productImage} size="sm" />}
                             <div className="flex-1 min-w-0">
                               <div className="text-xs font-semibold truncate">{item.productName}</div>
-                              <div className="text-[9px] text-gray-400">{item.productCode}{item.discountRuleName ? <span className="ml-1 text-green-600">· {item.discountRuleName}</span> : ''}</div>
+                              <div className="text-[9px] text-gray-400">{item.productCode}{item.sqftPerBox ? <span className="ml-1 text-green-600 font-medium">· {item.sqftPerBox} sqft/box</span> : ''}{item.discountRuleName ? <span className="ml-1 text-green-600">· {item.discountRuleName}</span> : ''}</div>
                             </div>
                             <button className="text-gray-300 hover:text-red-500 text-xs shrink-0 px-1" onClick={() => { updateItem(idx, { product: '', productName: '', productCode: '', productImage: '', rate: 0, discount: 0, discountType: 'flat', discountRuleName: '' }); setProductSearches(p => ({...p, [idx]: ''})); }}>✕</button>
                           </div>
@@ -544,7 +969,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
                                         {p.images?.[0] && <img src={getImageUrl(p.images[0])} alt="" className="w-8 h-8 rounded object-cover shrink-0 border border-gray-100" />}
                                         <div className="min-w-0 flex-1">
                                           <div className="text-sm font-medium truncate">{p.itemName}</div>
-                                          <div className="text-[10px] text-gray-400">{p.productCode} · {p.brand?.name || ''} · {p.tileSize || ''}</div>
+                                          <div className="text-[10px] text-gray-400">{p.productCode}{p.brand?.name ? ` · ${p.brand.name}` : ''}{p.tileSize ? ` · ${p.tileSize}` : ''}{p.sqftPerBox ? ` · ${p.sqftPerBox} sqft/box` : ''}</div>
                                         </div>
                                       </div>
                                       <div className="text-right shrink-0 ml-2">
@@ -576,7 +1001,33 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
                         <Input value={item.batch} onChange={e => updateItem(idx, { batch: e.target.value })} className="w-18" placeholder="—" />
                       </td>
                       <td className="px-2 py-1.5">
-                        <InputNumber min={1} value={item.quantity} onChange={v => updateItem(idx, { quantity: v || 1 })} className="w-16" />
+                        <InputNumber
+                          min={0.01} step={1}
+                          value={item.quantity}
+                          onChange={v => {
+                            const qty = v || 1;
+                            const sqft = item.sqftPerBox ? Math.round(qty * item.sqftPerBox * 100) / 100 : undefined;
+                            updateItem(idx, { quantity: qty, ...(sqft !== undefined ? { sqft } : {}) });
+                          }}
+                          className="w-16"
+                        />
+                      </td>
+                      <td className="px-2 py-1.5">
+                        {item.sqftPerBox ? (
+                          <InputNumber
+                            min={0.01} step={0.5}
+                            value={item.sqft ?? Math.round(item.quantity * item.sqftPerBox * 100) / 100}
+                            onChange={v => {
+                              const sqft = v || 0;
+                              const qty = Math.ceil(sqft / item.sqftPerBox);
+                              updateItem(idx, { sqft, quantity: qty });
+                            }}
+                            className="w-20"
+                            placeholder="sqft"
+                          />
+                        ) : (
+                          <span className="text-[10px] text-gray-300 px-1">—</span>
+                        )}
                       </td>
                       <td className="px-2 py-1.5">
                         <Select value={item.unit} onChange={v => updateItem(idx, { unit: v })} className="w-20"
@@ -684,21 +1135,143 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
 // ═══════════════════════════════════════════════
 // VIEW / PRINT QUOTATION MODAL
 // ═══════════════════════════════════════════════
-const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, converting = false }) => {
+const ViewQuotationModal = ({ quotationId, refreshVersion = 0, onClose, onConvert, onStatusChange, onQuotationUpdated, converting = false }) => {
   const [q, setQ] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [stockCheck, setStockCheck] = useState(null);   // live FIFO readiness
+  const [checkingStock, setCheckingStock] = useState(false);
+  const [validityEditorOpen, setValidityEditorOpen] = useState(false);
+  const [validityDate, setValidityDate] = useState(null);
+  const [validityReason, setValidityReason] = useState('');
+  const [savingValidity, setSavingValidity] = useState(false);
+  const stockCheckRequestSeq = useRef(0);
+  const detailRequestSeq = useRef(0);
+  const detailRequestsInFlight = useRef(0);
+  const detailPollGeneration = useRef(0);
+  const detailPollInFlight = useRef(false);
   const printRef = useRef(null);
 
-  useEffect(() => {
-    salesService.getQuotation(quotationId)
-      .then(r => { if (r.success) setQ(r.data); })
-      .catch(err => message.error(err.message))
-      .finally(() => setLoading(false));
+  const loadQuotation = useCallback(async ({ showLoading = false } = {}) => {
+    const requestSeq = ++detailRequestSeq.current;
+    detailRequestsInFlight.current += 1;
+    if (showLoading) setLoading(true);
+    try {
+      const response = await salesService.getQuotation(quotationId);
+      if (requestSeq !== detailRequestSeq.current) return null;
+      if (response.success) {
+        // Full detail is newer authority than any outstanding lightweight check.
+        stockCheckRequestSeq.current += 1;
+        setQ(response.data);
+        setStockCheck(response.data.stockReadiness || null);
+        return response.data;
+      }
+      return null;
+    } catch (error) {
+      if (requestSeq === detailRequestSeq.current) message.error(error.message);
+      return null;
+    } finally {
+      detailRequestsInFlight.current = Math.max(0, detailRequestsInFlight.current - 1);
+      if (requestSeq === detailRequestSeq.current) setLoading(false);
+    }
   }, [quotationId]);
+
+  useEffect(() => {
+    loadQuotation({ showLoading: true });
+    return () => {
+      detailRequestSeq.current += 1;
+      stockCheckRequestSeq.current += 1;
+    };
+  }, [loadQuotation, refreshVersion]);
+
+  const openValidityEditor = () => {
+    const currentValidity = calendarDay(q?.validUntil) || dayjs().add(30, 'day').startOf('day');
+    setValidityDate(currentValidity);
+    setValidityReason('');
+    setValidityEditorOpen(true);
+  };
+
+  const saveValidity = async () => {
+    if (!validityDate?.isValid()) { message.error('Select a valid date'); return; }
+    if (!validityReason.trim()) { message.error('A reason is required'); return; }
+    const quotationDate = calendarDay(q?.quotationDate);
+    if (quotationDate && validityDate.startOf('day').isBefore(quotationDate)) {
+      message.error('Valid until cannot be before quotation date');
+      return;
+    }
+    if (q?.conversionState === 'partial' && !validityDate.endOf('day').isAfter(dayjs())) {
+      message.error('Partially converted quotations must remain valid beyond today');
+      return;
+    }
+    setSavingValidity(true);
+    try {
+      const response = await salesService.updateQuotationValidity(q._id, {
+        validUntil: validityDate.format('YYYY-MM-DD'),
+        reason: validityReason.trim(),
+        expectedUpdatedAt: q.updatedAt,
+      });
+      if (response.success) {
+        setValidityEditorOpen(false);
+        message.success(response.message || 'Quotation validity updated');
+        await loadQuotation();
+        onQuotationUpdated?.();
+      }
+    } catch (error) {
+      message.error(error.message || 'Could not update quotation validity');
+      if (error?.response?.status === 409 || error?.status === 409) await loadQuotation();
+    } finally { setSavingValidity(false); }
+  };
+
+  // Poll full detail for every nonterminal lifecycle state that displays live
+  // stock. Settling before scheduling prevents overlap, while generations keep
+  // responses from a previous quotation/context from winning.
+  useEffect(() => {
+    const effectiveStatus = q?.effectiveStatus || q?.status;
+    if (!q || ['converted', 'cancelled', 'expired'].includes(effectiveStatus) || q.conversionState === 'full') return undefined;
+    const generation = ++detailPollGeneration.current;
+    let timer;
+    const schedule = () => {
+      if (generation !== detailPollGeneration.current) return;
+      window.clearTimeout(timer);
+      timer = window.setTimeout(run, 30000);
+    };
+    const run = async () => {
+      if (generation !== detailPollGeneration.current) return;
+      if (document.visibilityState !== 'visible' || detailPollInFlight.current || detailRequestsInFlight.current > 0) {
+        schedule();
+        return;
+      }
+      detailPollInFlight.current = true;
+      try {
+        await loadQuotation();
+      } finally {
+        detailPollInFlight.current = false;
+        schedule();
+      }
+    };
+    const refreshOnFocus = () => {
+      if (document.visibilityState !== 'visible') return;
+      window.clearTimeout(timer);
+      void run();
+    };
+    schedule();
+    window.addEventListener('focus', refreshOnFocus);
+    document.addEventListener('visibilitychange', refreshOnFocus);
+    return () => {
+      detailPollGeneration.current += 1;
+      window.clearTimeout(timer);
+      window.removeEventListener('focus', refreshOnFocus);
+      document.removeEventListener('visibilitychange', refreshOnFocus);
+    };
+  }, [loadQuotation, q?.conversionState, q?.effectiveStatus, q?.status]);
 
   const handlePrint = () => {
     if (!printRef.current) return;
     const win = window.open('', '_blank');
+    if (!win) {
+      message.error('Allow pop-ups to print this quotation.');
+      return;
+    }
+    win.opener = null;
     win.document.write(`
       <html><head><title>Quotation - ${q.quotationNumber}</title>
       <style>
@@ -727,7 +1300,9 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, c
       ${printRef.current.innerHTML}
       </body></html>`);
     win.document.close();
-    setTimeout(() => { win.print(); win.close(); }, 500);
+    setTimeout(() => {
+      if (!win.closed) { win.print(); win.close(); }
+    }, 500);
   };
 
   if (loading || !q) return (
@@ -736,110 +1311,494 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, c
     </Modal>
   );
 
-  const isExpired = q.validUntil && new Date(q.validUntil) < new Date();
+  const isExpired = quotationIsExpired(q);
+  const effectiveStatus = q.effectiveStatus || q.status;
+  const liveReadiness = stockCheck || q.stockReadiness;
+  const checkedStockItems = stockCheck?.items || [];
+  const checkedRemainingItems = checkedStockItems.filter(item => Number(item.remainingQty) > 0.0001);
+  const liveQuotation = { ...q, stockReadiness: liveReadiness };
+  const { status: qStockSt } = computeQuotationStockStatus(liveQuotation);
+  const stockReady = qStockSt === 'ready';
+  const canConvert = ['approved', 'accepted'].includes(q.status) && !isExpired && q.conversionState !== 'full';
+  const canEditValidity = !['converted', 'cancelled', 'expired'].includes(q.status) && q.conversionState !== 'full';
+  const validityCountdown = isExpired
+    ? `Expired ${Math.abs(finiteNumber(q.expiresInDays))} day${Math.abs(finiteNumber(q.expiresInDays)) === 1 ? '' : 's'} ago`
+    : q.expiresInDays == null
+      ? 'No expiry configured'
+      : q.expiresInDays === 0
+        ? 'Expires today'
+        : `${q.expiresInDays} day${q.expiresInDays === 1 ? '' : 's'} remaining`;
 
   return (
+    <>
     <Modal
       title={
-        <div className="flex items-center gap-3">
-          <span className="font-bold">{q.quotationNumber}</span>
-          <Tag color={STATUS_COLORS[q.status]}>{q.status}</Tag>
-          {isExpired && <Tag color="orange">Validity Expired</Tag>}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3.5 pr-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold border border-blue-100 shadow-2xs">
+              <FileTextOutlined className="text-lg" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-lg font-bold text-gray-900 font-mono tracking-tight">{q.quotationNumber}</span>
+                <Tag color={STATUS_COLORS[effectiveStatus] || STATUS_COLORS[q.status]} className="px-2.5 py-0.5 text-xs font-semibold capitalize rounded-md border-0 m-0">
+                  {effectiveStatus?.replace(/_/g, ' ')}
+                </Tag>
+                {q.conversionState === 'partial' && <Tag color="purple" className="px-2 py-0.5 text-xs font-semibold rounded-md m-0">Partially Converted</Tag>}
+                {q.conversionState === 'full' && <Tag color="green" className="px-2 py-0.5 text-xs font-semibold rounded-md m-0">Fully Converted</Tag>}
+              </div>
+              <div className="text-xs text-gray-400 font-normal mt-0.5">
+                Quotation Date: {formatCalendarDate(q.quotationDate)} {q.createdBy?.name ? `• Created by ${q.createdBy.name}` : ''}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Tag color={isExpired ? 'red' : q.expiresInDays != null && q.expiresInDays <= 7 ? 'gold' : 'green'} className="px-2.5 py-1 text-xs font-medium rounded-md m-0">
+              {validityCountdown}
+            </Tag>
+            <QuotationStockBadge quotation={liveQuotation} />
+            <QueueModeBadge readiness={liveReadiness} />
+          </div>
         </div>
       }
-      open onCancel={onClose} width={820}
+      open
+      onCancel={onClose}
+      width="min(1728px, calc(100vw - 24px))"
+      centered
       footer={
-        <Space>
-          <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print PDF</Button>
-          {['approved', 'accepted'].includes(q.status) && !isExpired && !q.convertedToSO && !q.convertedAt && (
-            <Button type="primary" icon={<SwapOutlined />} loading={converting} onClick={() => onConvert(q)}>
-              Convert to Sales Order
-            </Button>
-          )}
-          {q.status === 'draft' && (
-            <Button icon={<SendOutlined />} onClick={() => onStatusChange(q._id, 'sent')}>
-              Mark as Sent
-            </Button>
-          )}
-          <Button onClick={onClose}>Close</Button>
-        </Space>
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+          <div className="text-xs text-gray-400">
+            {liveReadiness?.checkedAt ? `Stock checked at ${formatDate(liveReadiness.checkedAt, true)}` : ''}
+          </div>
+          <Space wrap size="small">
+            <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print PDF</Button>
+            {canEditValidity && <Button icon={<CalendarOutlined />} onClick={openValidityEditor}>Edit Validity</Button>}
+
+            {/* draft → Send */}
+            {q.status === 'draft' && (
+              <Button icon={<SendOutlined />} onClick={() => onStatusChange(q._id, 'sent')}>
+                Mark as Sent
+              </Button>
+            )}
+
+            {/* approved → Send */}
+            {q.status === 'approved' && q.conversionState !== 'partial' && (
+              <Button icon={<SendOutlined />} onClick={() => onStatusChange(q._id, 'sent')}>
+                Mark as Sent
+              </Button>
+            )}
+
+            {/* sent → Mark Accepted */}
+            {q.status === 'sent' && !isExpired && (
+              <Button type="primary" icon={<CheckCircleOutlined />}
+                style={{ background: '#16a34a', borderColor: '#16a34a' }}
+                onClick={() => onStatusChange(q._id, 'accepted')}>
+                Mark as Accepted
+              </Button>
+            )}
+
+            {/* Create only fully reserved child orders; never create an OOS order. */}
+            {canConvert && liveReadiness?.anyStockAvailable && !liveReadiness.allStockAvailable && (
+              <Button type="primary" icon={<WarningOutlined />} loading={converting}
+                style={{ background: '#d97706', borderColor: '#d97706' }}
+                onClick={() => onConvert(liveQuotation, 'available')}>
+                Convert Available Stock ({liveReadiness.totalAllocatedQty})
+              </Button>
+            )}
+            {canConvert && liveReadiness?.allStockAvailable && (
+              <Button type="primary" icon={<SwapOutlined />} loading={converting}
+                onClick={() => onConvert(liveQuotation, 'full')}>
+                Convert Full Remaining ({liveReadiness.totalRemainingQty})
+              </Button>
+            )}
+            {canConvert && !liveReadiness?.anyStockAvailable && (
+              <Tooltip title="Post a GRN or release stock, then re-check this quotation.">
+                <Button icon={<StopOutlined />} disabled>Awaiting Stock to Convert</Button>
+              </Tooltip>
+            )}
+            {canConvert && !liveReadiness?.allStockAvailable && (
+              <Button
+                icon={checkingStock ? <SyncOutlined spin /> : <SyncOutlined />}
+                loading={checkingStock}
+                onClick={async () => {
+                  const requestSeq = ++stockCheckRequestSeq.current;
+                  setCheckingStock(true);
+                  try {
+                    const response = await salesService.checkQuotationStock(q._id);
+                    if (requestSeq === stockCheckRequestSeq.current && response.success) {
+                      const readiness = stockReadinessFromResponse(response);
+                      setStockCheck(readiness);
+                      setQ(current => current ? {
+                        ...current,
+                        ...liveQuotationFieldsFromResponse(response),
+                        stockReadiness: readiness,
+                      } : current);
+                    }
+                  } catch (error) {
+                    if (requestSeq === stockCheckRequestSeq.current) message.error(error.message);
+                  } finally {
+                    if (requestSeq === stockCheckRequestSeq.current) setCheckingStock(false);
+                  }
+                }}>
+                Re-check Stock
+              </Button>
+            )}
+
+            <Button onClick={onClose}>Close</Button>
+          </Space>
+        </div>
       }>
-      <div className="space-y-4 mt-3 text-sm">
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-gray-50 p-3 rounded border">
-            <div className="text-xs text-gray-400 uppercase font-semibold mb-1">Customer / Dealer</div>
-            <div className="font-bold text-base">{q.dealerName || q.customerName || '—'}</div>
-            <div className="text-gray-500 text-xs mt-0.5">{q.dealerCode || q.customerPhone || ''}</div>
-            {q.dealer?.gstin && <div className="text-xs text-gray-400">GSTIN: {q.dealer.gstin}</div>}
-          </div>
-          <div className="bg-blue-50 p-3 rounded border border-blue-100">
-            <div className="text-xs text-gray-400 uppercase font-semibold mb-1">Quotation Details</div>
-            <div className="space-y-1">
-              <div className="flex justify-between"><span className="text-gray-500">Date:</span><span>{new Date(q.quotationDate).toLocaleDateString('en-IN')}</span></div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">Valid Until:</span>
-                <span className={isExpired ? 'text-red-500 font-medium' : ''}>{q.validUntil ? new Date(q.validUntil).toLocaleDateString('en-IN') : '—'}</span>
+      {/* Explicit Inner Scroll Container */}
+      <div className="max-h-[calc(82vh-100px)] overflow-y-auto overflow-x-hidden pr-1 space-y-4 text-sm">
+        {/* Top Hero Banner */}
+        <div className="rounded-xl border border-slate-200 bg-gradient-to-r from-slate-50 via-white to-blue-50/40 p-4 shadow-2xs">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-wrap items-center gap-6">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Grand Total</div>
+                <div className="text-2xl font-black text-blue-600">{formatMoney(q.grandTotal)}</div>
               </div>
-              {q.convertedToSO && (
-                <div className="flex justify-between"><span className="text-gray-500">Converted SO:</span><span className="text-purple-600 font-medium">{q.convertedToSO.orderNumber || '—'}</span></div>
-              )}
+              <div className="hidden h-10 w-px bg-slate-200 sm:block"></div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Customer / Dealer</div>
+                <div className="text-sm font-bold text-slate-800">{q.dealerName || q.dealer?.businessName || q.customerName || '—'}</div>
+                <div className="text-xs text-slate-500">{q.dealerCode || q.dealer?.dealerCode || q.customerPhone || '—'}</div>
+              </div>
+              <div className="hidden h-10 w-px bg-slate-200 sm:block"></div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Valid Through</div>
+                <div className={`text-sm font-bold ${isExpired ? 'text-red-600' : 'text-slate-800'}`}>
+                  {formatCalendarDate(q.validUntil)}
+                </div>
+                <div className="text-xs text-slate-500">{validityCountdown}</div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <div className="text-xs font-semibold text-slate-700">Stock Availability</div>
+                <div className="text-[11px] text-slate-400">
+                  {liveReadiness?.checkedAt ? `Checked ${formatDate(liveReadiness.checkedAt, true)}` : 'Readiness live'}
+                </div>
+              </div>
+              <QuotationStockBadge quotation={liveQuotation} />
             </div>
           </div>
         </div>
 
-        {/* Items Table */}
-        <div>
-          <div className="font-semibold text-gray-700 mb-2">Items ({q.items?.length || 0})</div>
-          <table className="w-full text-xs border border-gray-200 rounded overflow-hidden">
-            <thead className="bg-blue-50">
-              <tr>
-                {['#','Product','Shade','Qty','Rate','Disc','GST%','Total'].map(h => (
-                  <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-600">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {q.items?.map((item, i) => (
-                <tr key={i} className="border-t border-gray-100">
-                  <td className="px-2 py-1.5 text-gray-400">{i + 1}</td>
-                  <td className="px-2 py-1.5">
-                    <div className="flex items-center gap-1.5">
-                      {(item.productImage || item.product?.images?.[0]) && <ProductImage src={item.productImage || item.product?.images?.[0]} size="xs" />}
-                      <div>
-                        <div className="font-medium">{item.productName || item.product?.itemName}</div>
-                        <div className="text-[10px] text-gray-400">{item.productCode || item.product?.productCode}</div>
-                      </div>
+        {/* Stock Status Alerts */}
+        {liveReadiness && (
+          <Alert
+            type={liveReadiness.queued ? 'info' : 'warning'}
+            showIcon
+            message={liveReadiness.queued
+              ? (liveReadiness.eligibilityReason === 'sent_preserving_approved_fifo' ? 'Approved-sent quotation remains FIFO queued' : 'Queued FIFO readiness')
+              : 'Physical-only live readiness'}
+            description={`${liveReadiness.queued
+              ? 'This allocation accounts for earlier eligible quotation demand.'
+              : 'This quotation does not consume FIFO stock until it becomes eligible.'} Last checked ${formatDate(liveReadiness.checkedAt, true)}.`}
+          />
+        )}
+        {canConvert && (
+          <div>
+            {checkingStock && !stockCheck && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 border rounded-lg px-4 py-3">
+                <SyncOutlined spin /> Checking live stock levels…
+              </div>
+            )}
+            {!checkingStock && stockCheck && !stockReady && (
+              <Alert
+                type="error"
+                showIcon
+                className="mb-0"
+                message={
+                  <span className="font-semibold">
+                    {stockCheck.anyStockAvailable
+                      ? `Partial stock — ${checkedRemainingItems.filter(item => item.status === 'available').length} of ${checkedRemainingItems.length} remaining quotation lines fully ready`
+                      : `Awaiting stock — ${checkedRemainingItems.length} remaining line${checkedRemainingItems.length !== 1 ? 's' : ''} currently have no allocatable stock`}
+                  </span>
+                }
+                description={
+                  <div className="mt-2 space-y-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {checkedRemainingItems.map((item) => (
+                        <div key={item.itemId} className="flex items-center justify-between rounded-lg border border-red-200 bg-white p-2.5 text-xs shadow-2xs">
+                          <div className="min-w-0 flex-1 pr-2">
+                            <div className="font-semibold text-gray-800 truncate">{item.productName}</div>
+                            <div className="text-[10px] text-gray-400">{item.productCode}</div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-gray-500">Need: <strong>{item.quantityRequired}</strong></span>
+                            <span className={`font-semibold ${item.status === 'available' ? 'text-green-600' : item.status === 'partial' ? 'text-amber-600' : 'text-red-600'}`}>
+                              Allocated: {item.allocatedQty}
+                            </span>
+                            {item.status === 'available'
+                              ? <Tag color="green" className="m-0 rounded-full text-[10px] font-bold">Available</Tag>
+                              : item.status === 'partial'
+                                ? <Tag color="gold" className="m-0 rounded-full text-[10px] font-bold">Partial</Tag>
+                                : <Tag color="red" className="m-0 rounded-full text-[10px] font-bold">Out of Stock</Tag>
+                            }
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </td>
-                  <td className="px-2 py-1.5">{item.shade || '—'}</td>
-                  <td className="px-2 py-1.5">{item.quantity} {item.unit}</td>
-                  <td className="px-2 py-1.5">₹{(item.rate || 0).toLocaleString()}</td>
-                  <td className="px-2 py-1.5">{item.discount ? `${item.discount}${item.discountType === 'percentage' ? '%' : ''}` : '—'}</td>
-                  <td className="px-2 py-1.5">{item.gstPercentage}%</td>
-                  <td className="px-2 py-1.5 font-medium">₹{(item.totalAmount || 0).toLocaleString()}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <p className="text-xs text-gray-500 mt-1">
+                      👉 Raise a Purchase Order → post GRN when stock arrives → the Convert button will unlock automatically.
+                    </p>
+                  </div>
+                }
+              />
+            )}
+            {!checkingStock && stockCheck?.allStockAvailable && (
+              <Alert
+                type="success"
+                showIcon
+                message={<span className="font-semibold">✅ All stock arrived — you can now convert this quotation to a Sales Order</span>}
+                description="Every quotation line has a complete FIFO allocation. Conversion will recheck and reserve it atomically."
+              />
+            )}
+          </div>
+        )}
+
+        {/* Context Info Cards */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card size="small" className="shadow-2xs border-slate-200" title={<div className="flex items-center gap-2 font-semibold text-slate-700"><ShopOutlined className="text-blue-500" /><span>Branch</span></div>}>
+            <div className="font-semibold text-slate-800">{q.branch?.name || '—'} {q.branch?.branchCode ? `(${q.branch.branchCode})` : ''}</div>
+            <div className="mt-1 text-xs text-slate-500 line-clamp-2">{[q.branch?.address, q.branch?.city, q.branch?.state].filter(Boolean).join(', ') || 'No branch address'}</div>
+            <div className="mt-1.5 text-xs text-slate-500">{[q.branch?.phone, q.branch?.email].filter(Boolean).join(' · ') || '—'}</div>
+            {q.branch?.gstin && <div className="mt-1 text-xs text-slate-400 font-mono">GSTIN: {q.branch.gstin}</div>}
+          </Card>
+          <Card size="small" className="shadow-2xs border-slate-200" title={<div className="flex items-center gap-2 font-semibold text-slate-700"><AuditOutlined className="text-blue-500" /><span>Audience / Customer</span></div>}>
+            <div className="font-semibold text-slate-800 truncate">{q.dealerName || q.dealer?.businessName || q.customerName || '—'}</div>
+            <div className="mt-1 text-xs text-slate-500">{q.dealerCode || q.dealer?.dealerCode || q.customerPhone || '—'} · <span className="font-medium text-slate-700">{q.dealerType?.name || q.dealerTypeSnapshot?.name || q.customerType || 'Walk-in'}</span></div>
+            <div className="mt-1 text-xs text-slate-500">Tier: {q.dealerType?.pricingTier || q.dealerTypeSnapshot?.pricingTier || 'Retail'}</div>
+            <div className="mt-1 text-xs text-slate-500 truncate">{q.dealer?.ownerName ? `Owner: ${q.dealer.ownerName} · ` : ''}{q.dealer?.mobile || q.customerPhone || ''}</div>
+            <div className="mt-1 text-xs text-slate-500 truncate">{q.dealer?.address || q.customerAddress || 'No address'}</div>
+            {q.dealer?.gstin && <div className="mt-1 text-xs text-slate-400 font-mono">GSTIN: {q.dealer.gstin}</div>}
+          </Card>
+          <Card size="small" className="shadow-2xs border-slate-200" title={<div className="flex items-center gap-2 font-semibold text-slate-700"><CalendarOutlined className="text-blue-500" /><span>Dates & Validity</span></div>}>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-slate-500">Quotation date</span><strong>{formatCalendarDate(q.quotationDate)}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-500">Valid through</span><strong className={isExpired ? 'text-red-600' : ''}>{formatCalendarDate(q.validUntil)}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-500">Countdown</span><Tag color={isExpired ? 'red' : q.expiresInDays != null && q.expiresInDays <= 7 ? 'gold' : 'green'} className="m-0 text-[10px]">{validityCountdown}</Tag></div>
+              <div className="flex justify-between"><span className="text-slate-500">Status</span><span><Tag className="m-0 text-[10px]">{q.status}</Tag></span></div>
+              <div className="flex justify-between"><span className="text-slate-500">Conversion</span><span><Tag color={q.conversionState === 'partial' ? 'purple' : q.conversionState === 'full' ? 'green' : 'default'} className="m-0 text-[10px]">{q.conversionState || 'none'}</Tag></span></div>
+            </div>
+          </Card>
+          <Card size="small" className="shadow-2xs border-slate-200" title={<div className="flex items-center gap-2 font-semibold text-slate-700"><SafetyCertificateOutlined className="text-blue-500" /><span>Approval</span></div>}>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="text-slate-500">Required</span><strong>{q.approvalRequired ? 'Yes' : 'No'}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-500">Status</span><Tag color={q.approvalStatus === 'approved' ? 'green' : q.approvalStatus === 'rejected' ? 'red' : 'gold'} className="m-0 text-[10px]">{q.approvalStatus || 'not_required'}</Tag></div>
+              <div className="flex justify-between"><span className="text-slate-500">Approved by</span><strong>{q.approvedBy?.name || q.approvedBy?.email || '—'}</strong></div>
+              <div className="flex justify-between"><span className="text-slate-500">Date</span><strong>{formatDate(q.approvalDate, true)}</strong></div>
+            </div>
+          </Card>
         </div>
 
-        {/* Totals */}
-        <div className="flex justify-end">
-          <div className="w-64 bg-blue-50 border border-blue-100 rounded-lg p-3 space-y-1 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">Subtotal</span><span>₹{(q.subtotal || 0).toLocaleString()}</span></div>
-            {q.totalDiscount > 0 && <div className="flex justify-between"><span className="text-gray-500">Discount</span><span className="text-green-600">-₹{q.totalDiscount.toLocaleString()}</span></div>}
-            <div className="flex justify-between"><span className="text-gray-500">GST</span><span>₹{(q.totalTax || 0).toLocaleString()}</span></div>
-            {q.freightCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Freight</span><span>₹{q.freightCharges}</span></div>}
-            {q.otherCharges > 0 && <div className="flex justify-between"><span className="text-gray-500">Other</span><span>₹{q.otherCharges}</span></div>}
-            <Divider className="my-1" />
-            <div className="flex justify-between font-bold text-base text-blue-700">
-              <span>Grand Total</span><span>₹{(q.grandTotal || 0).toLocaleString()}</span>
+        {/* Complete item, UOM, allocation, tax and pricing details */}
+        <Card size="small" className="shadow-2xs border-slate-200" title={<div className="flex items-center justify-between font-semibold text-slate-700"><span>Quotation Items ({q.items?.length || 0})</span></div>} styles={{ body: { padding: 0 } }}>
+          <div className="overflow-x-auto rounded-b-lg">
+            <table className="min-w-[1200px] w-full text-xs text-left border-collapse">
+              <thead className="bg-slate-100/90 text-slate-700 font-semibold border-b border-slate-200">
+                <tr>
+                  {['#', 'Product', 'UOM / Quantity', 'Warehouse / Shade / Batch', 'Quoted / Converted / Remaining', 'Live Allocation', 'Rate / Pricing Source', 'Discounts', 'Tax Detail', 'Line Total'].map(header => (
+                    <th key={header} className="px-3.5 py-2.5 font-semibold text-slate-700">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {(q.items || []).map((item, index) => {
+                  const liveStock = liveReadiness?.items?.find(stock => String(stock.itemId) === String(item._id));
+                  const pricing = item.pricingSnapshot || {};
+                  const remaining = Math.max(0, finiteNumber(item.quantity) - finiteNumber(item.convertedQuantity));
+                  return (
+                    <tr key={item._id || index} className="hover:bg-slate-50/80 transition-colors align-top">
+                      <td className="px-3.5 py-3 text-slate-400">{index + 1}</td>
+                      <td className="px-3.5 py-3 min-w-56">
+                        <div className="flex items-start gap-2.5">
+                          {(item.productImage || item.product?.images?.[0]) && <ProductImage src={item.productImage || item.product?.images?.[0]} size="xs" />}
+                          <div>
+                            <div className="font-semibold text-slate-800">{item.productName || item.product?.itemName || '—'}</div>
+                            <div className="text-[10px] font-mono text-slate-400">{item.productCode || item.product?.productCode || 'No code'}</div>
+                            <div className="text-[10px] text-slate-500 mt-0.5">{[item.product?.brand?.name, item.product?.category?.name, item.product?.subcategory?.name, item.product?.tileSize, item.product?.finish, item.product?.colour].filter(Boolean).join(' · ') || '—'}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-3.5 py-3 min-w-36">
+                        <div className="font-bold text-slate-800">{formatNumber(item.quantity)} <span className="font-normal text-slate-500">{item.unit || item.product?.unit || 'unit'}</span></div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">Boxes: {formatNumber(item.boxes)} · Pcs: {formatNumber(item.pieces)}</div>
+                        <div className="text-[11px] text-slate-500">Sqft: {formatNumber(item.sqft)} {item.product?.sqftPerBox ? `(${formatNumber(item.product.sqftPerBox)}/box)` : ''}</div>
+                      </td>
+                      <td className="px-3.5 py-3 min-w-44">
+                        <div className="font-medium text-slate-700">{item.warehouse?.name || item.warehouse?.warehouseCode || liveStock?.allocation?.warehouse || 'Not assigned'}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">Shade: <span className="font-mono text-slate-700">{item.shade || liveStock?.allocation?.shade || '—'}</span></div>
+                        <div className="text-[11px] text-slate-500">Batch: <span className="font-mono text-slate-700">{item.batch || liveStock?.allocation?.batch || '—'}</span></div>
+                      </td>
+                      <td className="px-3.5 py-3 min-w-36">
+                        <div className="text-slate-700">{formatNumber(item.quantity)} / {formatNumber(item.convertedQuantity)} / <strong className="text-blue-700">{formatNumber(remaining)}</strong></div>
+                      </td>
+                      <td className="px-3.5 py-3 min-w-36">
+                        <Tag color={liveStock?.status === 'available' ? 'green' : liveStock?.status === 'partial' ? 'gold' : 'red'} className="m-0 text-[10px] font-semibold">
+                          {liveStock?.status?.replace(/_/g, ' ') || 'unknown'}
+                        </Tag>
+                        <div className="mt-1 text-[11px] font-medium text-slate-700">{formatNumber(liveStock?.allocatedQty)} / {formatNumber(liveStock?.requiredQty)} allocated</div>
+                        <div className="text-[11px] text-slate-400">Short: {formatNumber(liveStock?.shortfallQty)}</div>
+                      </td>
+                      <td className="px-3.5 py-3 min-w-48">
+                        <div className="font-bold text-emerald-700">{formatMoney(item.rate ?? pricing.effectiveRate)}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">Base {formatMoney(pricing.baseRate)} · Pricing {formatMoney(pricing.pricingRate)}</div>
+                        <div className="text-[11px] text-slate-400">Minimum {formatMoney(pricing.minimumSellingRate)}</div>
+                        <div className="max-w-44 truncate text-[10px] text-slate-400">{pricing.sourceName || pricing.source || 'Quotation snapshot'}{pricing.requestedTier ? ` · ${pricing.requestedTier}` : ''}</div>
+                        {pricing.belowMinimum && <Tag color="red" className="mt-0.5 text-[10px]">Below minimum</Tag>}
+                      </td>
+                      <td className="px-3.5 py-3 min-w-36">
+                        <div>Line: {formatNumber(item.discount)} {item.discountType === 'percentage' ? '%' : `per ${item.unit || 'unit'}`}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">Regular: {formatMoney(pricing.regularDiscountPerUnit)}</div>
+                        <div className="text-[11px] text-slate-500">Scheme: {formatMoney(item.schemeDiscount ?? pricing.schemeDiscountPerUnit)}</div>
+                        {item.discountRuleName && <div className="text-[10px] text-slate-400 truncate">{item.discountRuleName}</div>}
+                      </td>
+                      <td className="px-3.5 py-3 min-w-40">
+                        <div>Taxable: {formatMoney(item.taxableAmount)}</div>
+                        <div className="text-slate-600 font-medium mt-0.5">GST {formatNumber(item.gstPercentage)}%: {formatMoney(item.gstAmount)}</div>
+                        <div className="text-[10px] text-slate-400">CGST {formatMoney(item.cgst)} · SGST {formatMoney(item.sgst)}</div>
+                      </td>
+                      <td className="px-3.5 py-3 font-bold text-slate-900 text-right min-w-28">{formatMoney(item.totalAmount)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        {/* Historical Stock Snapshot */}
+        {(q.snapshotCaptured === true || q.stockSnapshotAt) && (
+          <Collapse
+            size="small"
+            items={[{
+              key: 'historical-stock-snapshot',
+              label: <span className="font-semibold text-slate-700"><HistoryOutlined className="mr-2" />At quotation creation · {formatDate(q.stockSnapshotAt, true)}</span>,
+              children: (
+                <div className="space-y-2 text-xs">
+                  <Alert type="info" showIcon message="Historical only" description="These values describe stock captured when this quotation version was saved. Live readiness above is authoritative now." />
+                  {(q.items || []).map((item, index) => (
+                    <div key={item._id || index} className="flex flex-wrap justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                      <span className="font-medium text-slate-700">{item.productName || item.product?.itemName || item.productCode || `Line ${index + 1}`}</span>
+                      <span>Captured allocatable: <strong>{formatNumber(item.stockAtQuotation)}</strong> · {item.outOfStock ? 'Not fully available' : 'Available'}</span>
+                    </div>
+                  ))}
+                </div>
+              ),
+            }]}
+          />
+        )}
+
+        {/* Complete Financial Summary & Remarks Grid */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Remarks & Terms (7 Cols) */}
+          <div className="lg:col-span-7 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card size="small" className="shadow-2xs border-slate-200" title={<span className="font-semibold text-slate-700">Remarks</span>}>
+                {q.remarks ? <div className="whitespace-pre-wrap text-xs text-slate-600 leading-relaxed">{q.remarks}</div> : <span className="text-xs text-slate-400">No remarks</span>}
+              </Card>
+              <Card size="small" className="shadow-2xs border-slate-200" title={<span className="font-semibold text-slate-700">Terms & Conditions</span>}>
+                {q.termsAndConditions ? <div className="whitespace-pre-wrap text-xs text-slate-600 leading-relaxed">{q.termsAndConditions}</div> : <span className="text-xs text-slate-400">No terms recorded</span>}
+              </Card>
             </div>
+
+            {/* Ownership & Audit */}
+            <Card size="small" className="shadow-2xs border-slate-200" title={<span className="font-semibold text-slate-700"><AuditOutlined className="mr-2" />Ownership & Audit</span>}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                <div className="flex justify-between"><span className="text-slate-500">Created by</span><strong>{q.createdBy?.name || q.createdBy?.email || '—'}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-500">Created</span><strong>{formatDate(q.createdAt, true)}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-500">Last updated</span><strong>{formatDate(q.updatedAt, true)}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-500">Document version</span><strong>v{q.version || 1} (val v{q.validityVersion || 0} · conv v{q.conversionVersion || 0})</strong></div>
+                <div className="flex justify-between"><span className="text-slate-500">Source request</span><strong>{q.sourceDealerOrderRequest?.requestNumber || '—'}</strong></div>
+                <div className="flex justify-between"><span className="text-slate-500">Tally sync</span><Tag color={q.tallySyncStatus === 'synced' ? 'green' : q.tallySyncStatus === 'failed' ? 'red' : 'gold'} className="m-0 text-[10px]">{q.tallySyncStatus || 'not_synced'}</Tag></div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Financial Summary Card (5 Cols) */}
+          <div className="lg:col-span-5">
+            <Card size="small" className="shadow-2xs border-slate-200 bg-slate-50/50" title={<span className="font-semibold text-slate-700">Financial Summary</span>}>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between text-slate-600"><span>Subtotal</span><span className="font-medium text-slate-800">{formatMoney(q.subtotal)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Line discount</span><span className="font-medium text-emerald-600">-{formatMoney(q.totalDiscount)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Scheme discount</span><span className="font-medium text-emerald-600">-{formatMoney(q.totalSchemeDiscount)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>GST / Tax</span><span className="font-medium text-slate-800">{formatMoney(q.totalTax)}</span></div>
+                <Divider className="my-1.5 border-slate-200" />
+                <div className="flex justify-between text-slate-600"><span>Freight charges</span><span>{formatMoney(q.freightCharges)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Loading charges</span><span>{formatMoney(q.loadingCharges)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Installation charges</span><span>{formatMoney(q.installationCharges)}</span></div>
+                <div className="flex justify-between text-slate-600"><span>Other charges</span><span>{formatMoney(q.otherCharges)}</span></div>
+                {finiteNumber(q.roundOff) !== 0 && <div className="flex justify-between text-slate-600"><span>Round-off</span><span>{formatMoney(q.roundOff)}</span></div>}
+                <Divider className="my-1.5 border-slate-200" />
+                <div className="flex justify-between rounded-lg bg-blue-50 border border-blue-100 p-3 text-sm font-bold text-blue-800">
+                  <span>Grand Total</span>
+                  <span className="text-base text-blue-700">{formatMoney(q.grandTotal)}</span>
+                </div>
+              </div>
+            </Card>
           </div>
         </div>
 
-        {q.remarks && <div className="text-gray-500 text-xs bg-gray-50 p-2 rounded">Remarks: {q.remarks}</div>}
-        {q.termsAndConditions && <div className="text-gray-400 text-xs bg-gray-50 p-2 rounded">T&C: {q.termsAndConditions}</div>}
+        {/* Conversion & Validity Histories */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 pb-2">
+          <Card size="small" className="shadow-2xs border-slate-200" title={<span className="font-semibold text-slate-700"><HistoryOutlined className="mr-2" />Conversion History ({(q.conversionHistory || []).length})</span>}>
+            {(q.conversionHistory || []).length ? <div className="space-y-2">
+              {(q.conversionHistory || []).map(entry => (
+                <div key={entry._id} className="rounded-lg border border-purple-100 bg-purple-50/60 p-3 text-xs">
+                  <div className="flex flex-col justify-between gap-2 sm:flex-row">
+                    <div>
+                      <div className="font-semibold text-purple-700">{entry.salesOrder?.orderNumber || 'Sales Order'}</div>
+                      <div className="text-gray-500">{entry.mode === 'full' ? 'Full remaining conversion' : 'Available stock conversion'} · {formatNumber((entry.lines || []).reduce((sum, line) => sum + finiteNumber(line.quantity), 0))} units</div>
+                      <div className="text-gray-500">Created by {entry.createdBy?.name || entry.createdBy?.email || '—'} · {formatDate(entry.createdAt, true)}</div>
+                    </div>
+                    <div className="sm:text-right">
+                      <Tag color={entry.status === 'voided' || entry.salesOrder?.status === 'cancelled' ? 'red' : 'purple'}>{entry.status === 'voided' ? 'demand reopened' : (entry.salesOrder?.status || 'created')}</Tag>
+                      <div className="text-gray-500">Approval: {entry.salesOrder?.approvalStatus || '—'} · Reservation: {entry.salesOrder?.reservationStatus || '—'}</div>
+                      <div className="font-semibold text-slate-800">Order total {formatMoney(entry.salesOrder?.grandTotal)}</div>
+                    </div>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-1 border-t border-purple-100 pt-2 sm:grid-cols-2">
+                    {(entry.lines || []).map((line, index) => <div key={line._id || index} className="text-gray-600">Line {index + 1}: {formatNumber(line.quantity)} · {line.shade || 'No shade'} · {line.batch || 'No batch'}</div>)}
+                  </div>
+                  {entry.status === 'voided' && <Alert className="mt-2" type="warning" showIcon message={`Reversed by ${entry.reversedBy?.name || entry.reversedBy?.email || 'user'} on ${formatDate(entry.reversedAt, true)}`} description={entry.reversalReason || 'No reason recorded'} />}
+                  {entry.status !== 'voided' && (entry.salesOrder?.status === 'cancelled' || entry.salesOrder?.approvalStatus === 'rejected') && (
+                    <Button size="small" type="link" danger className="px-0 mt-1" onClick={() => {
+                      let reason = '';
+                      Modal.confirm({
+                        title: 'Reopen quotation demand?',
+                        content: <Input.TextArea className="mt-3" placeholder="Required audit reason" onChange={event => { reason = event.target.value; }} />,
+                        okText: 'Reopen Demand', okButtonProps: { danger: true },
+                        onOk: async () => {
+                          if (!reason.trim()) { message.error('A reversal reason is required.'); throw new Error('Reversal reason required'); }
+                          const response = await salesService.reverseQuotationConversion(q._id, entry._id, { reason: reason.trim() });
+                          message.success(response.message);
+                          await loadQuotation();
+                          onQuotationUpdated?.();
+                        },
+                      });
+                    }}>Reopen Demand</Button>
+                  )}
+                </div>
+              ))}
+            </div> : <div className="text-xs text-slate-400 py-2">No conversion history</div>}
+          </Card>
+
+          <Card size="small" className="shadow-2xs border-slate-200" title={<span className="font-semibold text-slate-700"><CalendarOutlined className="mr-2" />Validity History ({(q.validityHistory || []).length})</span>}>
+            {(q.validityHistory || []).length ? <div className="space-y-2">
+              {[...(q.validityHistory || [])].reverse().map((entry, index) => (
+                <div key={entry._id || index} className="rounded-lg border border-slate-100 bg-slate-50 p-2.5 text-xs">
+                  <div className="font-semibold text-slate-700">{formatCalendarDate(entry.previousValidUntil)} → {formatCalendarDate(entry.newValidUntil)} <Tag color={entry.requeued ? 'blue' : 'default'} className="m-0 ml-1 text-[10px]">{entry.requeued ? 'FIFO requeued' : 'updated'}</Tag></div>
+                  <div className="mt-1 text-slate-600">{entry.reason || 'No reason recorded'}</div>
+                  <div className="mt-1 text-slate-400">{entry.changedBy?.name || entry.changedBy?.email || 'Unknown user'} · {formatDate(entry.changedAt, true)}</div>
+                </div>
+              ))}
+            </div> : <div className="text-xs text-slate-400 py-2">No validity changes</div>}
+          </Card>
+        </div>
       </div>
 
       {/* Hidden print content */}
@@ -849,8 +1808,8 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, c
             <div><div className="co-name">BDM TILES</div><div className="co-sub">Tiles &amp; Sanitary Ware Distributors</div></div>
             <div><div className="qt-title">QUOTATION</div>
               <div className="qt-meta"><div><strong>{q.quotationNumber}</strong></div>
-                <div>Date: {new Date(q.quotationDate).toLocaleDateString('en-IN')}</div>
-                <div>Valid Until: {q.validUntil ? new Date(q.validUntil).toLocaleDateString('en-IN') : '—'}</div></div></div>
+                <div>Date: {formatCalendarDate(q.quotationDate)}</div>
+                <div>Valid Until (inclusive): {formatCalendarDate(q.validUntil)}</div></div></div>
           </div>
           <div className="info-row">
             <div className="info-box"><div className="lbl">To</div>
@@ -866,17 +1825,17 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, c
                 <td>{i + 1}</td>
                 <td style={{display:'flex',alignItems:'center',gap:'6px'}}>{item.productImage && <img src={getImageUrl(item.productImage)} style={{width:'24px',height:'24px',borderRadius:'3px',objectFit:'cover'}} />}<div><strong>{item.productName}</strong>{item.shade ? ` (${item.shade})` : ''}</div></td>
                 <td>{item.quantity} {item.unit}</td>
-                <td>₹{(item.rate || 0).toLocaleString()}</td>
-                <td>{item.gstPercentage}%</td>
-                <td style={{textAlign:'right'}}><strong>₹{(item.totalAmount || 0).toLocaleString()}</strong></td>
+                <td>{formatMoney(item.rate)}</td>
+                <td>{formatNumber(item.gstPercentage)}%</td>
+                <td style={{textAlign:'right'}}><strong>{formatMoney(item.totalAmount)}</strong></td>
               </tr>
             ))}</tbody>
           </table>
           <div className="totals">
-            <div className="row"><span>Subtotal</span><span>₹{(q.subtotal || 0).toLocaleString()}</span></div>
-            <div className="row"><span>GST</span><span>₹{(q.totalTax || 0).toLocaleString()}</span></div>
-            {q.freightCharges > 0 && <div className="row"><span>Freight</span><span>₹{q.freightCharges}</span></div>}
-            <div className="row grand"><span>Grand Total</span><span>₹{(q.grandTotal || 0).toLocaleString()}</span></div>
+            <div className="row"><span>Subtotal</span><span>{formatMoney(q.subtotal)}</span></div>
+            <div className="row"><span>GST</span><span>{formatMoney(q.totalTax)}</span></div>
+            {finiteNumber(q.freightCharges) > 0 && <div className="row"><span>Freight</span><span>{formatMoney(q.freightCharges)}</span></div>}
+            <div className="row grand"><span>Grand Total</span><span>{formatMoney(q.grandTotal)}</span></div>
           </div>
           {q.termsAndConditions && <div className="terms"><strong>Terms &amp; Conditions:</strong> {q.termsAndConditions}</div>}
           <div className="footer">
@@ -886,6 +1845,51 @@ const ViewQuotationModal = ({ quotationId, onClose, onConvert, onStatusChange, c
         </div>
       </div>
     </Modal>
+
+    <Modal
+      title="Edit quotation validity"
+      open={validityEditorOpen}
+      onCancel={() => !savingValidity && setValidityEditorOpen(false)}
+      onOk={saveValidity}
+      okText="Update Validity"
+      confirmLoading={savingValidity}
+      destroyOnHidden
+    >
+      <Alert
+        className="mb-4"
+        type={isExpired ? 'warning' : 'info'}
+        showIcon
+        message={isExpired ? 'This quotation is expired' : 'Validity dates are inclusive'}
+        description={isExpired && ['approved', 'accepted'].includes(q.status)
+          ? 'Extending an expired conversion-eligible quotation requeues its remaining demand behind currently valid FIFO demand.'
+          : 'The quotation remains valid through the end of the selected business date.'}
+      />
+      <div className="space-y-4">
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">Valid through *</label>
+          <DatePicker
+            value={validityDate}
+            format="DD MMM YYYY"
+            allowClear={false}
+            presets={validityPresets()}
+            className="w-full"
+            disabledDate={(date) => {
+              const quotationDay = calendarDay(q.quotationDate);
+              const beforeQuotation = quotationDay && date.startOf('day').isBefore(quotationDay);
+              const invalidForPartial = q.conversionState === 'partial' && !date.endOf('day').isAfter(dayjs());
+              return Boolean(beforeQuotation || invalidForPartial);
+            }}
+            onChange={value => value && setValidityDate(value.startOf('day'))}
+          />
+          <div className="mt-1 text-[10px] text-gray-400">Presets extend from today by 7, 15, 30, 45, 60 or 90 days.</div>
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">Reason *</label>
+          <Input.TextArea value={validityReason} maxLength={1000} showCount rows={4} onChange={event => setValidityReason(event.target.value)} placeholder="Required audit reason for this validity change" />
+        </div>
+      </div>
+    </Modal>
+    </>
   );
 };
 

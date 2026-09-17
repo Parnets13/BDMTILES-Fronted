@@ -303,7 +303,7 @@ const LeadManagement = () => {
       {/* ═══════════════════════════════ ASSIGN MODAL ═══════════════════════════════ */}
       <Modal title={`${assignModal?.assignedTo ? 'Reassign' : 'Assign'} Lead — ${assignModal?.leadNumber || ''}`} open={!!assignModal} onCancel={() => setAssignModal(null)}
         onOk={handleAssign} okText={assignModal?.assignedTo ? 'Reassign' : 'Assign'}
-        okButtonProps={{ disabled: !selectedSE || (!!selectedExecutive && !selectedExecutive.canAssign && (!overrideAvailability || !overrideReason.trim())) }} width={500}>
+        okButtonProps={{ disabled: !selectedSE || (!!selectedExecutive && !selectedExecutive.canAssign && (!overrideAvailability || !overrideReason.trim())) }} width={720}>
         {assignModal && (
           <div className="space-y-3 mt-3">
             <div className="bg-gray-50 p-3 rounded border">
@@ -528,7 +528,7 @@ const CreateLeadModal = ({ open, onClose, onSuccess }) => {
   };
 
   return (
-    <Modal title="New Lead" open={open} onCancel={onClose} width={700} footer={null} destroyOnHidden>
+    <Modal title="New Lead" open={open} onCancel={onClose} width={900} footer={null} destroyOnHidden>
       <Form form={form} layout="vertical" className="mt-4">
         <Row gutter={16}>
           <Col span={8}><Form.Item name="name" label="Customer Name" rules={[{ required: true }]}><Input placeholder="Full name" /></Form.Item></Col>

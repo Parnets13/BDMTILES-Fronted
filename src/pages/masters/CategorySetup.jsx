@@ -271,6 +271,7 @@ const CategorySetup = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditingItem(null); }}
         okText={editingItem ? 'Update' : 'Create'}
         confirmLoading={loading}
+        width={720}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" className="mt-4">

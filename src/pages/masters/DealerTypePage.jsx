@@ -153,7 +153,7 @@ const DealerTypePage = () => {
       <Modal title={editRecord ? 'Edit Dealer Type' : 'Add Dealer Type'}
         open={showModal} onCancel={() => { setShowModal(false); setEditRecord(null); }}
         onOk={handleSubmit} confirmLoading={formLoading} okText={editRecord ? 'Update' : 'Create'}
-        width={500} destroyOnHidden>
+        width={720} destroyOnHidden>
         <Form form={form} layout="vertical" className="mt-4">
           {/* Name — Dropdown for presets or custom */}
           {!editRecord ? (

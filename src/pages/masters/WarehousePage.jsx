@@ -242,7 +242,7 @@ const WarehousePage = () => {
         open={showModal} onCancel={closeModal} onOk={handleSave}
         okText={editing ? 'Update' : 'Create'} confirmLoading={saving}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        width={640} destroyOnHidden
+        width={860} destroyOnHidden
       >
         <div className="mt-4 space-y-4">
           {/* Row 1 */}

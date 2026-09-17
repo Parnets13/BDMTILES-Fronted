@@ -353,14 +353,14 @@ const menuConfig = {
         title: 'Stock Adjustment',
         icon: RefreshCw,
         path: '/inventory/stock-adjustment',
-        permission: 'stock.adjustment',
+        permissions: ['stock.adjustment.create', 'stock.adjustment.submit', 'stock.adjustment.approve', 'stock.adjustment.reverse', 'stock.adjustment'],
       },
       {
         id: 'physical-audit',
         title: 'Physical Audit',
         icon: CheckCircle,
         path: '/inventory/physical-audit',
-        permission: 'stock.adjustment',
+        permissions: ['stock.audit.create', 'stock.audit.count', 'stock.audit.submit', 'stock.audit.approve', 'stock.audit.reverse'],
       },
       {
         id: 'stock-alerts',
@@ -988,7 +988,7 @@ const menuConfig = {
     title: 'Dealer App',
     icon: Smartphone,
     hasSubmenu: true,
-    modulePermissions: ['support.chat', 'dealer.order.requests'],
+    modulePermissions: ['support.chat', 'dealer.order_request.review'],
     items: [
       {
         id: 'dealer-support-chat',
@@ -1002,7 +1002,7 @@ const menuConfig = {
         title: 'Dealer Order Requests',
         icon: ClipboardList,
         path: '/dealer-app/order-requests',
-        permission: 'dealer.order.requests',
+        permission: 'dealer.order_request.review',
       },
     ],
   },
@@ -1011,7 +1011,7 @@ const menuConfig = {
     title: 'Sales Executive App',
     icon: Users2,
     hasSubmenu: true,
-    modulePermissions: ['sales.executive.app', 'se.attendance.view'],
+    modulePermissions: ['sales.executive.app', 'se.attendance.view', 'dealer.assignment.manage'],
     items: [
       {
         id: 'se-attendance',
@@ -1032,7 +1032,7 @@ const menuConfig = {
         title: 'Dealer Assignment',
         icon: Users2,
         path: '/se-app/dealer-assignment',
-        permission: 'se.attendance.view',
+        permission: 'dealer.assignment.manage',
       },
       {
         id: 'se-route-plan',

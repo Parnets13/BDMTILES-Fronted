@@ -1,13 +1,28 @@
 import api, { createIdempotencyKey } from '../config/api.js';
 
+// Keep one key for an exact pending conversion intent. If the response is lost,
+// retrying the same action replays the committed child instead of creating one.
+const quotationConversionKeys = new Map();
+const quotationReversalKeys = new Map();
+
 const salesService = {
   // Sales Orders
   getOrders: (params) => api.get('/sales-orders', { params }),
-  getOrder: (id) => api.get(`/sales-orders/${id}`),
+  getOrder: (id, params) => api.get(`/sales-orders/${id}`, { params }),
   updateOrder: (id, data) => api.put(`/sales-orders/${id}`, data),
   updateStatus: (id, data) => api.patch(`/sales-orders/${id}/status`, data),
+  requestRemainingCancellation: (id, data) => api.post(`/sales-orders/${id}/remaining-cancellation/request`, data),
+  reviewRemainingCancellation: (id, action, data) => api.patch(`/sales-orders/${id}/remaining-cancellation/${action}`, data),
+  extendReservation: (id, data) => api.patch(`/sales-orders/${id}/reservation/extend`, data),
   deleteOrder: (id) => api.delete(`/sales-orders/${id}`),
-  getStats: () => api.get('/sales-orders/stats'),
+  getStats: (params) => api.get('/sales-orders/stats', { params }),
+  // Dealer Order Requests
+  getDealerOrderRequests: (params) => api.get('/dealer-order-requests', { params }),
+  getDealerOrderRequestStats: () => api.get('/dealer-order-requests/stats'),
+  getDealerOrderRequest: (id) => api.get(`/dealer-order-requests/${id}`),
+  approveDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/approve`, data),
+  rejectDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/reject`, data),
+  getDealerOrderRequestQuotationPrefill: (id) => api.get(`/dealer-order-requests/${id}/quotation-prefill`),
 
   // Search helpers. Object arguments are preferred; positional arguments remain supported.
   searchDealers: (paramsOrQuery, page = 1, pricingTier) => {
@@ -45,8 +60,9 @@ const salesService = {
   deleteInvoice: (id) => api.delete(`/invoices/${id}`),
 
   // Discount Mappings
+  calculatePurchaseDiscount: (product, supplier, rate) => api.get('/discount-mappings/calculate-purchase', { params: { product, supplier, rate } }),
   getDiscountMappings: (params) => api.get('/discount-mappings', { params }),
-  getDiscountMappingStats: () => api.get('/discount-mappings/stats'),
+  getDiscountMappingStats: (params) => api.get('/discount-mappings/stats', { params }),
   createDiscountMapping: (data) => api.post('/discount-mappings', data),
   updateDiscountMapping: (id, data) => api.put(`/discount-mappings/${id}`, data),
   updateDiscountMappingStatus: (id, data) => api.patch(`/discount-mappings/${id}/status`, data),
@@ -77,9 +93,34 @@ const salesService = {
   getQuotationProducts: (params) => api.get('/quotations/product-browser', { params }),
   createQuotation: (data) => api.post('/quotations', data),
   updateQuotation: (id, data) => api.put(`/quotations/${id}`, data),
+  updateQuotationValidity: (id, data) => api.patch(`/quotations/${id}/validity`, data),
   previewQuotationPricing: (data) => api.post('/quotations/price-preview', data),
   updateQuotationStatus: (id, data) => api.patch(`/quotations/${id}/status`, data),
-  convertQuotation: (id) => api.post(`/quotations/${id}/convert`),
+  convertQuotation: async (id, data = { mode: 'full' }, idempotencyKey) => {
+    const intent = `${id}:${data.mode || 'full'}:${data.includePartialLines === true}`;
+    const key = idempotencyKey || quotationConversionKeys.get(intent) || createIdempotencyKey();
+    quotationConversionKeys.set(intent, key);
+    const response = await api.post(
+      `/quotations/${id}/convert`,
+      data,
+      { headers: { 'Idempotency-Key': key } }
+    );
+    quotationConversionKeys.delete(intent);
+    return response;
+  },
+  checkQuotationStock: (id) => api.get(`/quotations/${id}/check-stock`),
+  reverseQuotationConversion: async (id, conversionId, data, idempotencyKey) => {
+    const intent = `${conversionId}:${data.reason}`;
+    const key = idempotencyKey || quotationReversalKeys.get(intent) || createIdempotencyKey();
+    quotationReversalKeys.set(intent, key);
+    const response = await api.post(
+      `/quotations/${id}/conversions/${conversionId}/reverse`,
+      data,
+      { headers: { 'Idempotency-Key': key } }
+    );
+    quotationReversalKeys.delete(intent);
+    return response;
+  },
   deleteQuotation: (id) => api.delete(`/quotations/${id}`),
   getQuotationStats: () => api.get('/quotations/stats'),
 };

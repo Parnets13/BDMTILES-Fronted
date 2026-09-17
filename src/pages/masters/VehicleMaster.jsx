@@ -171,7 +171,7 @@ const VehicleMaster = () => {
 
       <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
         onCancel={() => { setShowForm(false); setEditRecord(null); form.resetFields(); }}
-        onOk={handleSubmit} confirmLoading={formLoading} width={720} destroyOnHidden>
+        onOk={handleSubmit} confirmLoading={formLoading} width={900} destroyOnHidden>
         <Form form={form} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col span={8}><Form.Item name="vehicleNumber" label="Vehicle Number" rules={[{ required: true }]}>

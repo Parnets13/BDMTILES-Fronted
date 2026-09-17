@@ -32,6 +32,7 @@ const masterService = {
   updateDealer: (id, data) => api.put(`/masters/dealers/${id}`, data),
   deleteDealer: (id) => api.delete(`/masters/dealers/${id}`),
   getDealerStats: () => api.get('/masters/dealers/stats'),
+  getSalesExecutives: () => api.get('/masters/dealers/sales-executives'),
 
   // Suppliers
   getSuppliers: (params) => api.get('/masters/suppliers', { params }),

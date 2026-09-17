@@ -1,4 +1,5 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import { message } from 'antd';
 import api from '../config/api.js';
 
 const AuthContext = createContext();
@@ -81,6 +82,11 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     const handleUnauthorized = () => {
+      // Tell the user why the app is sending them back to login, instead of
+      // silently clearing the session and leaving blank/failed screens behind.
+      if (localStorage.getItem('bdmtiles_token')) {
+        message.warning('Your session has expired. Please sign in again.');
+      }
       clearAuth();
       setLoading(false);
     };

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message, Modal, InputNumber,
-  Row, Col, Card, Statistic, Tooltip, Switch
+  Row, Col, Card, Statistic, Tooltip, Switch, Segmented
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EditOutlined,
-  DeleteOutlined, TagOutlined
+  DeleteOutlined, TagOutlined, ShopOutlined, ShoppingOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '../../config/api.js';
@@ -14,6 +14,7 @@ import salesService from '../../services/salesService.js';
 const TARGET_COLORS = { product: 'blue', brand: 'purple', category: 'green', subcategory: 'orange' };
 
 const DiscountMappingPage = () => {
+  const [mappingType, setMappingType] = useState('sales');
   const [rules, setRules] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
@@ -24,17 +25,19 @@ const DiscountMappingPage = () => {
   const [showModal, setShowModal] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
 
-  const loadStats = () => {
-    salesService.getDiscountMappingStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
-  };
+  const isPurchase = mappingType === 'purchase';
 
-  useEffect(() => { loadStats(); }, []);
+  const loadStats = useCallback(() => {
+    salesService.getDiscountMappingStats({ mappingType }).then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+  }, [mappingType]);
+
+  useEffect(() => { loadStats(); }, [loadStats]);
 
   const fetchRules = useCallback(async () => {
     setLoading(true);
     try {
       const res = await salesService.getDiscountMappings({
-        page: pagination.current, limit: pagination.pageSize, search, targetType: targetTypeFilter, status: statusFilter,
+        page: pagination.current, limit: pagination.pageSize, search, targetType: targetTypeFilter, status: statusFilter, mappingType,
       });
       if (res.success) {
         setRules(res.data);
@@ -42,7 +45,7 @@ const DiscountMappingPage = () => {
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, targetTypeFilter, statusFilter]);
+  }, [pagination.current, pagination.pageSize, search, targetTypeFilter, statusFilter, mappingType]);
 
   useEffect(() => { fetchRules(); }, [fetchRules]);
 
@@ -82,29 +85,49 @@ const DiscountMappingPage = () => {
           <span className="text-xs ml-1">{r.targetName || '—'}</span>
         </div>
       )},
-    { title: 'Discount', key: 'discount', width: 140,
-      render: (_, r) => (
-        <div>
-          {r.discountType === 'slab' ? (
-            <span className="text-sm font-bold text-purple-600">Slab ({(r.slabs || []).length})</span>
-          ) : (
-            <>
-              {(r.discountType === 'percentage' || r.discountType === 'both') && (
-                <span className="text-sm font-bold text-green-600">{r.discountPercentage}%</span>
+    { title: 'Discount', key: 'discount', width: 160,
+      render: (_, r) => {
+        if (isPurchase) {
+          return (
+            <div>
+              <span className="text-sm font-bold text-green-600">{r.directDiscountPercentage || 0}%</span>
+              {r.floatingDiscountEnabled && (
+                <div className="text-[10px] text-emerald-500">float {r.floatingDiscountMin}%–{r.floatingDiscountMax}%</div>
               )}
-              {r.discountType === 'both' && <span className="text-gray-400 mx-1">+</span>}
-              {(r.discountType === 'flat' || r.discountType === 'both') && (
-                <span className="text-sm font-bold text-green-600">₹{r.discountFlat}</span>
-              )}
-            </>
-          )}
-          <div className="text-[10px] text-gray-400">Max: {r.maxDiscountPercentage}%</div>
-        </div>
-      )},
-    { title: 'For', key: 'applicableTo', width: 160,
-      render: (_, r) => r.applicableTo === 'all'
-        ? <Tag color="blue">All Types</Tag>
-        : <div className="flex flex-wrap gap-0.5">{(r.applicableDealerTypes || []).map(t => <Tag key={t} className="text-[9px]">{t}</Tag>)}</div>
+            </div>
+          );
+        }
+        return (
+          <div>
+            {r.discountType === 'slab' ? (
+              <span className="text-sm font-bold text-purple-600">Slab ({(r.slabs || []).length})</span>
+            ) : (
+              <>
+                {(r.discountType === 'percentage' || r.discountType === 'both') && (
+                  <span className="text-sm font-bold text-green-600">{r.discountPercentage}%</span>
+                )}
+                {r.discountType === 'both' && <span className="text-gray-400 mx-1">+</span>}
+                {(r.discountType === 'flat' || r.discountType === 'both') && (
+                  <span className="text-sm font-bold text-green-600">₹{r.discountFlat}</span>
+                )}
+              </>
+            )}
+            <div className="text-[10px] text-gray-400">Max: {r.maxDiscountPercentage}%</div>
+          </div>
+        );
+      }},
+    { title: isPurchase ? 'Suppliers' : 'For', key: 'applicableTo', width: 180,
+      render: (_, r) => {
+        if (isPurchase) {
+          const list = r.suppliers || [];
+          return list.length
+            ? <div className="flex flex-wrap gap-0.5">{list.map(s => <Tag key={s._id || s} className="text-[9px]">{s.companyName || 'Supplier'}</Tag>)}</div>
+            : <Tag color="blue">All Suppliers</Tag>;
+        }
+        return r.applicableTo === 'all'
+          ? <Tag color="blue">All Types</Tag>
+          : <div className="flex flex-wrap gap-0.5">{(r.applicableDealerTypes || []).map(t => <Tag key={t} className="text-[9px]">{t}</Tag>)}</div>;
+      }
     },
     { title: 'Validity', key: 'validity', width: 150,
       render: (_, r) => (
@@ -130,15 +153,36 @@ const DiscountMappingPage = () => {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
+      <div className="flex justify-between items-center mb-4 gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Discount Mapping</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Define discount rules by Product, Brand, Category, or Subcategory for different dealer types</p>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {isPurchase
+              ? 'Supplier purchase discounts — auto-applied when raising POs / supplier quotations'
+              : 'Sales discounts by Product, Brand, Category, or Subcategory for dealer / builder types'}
+          </p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => { setEditRecord(null); setShowModal(true); }}>
-          New Discount Rule
+        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => { setEditRecord(null); setShowModal(true); }}
+          style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+          {isPurchase ? 'New Supplier Discount' : 'New Sales Discount'}
         </Button>
       </div>
+
+      {/* Sales vs Supplier tabs */}
+      <Segmented
+        className="mb-4"
+        size="large"
+        value={mappingType}
+        onChange={(value) => {
+          setMappingType(value);
+          setPagination(p => ({ ...p, current: 1 }));
+          setSearch(''); setTargetTypeFilter(undefined); setStatusFilter(undefined);
+        }}
+        options={[
+          { value: 'sales', label: <span className="flex items-center gap-1.5"><ShopOutlined /> Dealer / Builder</span> },
+          { value: 'purchase', label: <span className="flex items-center gap-1.5"><ShoppingOutlined /> Supplier</span> },
+        ]}
+      />
 
       {/* Stats */}
       <Row gutter={12} className="mb-4">
@@ -176,6 +220,7 @@ const DiscountMappingPage = () => {
       {/* Create/Edit Modal */}
       <DiscountRuleModal
         open={showModal}
+        mappingType={mappingType}
         editRecord={editRecord}
         onClose={() => { setShowModal(false); setEditRecord(null); }}
         onSuccess={() => { fetchRules(); loadStats(); }}
@@ -187,7 +232,21 @@ const DiscountMappingPage = () => {
 // ═══════════════════════════════════════════════
 // CREATE / EDIT DISCOUNT RULE MODAL
 // ═══════════════════════════════════════════════
-const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
+const emptyForm = () => ({
+  ruleName: '', targetType: 'brand',
+  product: '', brand: '', category: '', subcategory: '',
+  selectedBrand: '', selectedCategory: '',
+  applicableTo: 'all', applicableDealerTypes: [],
+  discountType: 'percentage', discountPercentage: 0, discountFlat: 0, maxDiscountPercentage: 50, slabs: [],
+  priority: 0, validFrom: dayjs().format('YYYY-MM-DD'), validTo: dayjs().add(1, 'year').format('YYYY-MM-DD'),
+  minOrderQty: 0, minOrderAmount: 0, remarks: '',
+  // Purchase (supplier) fields
+  suppliers: [], directDiscountPercentage: 0,
+  floatingDiscountEnabled: false, floatingDiscountMin: 0, floatingDiscountMax: 0,
+});
+
+const DiscountRuleModal = ({ open, mappingType = 'sales', editRecord, onClose, onSuccess }) => {
+  const isPurchase = mappingType === 'purchase';
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
@@ -197,26 +256,23 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
   const [subcategories, setSubcategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [productSearch, setProductSearch] = useState('');
+  const [suppliers, setSuppliers] = useState([]);
 
-  const [form, setForm] = useState({
-    ruleName: '', targetType: 'brand',
-    product: '', brand: '', category: '', subcategory: '',
-    // For cascading: we need to track selected brand even for category/subcategory targets
-    selectedBrand: '', selectedCategory: '',
-    applicableTo: 'all', applicableDealerTypes: [],
-    discountType: 'percentage', discountPercentage: 0, discountFlat: 0, maxDiscountPercentage: 50, slabs: [],
-    priority: 0, validFrom: dayjs().format('YYYY-MM-DD'), validTo: dayjs().add(1, 'year').format('YYYY-MM-DD'),
-    minOrderQty: 0, minOrderAmount: 0, remarks: '',
-  });
+  const [form, setForm] = useState(emptyForm());
 
-  // Load brands on mount
+  // Load brands on mount, and suppliers for purchase mode
   useEffect(() => {
     if (open) {
       api.get('/category-setup/brands', { params: { limit: 200 } }).then(r => {
         if (r.success) setBrands(r.data || []);
       }).catch(() => {});
+      if (isPurchase) {
+        api.get('/masters/suppliers', { params: { status: 'active', limit: 200 } }).then(r => {
+          if (r.success) setSuppliers(r.data || []);
+        }).catch(() => {});
+      }
     }
-  }, [open]);
+  }, [open, isPurchase]);
 
   // Load categories when brand is selected (for category/subcategory targets)
   useEffect(() => {
@@ -279,18 +335,15 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
         minOrderQty: editRecord.minOrderQty || 0,
         minOrderAmount: editRecord.minOrderAmount || 0,
         remarks: editRecord.remarks || '',
+        suppliers: (editRecord.suppliers || []).map(s => s._id || s),
+        directDiscountPercentage: editRecord.directDiscountPercentage || 0,
+        floatingDiscountEnabled: Boolean(editRecord.floatingDiscountEnabled),
+        floatingDiscountMin: editRecord.floatingDiscountMin || 0,
+        floatingDiscountMax: editRecord.floatingDiscountMax || 0,
       });
       if (editRecord.product?.itemName) setProductSearch(editRecord.product.itemName);
     } else {
-      setForm({
-        ruleName: '', targetType: 'brand',
-        product: '', brand: '', category: '', subcategory: '',
-        selectedBrand: '', selectedCategory: '',
-        applicableTo: 'all', applicableDealerTypes: [],
-        discountType: 'percentage', discountPercentage: 0, discountFlat: 0, maxDiscountPercentage: 50, slabs: [],
-        priority: 0, validFrom: dayjs().format('YYYY-MM-DD'), validTo: dayjs().add(1, 'year').format('YYYY-MM-DD'),
-        minOrderQty: 0, minOrderAmount: 0, remarks: '',
-      });
+      setForm(emptyForm());
       setProductSearch('');
     }
   }, [editRecord, open]);
@@ -305,14 +358,21 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
     if (form.targetType === 'subcategory' && !form.selectedBrand) newErrors.selectedBrand = 'Select brand first';
     if (form.targetType === 'subcategory' && form.selectedBrand && !form.selectedCategory) newErrors.selectedCategory = 'Select category first';
     if (form.targetType === 'subcategory' && form.selectedCategory && !form.subcategory) newErrors.target = 'Select a subcategory';
-    if (form.discountType === 'slab') {
+    if (isPurchase) {
+      if (Number(form.directDiscountPercentage) <= 0 && !form.floatingDiscountEnabled) {
+        newErrors.discount = 'Set a direct discount % or enable a floating range';
+      }
+      if (form.floatingDiscountEnabled && Number(form.floatingDiscountMax) < Number(form.floatingDiscountMin)) {
+        newErrors.discount = 'Floating max must be greater than or equal to min';
+      }
+    } else if (form.discountType === 'slab') {
       if (!form.slabs || form.slabs.length === 0) newErrors.discount = 'Add at least one quantity slab';
       else if (form.slabs.every(s => s.discountPercentage <= 0 && s.discountFlat <= 0)) newErrors.discount = 'At least one slab must have a discount value';
     } else if (form.discountPercentage <= 0 && form.discountFlat <= 0) {
       newErrors.discount = 'Set discount % or flat amount';
     }
     if (!form.validTo) newErrors.validTo = 'Valid To date is required';
-    if (form.applicableTo === 'specific_types' && form.applicableDealerTypes.length === 0) newErrors.dealerTypes = 'Select at least one dealer type';
+    if (!isPurchase && form.applicableTo === 'specific_types' && form.applicableDealerTypes.length === 0) newErrors.dealerTypes = 'Select at least one dealer type';
 
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) {
@@ -322,7 +382,7 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
 
     setLoading(true);
     try {
-      const payload = { ...form };
+      const payload = { ...form, mappingType };
       // Clean unused fields
       delete payload.selectedBrand;
       delete payload.selectedCategory;
@@ -330,7 +390,18 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
       if (payload.targetType !== 'brand') delete payload.brand;
       if (payload.targetType !== 'category') delete payload.category;
       if (payload.targetType !== 'subcategory') delete payload.subcategory;
-      if (payload.applicableTo === 'all') payload.applicableDealerTypes = [];
+      if (isPurchase) {
+        // Purchase rules apply to all dealer types by construction; suppliers scope them.
+        payload.applicableTo = 'all';
+        payload.applicableDealerTypes = [];
+      } else {
+        delete payload.suppliers;
+        delete payload.directDiscountPercentage;
+        delete payload.floatingDiscountEnabled;
+        delete payload.floatingDiscountMin;
+        delete payload.floatingDiscountMax;
+        if (payload.applicableTo === 'all') payload.applicableDealerTypes = [];
+      }
 
       let res;
       if (editRecord) {
@@ -355,23 +426,54 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
   ];
 
   return (
-    <Modal title={editRecord ? 'Edit Discount Rule' : 'New Discount Rule'} open={open} onCancel={onClose}
-      width={900} styles={{ body: { padding: '24px 32px' } }} footer={null} destroyOnHidden>
-      <div className="space-y-5 mt-4">
+    <Modal
+      title={
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3 pr-8">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-[#FF5F03] font-bold border border-orange-100 shadow-2xs">
+            <TagOutlined className="text-lg" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-slate-900 m-0">
+              {editRecord ? 'Edit' : 'New'} {isPurchase ? 'Supplier Discount' : 'Sales Discount'} Rule
+            </h2>
+            <p className="text-xs text-slate-400 font-normal m-0 mt-0.5">
+              {isPurchase
+                ? 'Target level, applicable suppliers, purchase discount & floating range'
+                : 'Configure target level, dealer applicability, discount types & validity constraints'}
+            </p>
+          </div>
+        </div>
+      }
+      open={open}
+      onCancel={onClose}
+      width="min(1280px, calc(100vw - 32px))"
+      centered
+      styles={{ body: { padding: '16px 24px 20px 24px' } }}
+      footer={
+        <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-100">
+          <Button size="large" onClick={onClose} className="rounded-xl px-5">Cancel</Button>
+          <Button type="primary" size="large" onClick={handleSubmit} loading={loading} icon={editRecord ? <EditOutlined /> : <PlusOutlined />} className="rounded-xl px-6 bg-[#FF5F03] hover:bg-[#e05302] border-0">
+            {editRecord ? 'Update Discount Rule' : 'Create Discount Rule'}
+          </Button>
+        </div>
+      }
+      destroyOnHidden
+    >
+      <div className="max-h-[calc(85vh-120px)] overflow-y-auto space-y-5 pr-1 py-1">
 
         {/* Rule Name */}
-        <div>
-          <label className="text-xs text-gray-500 block mb-1">Rule Name *</label>
+        <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-100">
+          <label className="text-xs font-semibold text-slate-700 block mb-1.5">Rule Name *</label>
           <Input value={form.ruleName} onChange={e => { setForm(f => ({ ...f, ruleName: e.target.value })); setErrors(e2 => ({ ...e2, ruleName: '' })); }}
-            placeholder="e.g. Kajaria 10% for Dealers, Somany Builder Special" size="large"
+            placeholder="e.g. Kajaria 10% for Dealers, Somany Builder Special" size="large" className="rounded-lg"
             status={errors.ruleName ? 'error' : ''} />
-          {errors.ruleName && <div className="text-xs text-red-500 mt-1">{errors.ruleName}</div>}
+          {errors.ruleName && <div className="text-xs text-red-500 mt-1 font-medium">{errors.ruleName}</div>}
         </div>
 
         {/* Target Type */}
-        <div>
-          <label className="text-xs text-gray-500 block mb-2">Discount On *</label>
-          <div className="flex gap-2">
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <label className="text-xs font-semibold text-slate-700 block mb-2.5">Discount Target Level *</label>
+          <div className="flex gap-2.5 flex-wrap mb-3.5">
             {[
               { value: 'brand', label: 'Entire Brand' },
               { value: 'category', label: 'Category' },
@@ -379,142 +481,196 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
               { value: 'product', label: 'Specific Product' },
             ].map(t => (
               <button key={t.value}
-                className={`px-4 py-2 rounded-lg text-sm font-medium border transition ${form.targetType === t.value
-                  ? 'bg-[#FF5F03] text-white border-[#FF5F03]' : 'text-gray-500 border-gray-200 bg-white hover:border-gray-300'}`}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold border transition cursor-pointer ${form.targetType === t.value
+                  ? 'bg-[#FF5F03] text-white border-[#FF5F03] shadow-xs' : 'text-slate-600 border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
                 onClick={() => setForm(f => ({ ...f, targetType: t.value, product: '', brand: '', category: '', subcategory: '', selectedBrand: '', selectedCategory: '' }))}>
                 {t.label}
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Target Selection — cascading */}
-        <div className={`bg-gray-50 border rounded-lg p-4 ${errors.target || errors.selectedBrand || errors.selectedCategory ? 'border-red-300' : 'border-gray-200'}`}>
-          {form.targetType === 'brand' && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Select Brand *</label>
-              <Select showSearch className="w-full" size="large" value={form.brand || undefined}
-                placeholder="Select brand..." optionFilterProp="label"
-                status={errors.target ? 'error' : ''}
-                onChange={v => { setForm(f => ({ ...f, brand: v })); setErrors(e => ({ ...e, target: '' })); }}
-                options={brands.map(b => ({ value: b._id, label: b.name }))} />
-              {errors.target && <div className="text-xs text-red-500 mt-1">{errors.target}</div>}
-            </div>
-          )}
-
-          {form.targetType === 'category' && (
-            <div className="grid grid-cols-2 gap-4">
+          {/* Target Selection — cascading */}
+          <div className={`bg-slate-50 border rounded-xl p-4 ${errors.target || errors.selectedBrand || errors.selectedCategory ? 'border-red-300' : 'border-slate-200'}`}>
+            {form.targetType === 'brand' && (
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Select Brand *</label>
-                <Select showSearch className="w-full" size="large" value={form.selectedBrand || undefined}
-                  placeholder="First select brand..." optionFilterProp="label"
-                  status={errors.selectedBrand ? 'error' : ''}
-                  onChange={v => { setForm(f => ({ ...f, selectedBrand: v, category: '', selectedCategory: '' })); setErrors(e => ({ ...e, selectedBrand: '', target: '' })); }}
-                  options={brands.map(b => ({ value: b._id, label: b.name }))} />
-                {errors.selectedBrand && <div className="text-xs text-red-500 mt-1">{errors.selectedBrand}</div>}
-              </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Select Category *</label>
-                <Select showSearch className="w-full" size="large" value={form.category || undefined}
-                  placeholder={form.selectedBrand ? 'Select category...' : 'Select brand first'}
-                  disabled={!form.selectedBrand} optionFilterProp="label"
+                <label className="text-xs font-medium text-slate-600 block mb-1">Select Brand *</label>
+                <Select showSearch className="w-full" size="large" value={form.brand || undefined}
+                  placeholder="Select brand..." optionFilterProp="label"
                   status={errors.target ? 'error' : ''}
-                  onChange={v => { setForm(f => ({ ...f, category: v })); setErrors(e => ({ ...e, target: '' })); }}
-                  options={categories.map(c => ({ value: c._id, label: c.name }))} />
-                {errors.target && <div className="text-xs text-red-500 mt-1">{errors.target}</div>}
-              </div>
-            </div>
-          )}
-
-          {form.targetType === 'subcategory' && (
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Select Brand *</label>
-                <Select showSearch className="w-full" size="large" value={form.selectedBrand || undefined}
-                  placeholder="First select brand..." optionFilterProp="label"
-                  status={errors.selectedBrand ? 'error' : ''}
-                  onChange={v => { setForm(f => ({ ...f, selectedBrand: v, selectedCategory: '', category: '', subcategory: '' })); setErrors(e => ({ ...e, selectedBrand: '', selectedCategory: '', target: '' })); }}
+                  onChange={v => { setForm(f => ({ ...f, brand: v })); setErrors(e => ({ ...e, target: '' })); }}
                   options={brands.map(b => ({ value: b._id, label: b.name }))} />
-                {errors.selectedBrand && <div className="text-xs text-red-500 mt-1">{errors.selectedBrand}</div>}
+                {errors.target && <div className="text-xs text-red-500 mt-1 font-medium">{errors.target}</div>}
               </div>
-              <div>
-                <label className="text-xs text-gray-500 block mb-1">Select Category *</label>
-                <Select showSearch className="w-full" size="large" value={form.selectedCategory || undefined}
-                  placeholder={form.selectedBrand ? 'Select category...' : 'Select brand first'}
-                  disabled={!form.selectedBrand} optionFilterProp="label"
-                  status={errors.selectedCategory ? 'error' : ''}
-                  onChange={v => { setForm(f => ({ ...f, selectedCategory: v, subcategory: '' })); setErrors(e => ({ ...e, selectedCategory: '', target: '' })); }}
-                  options={categories.map(c => ({ value: c._id, label: c.name }))} />
-                {errors.selectedCategory && <div className="text-xs text-red-500 mt-1">{errors.selectedCategory}</div>}
+            )}
+
+            {form.targetType === 'category' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Select Brand *</label>
+                  <Select showSearch className="w-full" size="large" value={form.selectedBrand || undefined}
+                    placeholder="First select brand..." optionFilterProp="label"
+                    status={errors.selectedBrand ? 'error' : ''}
+                    onChange={v => { setForm(f => ({ ...f, selectedBrand: v, category: '', selectedCategory: '' })); setErrors(e => ({ ...e, selectedBrand: '', target: '' })); }}
+                    options={brands.map(b => ({ value: b._id, label: b.name }))} />
+                  {errors.selectedBrand && <div className="text-xs text-red-500 mt-1 font-medium">{errors.selectedBrand}</div>}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Select Category *</label>
+                  <Select showSearch className="w-full" size="large" value={form.category || undefined}
+                    placeholder={form.selectedBrand ? 'Select category...' : 'Select brand first'}
+                    disabled={!form.selectedBrand} optionFilterProp="label"
+                    status={errors.target ? 'error' : ''}
+                    onChange={v => { setForm(f => ({ ...f, category: v })); setErrors(e => ({ ...e, target: '' })); }}
+                    options={categories.map(c => ({ value: c._id, label: c.name }))} />
+                  {errors.target && <div className="text-xs text-red-500 mt-1 font-medium">{errors.target}</div>}
+                </div>
               </div>
+            )}
+
+            {form.targetType === 'subcategory' && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Select Brand *</label>
+                  <Select showSearch className="w-full" size="large" value={form.selectedBrand || undefined}
+                    placeholder="First select brand..." optionFilterProp="label"
+                    status={errors.selectedBrand ? 'error' : ''}
+                    onChange={v => { setForm(f => ({ ...f, selectedBrand: v, selectedCategory: '', category: '', subcategory: '' })); setErrors(e => ({ ...e, selectedBrand: '', selectedCategory: '', target: '' })); }}
+                    options={brands.map(b => ({ value: b._id, label: b.name }))} />
+                  {errors.selectedBrand && <div className="text-xs text-red-500 mt-1 font-medium">{errors.selectedBrand}</div>}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Select Category *</label>
+                  <Select showSearch className="w-full" size="large" value={form.selectedCategory || undefined}
+                    placeholder={form.selectedBrand ? 'Select category...' : 'Select brand first'}
+                    disabled={!form.selectedBrand} optionFilterProp="label"
+                    status={errors.selectedCategory ? 'error' : ''}
+                    onChange={v => { setForm(f => ({ ...f, selectedCategory: v, subcategory: '' })); setErrors(e => ({ ...e, selectedCategory: '', target: '' })); }}
+                    options={categories.map(c => ({ value: c._id, label: c.name }))} />
+                  {errors.selectedCategory && <div className="text-xs text-red-500 mt-1 font-medium">{errors.selectedCategory}</div>}
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Select Subcategory *</label>
+                  <Select showSearch className="w-full" size="large" value={form.subcategory || undefined}
+                    placeholder={form.selectedCategory ? 'Select subcategory...' : 'Select category first'}
+                    disabled={!form.selectedCategory} optionFilterProp="label"
+                    status={errors.target ? 'error' : ''}
+                    onChange={v => { setForm(f => ({ ...f, subcategory: v })); setErrors(e => ({ ...e, target: '' })); }}
+                    options={subcategories.map(s => ({ value: s._id, label: s.name }))} />
+                  {errors.target && <div className="text-xs text-red-500 mt-1 font-medium">{errors.target}</div>}
+                </div>
+              </div>
+            )}
+
+            {form.targetType === 'product' && (
               <div>
-                <label className="text-xs text-gray-500 block mb-1">Select Subcategory *</label>
-                <Select showSearch className="w-full" size="large" value={form.subcategory || undefined}
-                  placeholder={form.selectedCategory ? 'Select subcategory...' : 'Select category first'}
-                  disabled={!form.selectedCategory} optionFilterProp="label"
+                <label className="text-xs font-medium text-slate-600 block mb-1">Search & Select Product *</label>
+                <Select showSearch className="w-full" size="large" value={form.product || undefined}
+                  placeholder="Type product name or code to search..."
+                  filterOption={false}
                   status={errors.target ? 'error' : ''}
-                  onChange={v => { setForm(f => ({ ...f, subcategory: v })); setErrors(e => ({ ...e, target: '' })); }}
-                  options={subcategories.map(s => ({ value: s._id, label: s.name }))} />
-                {errors.target && <div className="text-xs text-red-500 mt-1">{errors.target}</div>}
+                  onSearch={v => setProductSearch(v)}
+                  onChange={v => { setForm(f => ({ ...f, product: v })); setErrors(e => ({ ...e, target: '' })); }}
+                  options={products.map(p => ({ value: p._id, label: `${p.itemName} (${p.productCode})` }))}
+                  notFoundContent={productSearch.length < 2 ? 'Type at least 2 characters...' : 'No products found'} />
+                {errors.target && <div className="text-xs text-red-500 mt-1 font-medium">{errors.target}</div>}
               </div>
-            </div>
-          )}
-
-          {form.targetType === 'product' && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Search & Select Product *</label>
-              <Select showSearch className="w-full" size="large" value={form.product || undefined}
-                placeholder="Type product name or code to search..."
-                filterOption={false}
-                status={errors.target ? 'error' : ''}
-                onSearch={v => setProductSearch(v)}
-                onChange={v => { setForm(f => ({ ...f, product: v })); setErrors(e => ({ ...e, target: '' })); }}
-                options={products.map(p => ({ value: p._id, label: `${p.itemName} (${p.productCode})` }))}
-                notFoundContent={productSearch.length < 2 ? 'Type at least 2 characters...' : 'No products found'} />
-              {errors.target && <div className="text-xs text-red-500 mt-1">{errors.target}</div>}
-            </div>
-          )}
-        </div>
-
-        {/* Applicable To */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Applicable To</label>
-            <Select value={form.applicableTo} onChange={v => { setForm(f => ({ ...f, applicableTo: v })); setErrors(e => ({ ...e, dealerTypes: '' })); }} className="w-full" size="large"
-              options={[{ value: 'all', label: 'All Dealer / Customer Types' }, { value: 'specific_types', label: 'Specific Types Only' }]} />
+            )}
           </div>
-          {form.applicableTo === 'specific_types' && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Select Dealer Types *</label>
-              <Select mode="multiple" value={form.applicableDealerTypes} size="large"
-                status={errors.dealerTypes ? 'error' : ''}
-                onChange={v => { setForm(f => ({ ...f, applicableDealerTypes: v })); setErrors(e => ({ ...e, dealerTypes: '' })); }}
-                className="w-full" options={dealerTypeOptions} placeholder="Select types..." />
-              {errors.dealerTypes && <div className="text-xs text-red-500 mt-1">{errors.dealerTypes}</div>}
-            </div>
-          )}
         </div>
 
-        {/* Discount Values */}
-        <div className={`bg-green-50 border rounded-lg p-5 ${errors.discount ? 'border-red-300' : 'border-green-100'}`}>
-          <label className="text-sm text-gray-700 font-semibold block mb-3">Discount Configuration *</label>
-          {errors.discount && <div className="text-xs text-red-500 mb-2">{errors.discount}</div>}
-          <div className="grid grid-cols-4 gap-4">
+        {/* Applicable To (sales only) */}
+        {!isPurchase && (
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Discount Type</label>
+              <label className="text-xs font-semibold text-slate-700 block mb-1.5">Applicable To</label>
+              <Select value={form.applicableTo} onChange={v => { setForm(f => ({ ...f, applicableTo: v })); setErrors(e => ({ ...e, dealerTypes: '' })); }} className="w-full" size="large"
+                options={[{ value: 'all', label: 'All Dealer / Customer Types' }, { value: 'specific_types', label: 'Specific Types Only' }]} />
+            </div>
+            {form.applicableTo === 'specific_types' && (
+              <div>
+                <label className="text-xs font-semibold text-slate-700 block mb-1.5">Select Dealer Types *</label>
+                <Select mode="multiple" value={form.applicableDealerTypes} size="large"
+                  status={errors.dealerTypes ? 'error' : ''}
+                  onChange={v => { setForm(f => ({ ...f, applicableDealerTypes: v })); setErrors(e => ({ ...e, dealerTypes: '' })); }}
+                  className="w-full" options={dealerTypeOptions} placeholder="Select types..." />
+                {errors.dealerTypes && <div className="text-xs text-red-500 mt-1 font-medium">{errors.dealerTypes}</div>}
+              </div>
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Suppliers + purchase discount (purchase only) */}
+        {isPurchase && (
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-slate-700 block mb-1.5">Applicable Suppliers</label>
+            <Select mode="multiple" allowClear showSearch optionFilterProp="label" size="large" className="w-full"
+              value={form.suppliers} onChange={v => setForm(f => ({ ...f, suppliers: v }))}
+              placeholder="Leave empty to apply to all suppliers"
+              options={suppliers.map(s => ({ value: s._id, label: `${s.companyName}${s.supplierCode ? ` (${s.supplierCode})` : ''}` }))} />
+            <div className="text-[11px] text-slate-500 mt-1">Empty = the discount applies to every supplier for this target.</div>
+          </div>
+        </div>
+        )}
+
+        {/* Purchase discount config (purchase only) */}
+        {isPurchase && (
+        <div className={`bg-emerald-50/50 border rounded-xl p-5 ${errors.discount ? 'border-red-300' : 'border-emerald-200/80'}`}>
+          <label className="text-sm text-emerald-950 font-bold block mb-1">Purchase Discount *</label>
+          <p className="text-[11px] text-slate-500 mb-3">Baseline discount the supplier gives. The buyer may accept a higher discount (up to the floating max) during PO / supplier quotation — never lower than the floating min.</p>
+          {errors.discount && <div className="text-xs text-red-500 mb-2 font-medium">{errors.discount}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Direct Discount %</label>
+              <InputNumber min={0} max={100} value={form.directDiscountPercentage} size="large" className="w-full" suffix="%"
+                onChange={v => { setForm(f => ({ ...f, directDiscountPercentage: v || 0 })); setErrors(e => ({ ...e, discount: '' })); }} />
+            </div>
+            <div className="flex items-end pb-1.5">
+              <Switch checked={form.floatingDiscountEnabled} onChange={v => setForm(f => ({ ...f, floatingDiscountEnabled: v }))}
+                checkedChildren="Floating" unCheckedChildren="Fixed" />
+              <span className="text-xs text-slate-500 ml-2">Allow a negotiable range</span>
+            </div>
+            {form.floatingDiscountEnabled && (
+              <>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Floating Min %</label>
+                  <InputNumber min={0} max={100} value={form.floatingDiscountMin} size="large" className="w-full" suffix="%"
+                    onChange={v => { setForm(f => ({ ...f, floatingDiscountMin: v || 0 })); setErrors(e => ({ ...e, discount: '' })); }} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Floating Max %</label>
+                  <InputNumber min={0} max={100} value={form.floatingDiscountMax} size="large" className="w-full" suffix="%"
+                    onChange={v => { setForm(f => ({ ...f, floatingDiscountMax: v || 0 })); setErrors(e => ({ ...e, discount: '' })); }} />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+        )}
+
+        {/* Discount Values (sales only) */}
+        {!isPurchase && (
+        <div className={`bg-emerald-50/50 border rounded-xl p-5 ${errors.discount ? 'border-red-300' : 'border-emerald-200/80'}`}>
+          <label className="text-sm text-emerald-950 font-bold block mb-3">Discount Configuration *</label>
+          {errors.discount && <div className="text-xs text-red-500 mb-2 font-medium">{errors.discount}</div>}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Discount Type</label>
               <Select value={form.discountType} onChange={v => setForm(f => ({ ...f, discountType: v }))} className="w-full" size="large"
                 options={[{ value: 'percentage', label: 'Percentage (%)' }, { value: 'flat', label: 'Flat (₹ per unit)' }, { value: 'both', label: 'Both (% + ₹)' }, { value: 'slab', label: 'Quantity Slab' }]} />
             </div>
             {form.discountType !== 'slab' && (
               <>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Discount %</label>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Discount %</label>
                   <InputNumber min={0} max={100} value={form.discountPercentage} size="large"
                     status={errors.discount && form.discountPercentage <= 0 && form.discountFlat <= 0 ? 'error' : ''}
                     onChange={v => { setForm(f => ({ ...f, discountPercentage: v || 0 })); setErrors(e => ({ ...e, discount: '' })); }} className="w-full" suffix="%" />
                 </div>
                 <div>
-                  <label className="text-xs text-gray-500 block mb-1">Flat ₹ (per unit)</label>
+                  <label className="text-xs font-medium text-slate-600 block mb-1">Flat ₹ (per unit)</label>
                   <InputNumber min={0} value={form.discountFlat} size="large"
                     status={errors.discount && form.discountPercentage <= 0 && form.discountFlat <= 0 ? 'error' : ''}
                     onChange={v => { setForm(f => ({ ...f, discountFlat: v || 0 })); setErrors(e => ({ ...e, discount: '' })); }} className="w-full" prefix="₹" />
@@ -522,7 +678,7 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
               </>
             )}
             <div>
-              <label className="text-xs text-gray-500 block mb-1">Max Discount Cap %</label>
+              <label className="text-xs font-medium text-slate-600 block mb-1">Max Discount Cap %</label>
               <InputNumber min={1} max={100} value={form.maxDiscountPercentage} size="large"
                 onChange={v => setForm(f => ({ ...f, maxDiscountPercentage: v || 50 }))} className="w-full" suffix="%" />
             </div>
@@ -532,88 +688,90 @@ const DiscountRuleModal = ({ open, editRecord, onClose, onSuccess }) => {
           {form.discountType === 'slab' && (
             <div className="mt-4">
               <div className="flex justify-between items-center mb-2">
-                <label className="text-xs text-gray-600 font-semibold">Quantity Slabs</label>
-                <Button size="small" onClick={() => setForm(f => ({ ...f, slabs: [...(f.slabs || []), { minQty: 0, maxQty: 0, discountPercentage: 0, discountFlat: 0 }] }))}>+ Add Slab</Button>
+                <label className="text-xs font-bold text-slate-700">Quantity Slabs</label>
+                <Button size="small" type="primary" onClick={() => setForm(f => ({ ...f, slabs: [...(f.slabs || []), { minQty: 0, maxQty: 0, discountPercentage: 0, discountFlat: 0 }] }))} className="bg-emerald-600 hover:bg-emerald-700 border-0">
+                  + Add Slab
+                </Button>
               </div>
-              <div className="border border-gray-200 rounded-lg overflow-hidden">
+              <div className="border border-emerald-200/80 rounded-xl overflow-hidden bg-white">
                 <table className="w-full text-xs">
-                  <thead className="bg-gray-100">
+                  <thead className="bg-emerald-100/60">
                     <tr>
-                      <th className="px-3 py-2 text-left">Min Qty</th>
-                      <th className="px-3 py-2 text-left">Max Qty</th>
-                      <th className="px-3 py-2 text-left">Discount %</th>
-                      <th className="px-3 py-2 text-left">Flat ₹</th>
+                      <th className="px-3 py-2 text-left font-bold text-emerald-900">Min Qty</th>
+                      <th className="px-3 py-2 text-left font-bold text-emerald-900">Max Qty</th>
+                      <th className="px-3 py-2 text-left font-bold text-emerald-900">Discount %</th>
+                      <th className="px-3 py-2 text-left font-bold text-emerald-900">Flat ₹</th>
                       <th className="px-3 py-2"></th>
                     </tr>
                   </thead>
                   <tbody>
                     {(form.slabs || []).map((slab, si) => (
-                      <tr key={si} className="border-t border-gray-100">
-                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.minQty} size="small" className="w-20"
+                      <tr key={si} className="border-t border-slate-100 hover:bg-slate-50">
+                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.minQty} size="small" className="w-24"
                           onChange={v => { const s = [...(form.slabs || [])]; s[si] = { ...s[si], minQty: v || 0 }; setForm(f => ({ ...f, slabs: s })); }} /></td>
-                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.maxQty} size="small" className="w-20" placeholder="0=unlimited"
+                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.maxQty} size="small" className="w-24" placeholder="0=unlimited"
                           onChange={v => { const s = [...(form.slabs || [])]; s[si] = { ...s[si], maxQty: v || 0 }; setForm(f => ({ ...f, slabs: s })); }} /></td>
-                        <td className="px-3 py-1.5"><InputNumber min={0} max={100} value={slab.discountPercentage} size="small" className="w-20" suffix="%"
+                        <td className="px-3 py-1.5"><InputNumber min={0} max={100} value={slab.discountPercentage} size="small" className="w-24" suffix="%"
                           onChange={v => { const s = [...(form.slabs || [])]; s[si] = { ...s[si], discountPercentage: v || 0 }; setForm(f => ({ ...f, slabs: s })); setErrors(e => ({ ...e, discount: '' })); }} /></td>
-                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.discountFlat} size="small" className="w-20" prefix="₹"
+                        <td className="px-3 py-1.5"><InputNumber min={0} value={slab.discountFlat} size="small" className="w-24" prefix="₹"
                           onChange={v => { const s = [...(form.slabs || [])]; s[si] = { ...s[si], discountFlat: v || 0 }; setForm(f => ({ ...f, slabs: s })); setErrors(e => ({ ...e, discount: '' })); }} /></td>
-                        <td className="px-3 py-1.5"><Button type="text" size="small" danger onClick={() => { const s = [...(form.slabs || [])]; s.splice(si, 1); setForm(f => ({ ...f, slabs: s })); }}>✕</Button></td>
+                        <td className="px-3 py-1.5 text-center"><Button type="text" size="small" danger onClick={() => { const s = [...(form.slabs || [])]; s.splice(si, 1); setForm(f => ({ ...f, slabs: s })); }}>✕</Button></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {(!form.slabs || form.slabs.length === 0) && <div className="text-center text-gray-400 text-xs py-3">No slabs added. Click "+ Add Slab"</div>}
+                {(!form.slabs || form.slabs.length === 0) && <div className="text-center text-slate-400 text-xs py-4">No slabs added. Click "+ Add Slab"</div>}
               </div>
-              <div className="text-[10px] text-gray-400 mt-1">Example: 1-10 boxes = 5%, 11-50 = 8%, 51+ = 12%. Set Max Qty to 0 for unlimited.</div>
+              <div className="text-[11px] text-slate-500 mt-1.5">Example: 1-10 boxes = 5%, 11-50 = 8%, 51+ = 12%. Set Max Qty to 0 for unlimited.</div>
             </div>
           )}
         </div>
+        )}
 
         {/* Validity & Priority */}
-        <div className="grid grid-cols-4 gap-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Valid From</label>
-            <Input type="date" value={form.validFrom} size="large" onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Valid To *</label>
-            <Input type="date" value={form.validTo} size="large"
-              status={errors.validTo ? 'error' : ''}
-              onChange={e => { setForm(f => ({ ...f, validTo: e.target.value })); setErrors(er => ({ ...er, validTo: '' })); }} />
-            {errors.validTo && <div className="text-xs text-red-500 mt-1">{errors.validTo}</div>}
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Priority (higher wins)</label>
-            <InputNumber min={0} max={999} value={form.priority} size="large"
-              onChange={v => setForm(f => ({ ...f, priority: v || 0 }))} className="w-full" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Remarks</label>
-            <Input value={form.remarks} size="large" onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional" />
-          </div>
-        </div>
-
-        {/* Min constraints */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Min Order Qty (0 = no limit)</label>
-            <InputNumber min={0} value={form.minOrderQty} size="large"
-              onChange={v => setForm(f => ({ ...f, minOrderQty: v || 0 }))} className="w-full" />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Min Order Amount ₹ (0 = no limit)</label>
-            <InputNumber min={0} value={form.minOrderAmount} size="large"
-              onChange={v => setForm(f => ({ ...f, minOrderAmount: v || 0 }))} className="w-full" prefix="₹" />
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Valid From</label>
+              <Input type="date" value={form.validFrom} size="large" onChange={e => setForm(f => ({ ...f, validFrom: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Valid To *</label>
+              <Input type="date" value={form.validTo} size="large"
+                status={errors.validTo ? 'error' : ''}
+                onChange={e => { setForm(f => ({ ...f, validTo: e.target.value })); setErrors(er => ({ ...er, validTo: '' })); }} />
+              {errors.validTo && <div className="text-xs text-red-500 mt-1 font-medium">{errors.validTo}</div>}
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Priority (higher wins)</label>
+              <InputNumber min={0} max={999} value={form.priority} size="large"
+                onChange={v => setForm(f => ({ ...f, priority: v || 0 }))} className="w-full" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Remarks</label>
+              <Input value={form.remarks} size="large" onChange={e => setForm(f => ({ ...f, remarks: e.target.value }))} placeholder="Optional notes" />
+            </div>
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-3 pt-4 border-t">
-          <Button size="large" onClick={onClose}>Cancel</Button>
-          <Button type="primary" size="large" onClick={handleSubmit} loading={loading} icon={editRecord ? <EditOutlined /> : <PlusOutlined />}>
-            {editRecord ? 'Update Rule' : 'Create Discount Rule'}
-          </Button>
+        {/* Min constraints (sales only) */}
+        {!isPurchase && (
+        <div className="bg-white p-4.5 rounded-xl border border-slate-200/80 shadow-2xs">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Min Order Qty (0 = no limit)</label>
+              <InputNumber min={0} value={form.minOrderQty} size="large"
+                onChange={v => setForm(f => ({ ...f, minOrderQty: v || 0 }))} className="w-full" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-700 block mb-1">Min Order Amount ₹ (0 = no limit)</label>
+              <InputNumber min={0} value={form.minOrderAmount} size="large"
+                onChange={v => setForm(f => ({ ...f, minOrderAmount: v || 0 }))} className="w-full" prefix="₹" />
+            </div>
+          </div>
         </div>
+        )}
+
       </div>
     </Modal>
   );

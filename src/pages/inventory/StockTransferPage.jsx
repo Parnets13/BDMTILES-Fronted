@@ -67,7 +67,7 @@ const StockTransferPage = () => {
           <Tooltip title="Approve"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-green-600" onClick={() => handleAction(r._id, 'approve')} /></Tooltip>
           <Tooltip title="Reject"><Button type="text" size="small" icon={<CloseCircleOutlined />} className="text-red-500" onClick={() => handleAction(r._id, 'reject', { remarks: 'Rejected' })} /></Tooltip>
         </>}
-        {r.status === 'approved' && <Tooltip title="Dispatch"><Button type="text" size="small" icon={<CarOutlined />} className="text-cyan-600" onClick={() => handleAction(r._id, 'dispatch')} /></Tooltip>}
+        {r.status === 'approved' && <Tooltip title="Dispatch blocked stock"><Button type="text" size="small" icon={<CarOutlined />} className="text-cyan-600" onClick={() => Modal.confirm({ title: 'Dispatch approved transfer?', content: 'A partial dispatch consumes only the dispatched blocked quantity and permanently releases the unused block back to available stock.', okText: 'Dispatch', onOk: () => handleAction(r._id, 'dispatch') })} /></Tooltip>}
         {r.status === 'in_transit' && <Tooltip title="Receive"><Button type="text" size="small" icon={<InboxOutlined />} className="text-green-600" onClick={() => handleAction(r._id, 'receive')} /></Tooltip>}
         {!['completed', 'cancelled', 'rejected'].includes(r.status) && <Tooltip title="Cancel"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleAction(r._id, 'cancel')} /></Tooltip>}
       </Space>
@@ -124,19 +124,25 @@ const StockTransferPage = () => {
               <span>Date: {new Date(viewRecord.transferDate).toLocaleDateString('en-IN')}</span>
             </div>
             <table className="w-full text-xs border border-gray-200 rounded">
-              <thead className="bg-gray-50"><tr>{['#','Product','Shade','Requested','Dispatched','Received','Short'].map(h => <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-600">{h}</th>)}</tr></thead>
+              <thead className="bg-gray-50"><tr>{['#','Product','Available at request','Requested','Approved','Blocked','Dispatched','Released','Cancelled','Received','Damaged','Short'].map(h => <th key={h} className="px-2 py-1.5 text-left font-semibold text-gray-600">{h}</th>)}</tr></thead>
               <tbody>{viewRecord.items?.map((item, i) => (
                 <tr key={i} className="border-t border-gray-100">
                   <td className="px-2 py-1.5 text-gray-400">{i+1}</td>
                   <td className="px-2 py-1.5"><div className="flex items-center gap-1"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="xs" /><div><div className="font-medium">{item.productName}</div><div className="text-[9px] text-gray-400">{item.productCode}</div></div></div></td>
-                  <td className="px-2 py-1.5">{item.shade || '—'}</td>
+                  <td className="px-2 py-1.5">{item.availableAtRequest ?? '—'}</td>
                   <td className="px-2 py-1.5 font-medium">{item.requestedQty} {item.unit}</td>
+                  <td className="px-2 py-1.5">{item.approvedQty || '—'}</td>
+                  <td className="px-2 py-1.5 text-orange-600">{item.blockedQty || '—'}</td>
                   <td className="px-2 py-1.5">{item.dispatchedQty || '—'}</td>
+                  <td className="px-2 py-1.5 text-blue-600">{item.releasedQty || '—'}</td>
+                  <td className="px-2 py-1.5">{item.cancelledQty || '—'}</td>
                   <td className="px-2 py-1.5">{item.receivedQty || '—'}</td>
+                  <td className="px-2 py-1.5 text-orange-600">{item.damagedQty || '—'}</td>
                   <td className="px-2 py-1.5 text-red-500">{item.shortQty > 0 ? item.shortQty : '—'}</td>
                 </tr>
               ))}</tbody>
             </table>
+            {viewRecord.status === 'approved' && <div className="text-xs text-orange-700 bg-orange-50 border border-orange-200 p-2 rounded">Approved quantity is blocked. Partial dispatch will release every unused blocked quantity to available stock in the same transaction.</div>}
             {viewRecord.reason && <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">Reason: {viewRecord.reason}</div>}
           </div>
         </Modal>

@@ -230,42 +230,96 @@ const PurchaseOrderPage = () => {
 
     {editorPO && <PurchaseOrderEditor po={editorPO} onClose={() => setEditorPO(undefined)} onSuccess={refresh} />}
 
-    <Modal title={`Purchase Order ${viewPO?.poNumber || ''}`} open={!!viewPO} width={950} confirmLoading={detailLoading}
-      onCancel={() => setViewPO(null)} footer={viewPO ? [
-        <Button key="print" icon={<PrinterOutlined />} onClick={() => printPO(viewPO)}>Print</Button>,
-        canManage && viewPO.status === 'draft' && !viewPO.sourceSupplierQuotation && !viewPO.sourceRequisition && <Button key="edit" icon={<EditOutlined />} onClick={() => { setViewPO(null); setEditorPO(viewPO); }}>Edit Draft</Button>,
-        canManage && viewPO.status === 'draft' && <Button key="submit" type="primary" icon={<SendOutlined />} loading={actionLoading} onClick={() => submitPO(viewPO)}>Submit</Button>,
-        canApprove && ['submitted', 'pending_approval'].includes(viewPO.status) && <Button key="approve" type="primary" onClick={() => { setActionModal({ type: 'approve', po: viewPO }); setActionRemarks(''); }}>Approve</Button>,
-        canApprove && ['submitted', 'pending_approval'].includes(viewPO.status) && <Button key="reject" danger onClick={() => { setActionModal({ type: 'reject', po: viewPO }); setActionRemarks(''); }}>Reject</Button>,
-        <Button key="close" onClick={() => setViewPO(null)}>Close</Button>,
-      ].filter(Boolean) : null}>
-      {viewPO && <div className="space-y-4">
-        <Space wrap><Tag color={STATUS_COLORS[viewPO.status]}>{viewPO.status?.replace(/_/g, ' ')}</Tag><b>{viewPO.supplierName || viewPO.supplier?.companyName}</b><span>{viewPO.items?.length || 0} items</span></Space>
-        {(viewPO.sourceSupplierQuotation || viewPO.sourceRequisition) && <Alert type="info" showIcon message={`Converted from ${viewPO.sourceSupplierQuotation ? 'a selected supplier quotation' : 'a purchase requisition'}; source commercial values are read-only.`} />}
-        <Row gutter={12}>
-          <Col span={8}><Card size="small" title="PO Date">{viewPO.poDate ? new Date(viewPO.poDate).toLocaleDateString('en-IN') : '—'}</Card></Col>
-          <Col span={8}><Card size="small" title="Expected Delivery">{viewPO.expectedDeliveryDate ? new Date(viewPO.expectedDeliveryDate).toLocaleDateString('en-IN') : '—'}</Card></Col>
-          <Col span={8}><Card size="small" title="Payment Terms">{viewPO.paymentTerms || '—'} {viewPO.creditDays ? `(${viewPO.creditDays} days)` : ''}</Card></Col>
-        </Row>
-        <Table size="small" pagination={false} rowKey={(row, index) => row._id || index} dataSource={viewPO.items || []} columns={[
-          { title: 'Image', width: 65, render: (_, item) => <ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /> },
-          { title: 'Product', render: (_, item) => <div><b>{item.productName || item.product?.itemName}</b><div className="text-xs text-gray-400">{item.productCode || item.product?.productCode}</div></div> },
-          { title: 'Qty', render: (_, item) => `${item.quantity} ${item.unit}` },
-          { title: 'Rate', dataIndex: 'rate', render: value => `₹${money(value)}` },
-          { title: 'Discount', render: (_, item) => `₹${money(Number(item.discount || 0) + Number(item.schemeDiscount || 0))}` },
-          { title: 'Taxable', dataIndex: 'taxableAmount', render: value => `₹${money(value)}` },
-          { title: 'GST', dataIndex: 'gstAmount', render: value => `₹${money(value)}` },
-          { title: 'Server Line Total', dataIndex: 'totalAmount', render: value => <b>₹{money(value)}</b> },
-        ]} />
-        <div className="bg-orange-50 rounded-lg p-4 grid grid-cols-2 gap-2 text-sm">
-          <div className="flex justify-between"><span>Subtotal</span><b>₹{money(viewPO.subtotal)}</b></div>
-          <div className="flex justify-between"><span>Discount</span><b>-₹{money(viewPO.totalDiscount)}</b></div>
-          <div className="flex justify-between"><span>GST</span><b>₹{money(viewPO.totalTax)}</b></div>
-          <div className="flex justify-between"><span>Freight / Loading / Insurance</span><b>₹{money(Number(viewPO.freight || 0) + Number(viewPO.loading || 0) + Number(viewPO.insurance || 0))}</b></div>
-          <div className="col-span-2 border-t pt-2 flex justify-between text-lg"><b>Grand Total</b><b className="text-[#FF5F03]">₹{money(viewPO.grandTotal)}</b></div>
+    <Modal
+      title={
+        <div className="flex items-center gap-3 border-b border-slate-100 pb-3 pr-8">
+          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600 font-bold border border-blue-100 shadow-2xs">
+            <ShopOutlined className="text-lg" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-slate-900 font-mono">{viewPO?.poNumber || ''}</span>
+              {viewPO?.status && (
+                <Tag color={STATUS_COLORS[viewPO.status]} className="px-2.5 py-0.5 text-xs font-semibold capitalize rounded-md border-0 m-0">
+                  {viewPO.status.replace(/_/g, ' ')}
+                </Tag>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 font-normal m-0 mt-0.5">Supplier Purchase Order Details & Financial Items</p>
+          </div>
         </div>
-        {viewPO.remarks && <Alert type="warning" message={viewPO.remarks} />}
-      </div>}
+      }
+      open={!!viewPO}
+      width="min(1440px, calc(100vw - 32px))"
+      centered
+      confirmLoading={detailLoading}
+      onCancel={() => setViewPO(null)}
+      footer={viewPO ? [
+        <Button key="print" icon={<PrinterOutlined />} onClick={() => printPO(viewPO)} className="rounded-lg">Print</Button>,
+        canManage && viewPO.status === 'draft' && !viewPO.sourceSupplierQuotation && !viewPO.sourceRequisition && <Button key="edit" icon={<EditOutlined />} onClick={() => { setViewPO(null); setEditorPO(viewPO); }} className="rounded-lg">Edit Draft</Button>,
+        canManage && viewPO.status === 'draft' && <Button key="submit" type="primary" icon={<SendOutlined />} loading={actionLoading} onClick={() => submitPO(viewPO)} className="rounded-lg bg-blue-600">Submit</Button>,
+        canApprove && ['submitted', 'pending_approval'].includes(viewPO.status) && <Button key="approve" type="primary" onClick={() => { setActionModal({ type: 'approve', po: viewPO }); setActionRemarks(''); }} className="rounded-lg bg-emerald-600 border-0">Approve</Button>,
+        canApprove && ['submitted', 'pending_approval'].includes(viewPO.status) && <Button key="reject" danger onClick={() => { setActionModal({ type: 'reject', po: viewPO }); setActionRemarks(''); }} className="rounded-lg">Reject</Button>,
+        <Button key="close" onClick={() => setViewPO(null)} className="rounded-lg">Close</Button>,
+      ].filter(Boolean) : null}
+    >
+      {viewPO && (
+        <div className="max-h-[calc(85vh-120px)] overflow-y-auto space-y-4 pr-1 py-1">
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/80 p-3.5 rounded-xl border border-slate-200/80">
+            <div className="flex items-center gap-3">
+              <span className="text-base font-bold text-slate-900">{viewPO.supplierName || viewPO.supplier?.companyName}</span>
+              <span className="text-xs text-slate-400 font-medium">({viewPO.supplier?.supplierCode || 'No Code'})</span>
+            </div>
+            <Tag color="blue" className="px-2.5 py-1 text-xs font-semibold rounded-lg border-0 m-0">
+              {viewPO.items?.length || 0} Total Line Items
+            </Tag>
+          </div>
+
+          {(viewPO.sourceSupplierQuotation || viewPO.sourceRequisition) && (
+            <Alert type="info" showIcon message={`Converted from ${viewPO.sourceSupplierQuotation ? 'a selected supplier quotation' : 'a purchase requisition'}; source commercial values are read-only.`} className="rounded-xl" />
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-xs text-slate-400 font-medium block mb-1">PO Date</span>
+              <span className="text-sm font-semibold text-slate-800">{viewPO.poDate ? new Date(viewPO.poDate).toLocaleDateString('en-IN') : '—'}</span>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-xs text-slate-400 font-medium block mb-1">Expected Delivery</span>
+              <span className="text-sm font-semibold text-slate-800">{viewPO.expectedDeliveryDate ? new Date(viewPO.expectedDeliveryDate).toLocaleDateString('en-IN') : '—'}</span>
+            </div>
+            <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
+              <span className="text-xs text-slate-400 font-medium block mb-1">Payment Terms</span>
+              <span className="text-sm font-semibold text-slate-800">{viewPO.paymentTerms || '—'} {viewPO.creditDays ? `(${viewPO.creditDays} days)` : ''}</span>
+            </div>
+          </div>
+
+          <div className="border border-slate-200/80 rounded-xl overflow-hidden bg-white shadow-2xs">
+            <Table size="small" pagination={false} rowKey={(row, index) => row._id || index} dataSource={viewPO.items || []} columns={[
+              { title: 'Image', width: 65, render: (_, item) => <ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /> },
+              { title: 'Product', render: (_, item) => <div><b className="text-slate-800">{item.productName || item.product?.itemName}</b><div className="text-xs text-slate-400 font-mono">{item.productCode || item.product?.productCode}</div></div> },
+              { title: 'Qty', render: (_, item) => <span className="font-semibold text-slate-700">{item.quantity} {item.unit}</span> },
+              { title: 'Rate', dataIndex: 'rate', render: value => `₹${money(value)}` },
+              { title: 'Discount', render: (_, item) => `₹${money(Number(item.discount || 0) + Number(item.schemeDiscount || 0))}` },
+              { title: 'Taxable', dataIndex: 'taxableAmount', render: value => `₹${money(value)}` },
+              { title: 'GST', dataIndex: 'gstAmount', render: value => `₹${money(value)}` },
+              { title: 'Server Line Total', dataIndex: 'totalAmount', render: value => <b className="text-slate-900">₹{money(value)}</b> },
+            ]} />
+          </div>
+
+          <div className="bg-orange-50/70 border border-orange-200/80 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+            <div className="flex justify-between items-center text-slate-600"><span>Subtotal</span><b className="text-slate-900">₹{money(viewPO.subtotal)}</b></div>
+            <div className="flex justify-between items-center text-slate-600"><span>Discount</span><b className="text-slate-900">-₹{money(viewPO.totalDiscount)}</b></div>
+            <div className="flex justify-between items-center text-slate-600"><span>GST Tax</span><b className="text-slate-900">₹{money(viewPO.totalTax)}</b></div>
+            <div className="flex justify-between items-center text-slate-600"><span>Freight / Loading / Insurance</span><b className="text-slate-900">₹{money(Number(viewPO.freight || 0) + Number(viewPO.loading || 0) + Number(viewPO.insurance || 0))}</b></div>
+            <div className="col-span-1 sm:col-span-2 border-t border-orange-200/60 pt-2.5 flex justify-between items-center text-base sm:text-lg">
+              <span className="font-bold text-slate-900">Grand Total</span>
+              <b className="text-[#FF5F03] text-xl font-mono">₹{money(viewPO.grandTotal)}</b>
+            </div>
+          </div>
+          {viewPO.remarks && <Alert type="warning" message={viewPO.remarks} className="rounded-xl" />}
+        </div>
+      )}
     </Modal>
 
     <Modal title={`${actionModal?.type === 'approve' ? 'Approve' : 'Reject'} ${actionModal?.po?.poNumber || ''}`} open={!!actionModal}
@@ -384,52 +438,61 @@ const PurchaseOrderEditor = ({ po, onClose, onSuccess }) => {
     { title: '', width: 45, render: (_, item) => <Button type="text" danger icon={<DeleteOutlined />} onClick={() => setItems(prev => prev.filter(row => row.key !== item.key))} /> },
   ];
 
-  return <Modal title={`Amend Draft ${po.poNumber}`} open width={1150} onCancel={onClose}
-    footer={[
-      <Button key="cancel" onClick={onClose}>Cancel</Button>,
-      <Button key="draft" loading={saving} onClick={save}>Save Amendment</Button>,
-    ]} destroyOnHidden>
-    <div className="space-y-4">
-      {error && <Alert type="error" showIcon closable message={error} onClose={() => setError('')} />}
-      <Alert type="info" showIcon message="Discount and scheme discount are absolute whole-line amounts. Final line and order totals are calculated by the server." />
-      <Row gutter={12}>
-        <Col span={8}><label className="text-xs text-gray-500 block mb-1">Supplier *</label>
-          <Select className="w-full" showSearch filterOption={false} onSearch={setSupplierSearch} value={selectedSupplier?._id}
-            onChange={value => setSelectedSupplier(suppliers.find(supplier => supplier._id === value))}
-            options={supplierOptions.map(({ value, label }) => ({ value, label }))} /></Col>
-        <Col span={8}><label className="text-xs text-gray-500 block mb-1">Receiving Warehouse *</label>
-          <Select className="w-full" showSearch optionFilterProp="label" value={form.receivingWarehouse || undefined}
-            onChange={value => setForm(prev => ({ ...prev, receivingWarehouse: value }))}
-            options={warehouses.map(warehouse => ({ value: warehouse._id, label: `${warehouse.name} (${warehouse.warehouseCode || 'No code'})` }))} /></Col>
-        <Col span={4}><label className="text-xs text-gray-500 block mb-1">PO Date</label><Input type="date" disabled value={form.poDate} /></Col>
-        <Col span={4}><label className="text-xs text-gray-500 block mb-1">Expected Delivery</label><Input type="date" value={form.expectedDeliveryDate} onChange={event => setForm(prev => ({ ...prev, expectedDeliveryDate: event.target.value }))} /></Col>
-      </Row>
-      <div className="relative">
-        <label className="text-xs text-gray-500 block mb-1">Add Products</label>
-        <Input prefix={<SearchOutlined />} value={productSearch} onChange={event => setProductSearch(event.target.value)} placeholder="Search product name or code" />
-        {products.length > 0 && <div className="absolute z-20 bg-white border rounded shadow w-full max-h-56 overflow-y-auto">
-          {products.map(product => <div key={product._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer flex items-center gap-2" onClick={() => addProduct(product)}>
-            <ProductImage src={product.images?.[0]} size="sm" />
-            <div><b>{product.itemName}</b> <span className="text-xs text-gray-400">{product.productCode} · ₹{product.purchaseRate || product.dealerRate || 0}</span></div>
-          </div>)}
-        </div>}
+  return (
+    <Modal
+      title={`Amend Draft ${po.poNumber}`}
+      open
+      width="min(1440px, calc(100vw - 32px))"
+      centered
+      onCancel={onClose}
+      footer={[
+        <Button key="cancel" onClick={onClose} className="rounded-lg">Cancel</Button>,
+        <Button key="draft" type="primary" loading={saving} onClick={save} className="rounded-lg bg-blue-600">Save Amendment</Button>,
+      ]}
+      destroyOnHidden
+    >
+      <div className="max-h-[calc(85vh-120px)] overflow-y-auto space-y-4 pr-1 py-1">
+        {error && <Alert type="error" showIcon closable message={error} onClose={() => setError('')} className="rounded-xl" />}
+        <Alert type="info" showIcon message="Discount and scheme discount are absolute whole-line amounts. Final line and order totals are calculated by the server." className="rounded-xl" />
+        <Row gutter={12}>
+          <Col span={8}><label className="text-xs text-gray-500 block mb-1">Supplier *</label>
+            <Select className="w-full" showSearch filterOption={false} onSearch={setSupplierSearch} value={selectedSupplier?._id}
+              onChange={value => setSelectedSupplier(suppliers.find(supplier => supplier._id === value))}
+              options={supplierOptions.map(({ value, label }) => ({ value, label }))} /></Col>
+          <Col span={8}><label className="text-xs text-gray-500 block mb-1">Receiving Warehouse *</label>
+            <Select className="w-full" showSearch optionFilterProp="label" value={form.receivingWarehouse || undefined}
+              onChange={value => setForm(prev => ({ ...prev, receivingWarehouse: value }))}
+              options={warehouses.map(warehouse => ({ value: warehouse._id, label: `${warehouse.name} (${warehouse.warehouseCode || 'No code'})` }))} /></Col>
+          <Col span={4}><label className="text-xs text-gray-500 block mb-1">PO Date</label><Input type="date" disabled value={form.poDate} /></Col>
+          <Col span={4}><label className="text-xs text-gray-500 block mb-1">Expected Delivery</label><Input type="date" value={form.expectedDeliveryDate} onChange={event => setForm(prev => ({ ...prev, expectedDeliveryDate: event.target.value }))} /></Col>
+        </Row>
+        <div className="relative">
+          <label className="text-xs text-gray-500 block mb-1">Add Products</label>
+          <Input prefix={<SearchOutlined />} value={productSearch} onChange={event => setProductSearch(event.target.value)} placeholder="Search product name or code" />
+          {products.length > 0 && <div className="absolute z-20 bg-white border rounded shadow w-full max-h-56 overflow-y-auto">
+            {products.map(product => <div key={product._id} className="px-3 py-2 hover:bg-orange-50 cursor-pointer flex items-center gap-2" onClick={() => addProduct(product)}>
+              <ProductImage src={product.images?.[0]} size="sm" />
+              <div><b>{product.itemName}</b> <span className="text-xs text-gray-400">{product.productCode} · ₹{product.purchaseRate || product.dealerRate || 0}</span></div>
+            </div>)}
+          </div>}
+        </div>
+        <Table columns={itemColumns} dataSource={items} rowKey="key" size="small" pagination={false} scroll={{ x: 1050 }} locale={{ emptyText: 'Search and add at least one product' }} />
+        <Divider />
+        <Row gutter={12}>
+          {['freight', 'loading', 'insurance'].map(field => <Col span={4} key={field}><label className="text-xs text-gray-500 block mb-1 capitalize">{field} ₹</label>
+            <InputNumber min={0} className="w-full" value={form[field]} onChange={value => setForm(prev => ({ ...prev, [field]: value || 0 }))} /></Col>)}
+          <Col span={5}><label className="text-xs text-gray-500 block mb-1">Payment Terms</label><Input value={form.paymentTerms} onChange={event => setForm(prev => ({ ...prev, paymentTerms: event.target.value }))} /></Col>
+          <Col span={3}><label className="text-xs text-gray-500 block mb-1">Credit Days</label><InputNumber min={0} className="w-full" value={form.creditDays} onChange={value => setForm(prev => ({ ...prev, creditDays: value || 0 }))} /></Col>
+          <Col span={4}><div className="bg-orange-50 border rounded p-2 text-right"><div className="text-xs text-gray-500">Estimated Grand Total</div><b className="text-[#FF5F03]">₹{money(estimates.total + Number(form.freight || 0) + Number(form.loading || 0) + Number(form.insurance || 0))}</b></div></Col>
+        </Row>
+        <Row gutter={12}>
+          <Col span={12}><label className="text-xs text-gray-500 block mb-1">Delivery Address</label><Input.TextArea rows={2} value={form.deliveryAddress} onChange={event => setForm(prev => ({ ...prev, deliveryAddress: event.target.value }))} /></Col>
+          <Col span={12}><label className="text-xs text-gray-500 block mb-1">Remarks</label><Input.TextArea rows={2} value={form.remarks} onChange={event => setForm(prev => ({ ...prev, remarks: event.target.value }))} /></Col>
+        </Row>
+        <div><label className="text-xs text-gray-500 block mb-1">Amendment Reason *</label><Input.TextArea rows={2} value={form.amendmentReason} onChange={event => setForm(prev => ({ ...prev, amendmentReason: event.target.value }))} placeholder="Explain why this draft is being amended" /></div>
       </div>
-      <Table columns={itemColumns} dataSource={items} rowKey="key" size="small" pagination={false} scroll={{ x: 1050 }} locale={{ emptyText: 'Search and add at least one product' }} />
-      <Divider />
-      <Row gutter={12}>
-        {['freight', 'loading', 'insurance'].map(field => <Col span={4} key={field}><label className="text-xs text-gray-500 block mb-1 capitalize">{field} ₹</label>
-          <InputNumber min={0} className="w-full" value={form[field]} onChange={value => setForm(prev => ({ ...prev, [field]: value || 0 }))} /></Col>)}
-        <Col span={5}><label className="text-xs text-gray-500 block mb-1">Payment Terms</label><Input value={form.paymentTerms} onChange={event => setForm(prev => ({ ...prev, paymentTerms: event.target.value }))} /></Col>
-        <Col span={3}><label className="text-xs text-gray-500 block mb-1">Credit Days</label><InputNumber min={0} className="w-full" value={form.creditDays} onChange={value => setForm(prev => ({ ...prev, creditDays: value || 0 }))} /></Col>
-        <Col span={4}><div className="bg-orange-50 border rounded p-2 text-right"><div className="text-xs text-gray-500">Estimated Grand Total</div><b className="text-[#FF5F03]">₹{money(estimates.total + Number(form.freight || 0) + Number(form.loading || 0) + Number(form.insurance || 0))}</b></div></Col>
-      </Row>
-      <Row gutter={12}>
-        <Col span={12}><label className="text-xs text-gray-500 block mb-1">Delivery Address</label><Input.TextArea rows={2} value={form.deliveryAddress} onChange={event => setForm(prev => ({ ...prev, deliveryAddress: event.target.value }))} /></Col>
-        <Col span={12}><label className="text-xs text-gray-500 block mb-1">Remarks</label><Input.TextArea rows={2} value={form.remarks} onChange={event => setForm(prev => ({ ...prev, remarks: event.target.value }))} /></Col>
-      </Row>
-      <div><label className="text-xs text-gray-500 block mb-1">Amendment Reason *</label><Input.TextArea rows={2} value={form.amendmentReason} onChange={event => setForm(prev => ({ ...prev, amendmentReason: event.target.value }))} placeholder="Explain why this draft is being amended" /></div>
-    </div>
-  </Modal>;
+    </Modal>
+  );
 };
 
 export default PurchaseOrderPage;

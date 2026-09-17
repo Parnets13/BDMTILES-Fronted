@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, message } from 'antd';
+import { Alert, Button, Card, Col, DatePicker, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, message } from 'antd';
 import {
   AppstoreAddOutlined, CheckCircleOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined,
   SafetyCertificateOutlined, ShopOutlined, WarningOutlined,
@@ -11,7 +11,15 @@ import { ProductImage } from '../../components/ImageLightbox.jsx';
 import QuotationProductBrowser from '../../components/sales/QuotationProductBrowser.jsx';
 
 const activeType = (item) => item?.isActive !== false && item?.status !== 'inactive';
-const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const finiteNumber = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+const money = (value) => `₹${finiteNumber(value).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const validityPresets = () => [7, 15, 30, 45, 60, 90].map((days) => ({
+  label: `${days} days from today`,
+  value: dayjs().add(days, 'day').startOf('day'),
+}));
 const productIdOf = (item) => item.product?._id || item.product || item.productId || item._id;
 const rowsOf = (response) => {
   if (Array.isArray(response?.data)) return response.data;
@@ -22,7 +30,7 @@ const summaryOf = (response) => {
   return data.summary || data.totals || response?.summary || data;
 };
 
-const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
+const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequestId = null }) => {
   const [dealerTypes, setDealerTypes] = useState([]);
   const [dealerType, setDealerType] = useState(undefined);
   const [scope, setScope] = useState('dealer');
@@ -36,6 +44,12 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   const [summary, setSummary] = useState({});
   const [pricing, setPricing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [sourceDealerOrderRequest, setSourceDealerOrderRequest] = useState(null);
+  const [sourceRequestNumber, setSourceRequestNumber] = useState('');
+  const [prefillLoading, setPrefillLoading] = useState(false);
+  const [prefillError, setPrefillError] = useState('');
+  const [prefillNeedsPreview, setPrefillNeedsPreview] = useState(false);
+  const [alreadyLinkedQuotation, setAlreadyLinkedQuotation] = useState(null);
   const [form, setForm] = useState({
     quotationDate: dayjs().format('YYYY-MM-DD'), validUntil: dayjs().add(30, 'day').format('YYYY-MM-DD'),
     freightCharges: 0, loadingCharges: 0, installationCharges: 0, otherCharges: 0,
@@ -43,6 +57,8 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   });
   const pricingTimer = useRef(null);
   const previewRequest = useRef(0);
+  const prefillRequest = useRef(0);
+  const requestMode = Boolean(dealerOrderRequestId);
 
   const selectedType = dealerTypes.find((type) => type._id === dealerType);
   const targetReady = scope === 'walk_in' ? Boolean(customer.name.trim()) : Boolean(selectedDealer?._id);
@@ -69,6 +85,76 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   }, [open]);
 
   useEffect(() => {
+    if (!open || !dealerOrderRequestId) return undefined;
+    const requestId = ++prefillRequest.current;
+    setPrefillLoading(true);
+    setPrefillError('');
+    setAlreadyLinkedQuotation(null);
+    Promise.all([
+      salesService.getDealerOrderRequestQuotationPrefill(dealerOrderRequestId),
+      salesService.getDealerOrderRequest(dealerOrderRequestId),
+    ]).then(([prefillResponse, detailResponse]) => {
+      if (requestId !== prefillRequest.current) return;
+      if (prefillResponse.alreadyLinked) {
+        setAlreadyLinkedQuotation(prefillResponse.data?.quotation || {});
+        setSourceRequestNumber(prefillResponse.data?.request?.requestNumber || detailResponse.data?.requestNumber || '');
+        return;
+      }
+      if (!prefillResponse.success || !detailResponse.success) throw new Error('Could not load the approved request.');
+      const prefill = prefillResponse.data?.quotation;
+      const request = detailResponse.data;
+      if (!prefill || !request?.dealer) throw new Error('The approved request returned incomplete quotation details.');
+      const dealerSnapshot = request.dealerSnapshot || {};
+      const nextDealer = {
+        ...request.dealer,
+        businessName: request.dealer.businessName || dealerSnapshot.businessName,
+        dealerCode: request.dealer.dealerCode || dealerSnapshot.dealerCode,
+        mobile: request.dealer.mobile || dealerSnapshot.mobile,
+        address: dealerSnapshot.address || request.dealer.address || '',
+      };
+      const nextDealerType = nextDealer.dealerType?._id || nextDealer.dealerType;
+      const snapshots = new Map((request.items || []).map(item => [String(productIdOf(item)), item]));
+      const nextItems = (prefill.items || []).map((item, index) => {
+        const snapshot = snapshots.get(String(productIdOf(item))) || {};
+        return {
+          key: `request-${dealerOrderRequestId}-${productIdOf(item)}-${index}`,
+          product: productIdOf(item),
+          productName: snapshot.productName || snapshot.productCode || 'Product',
+          productCode: snapshot.productCode || '',
+          productImage: snapshot.productImage || '',
+          unit: snapshot.unit || 'Unit',
+          quantity: Number(item.quantity),
+          sqftPerBox: snapshot.sqftPerBox || null,
+          sqft: snapshot.sqftPerBox ? Math.round(Number(item.quantity) * snapshot.sqftPerBox * 100) / 100 : null,
+          stockAvailable: 0,
+          manualRate: null,
+          baseRate: 0,
+          effectiveRate: 0,
+          minimumSellingRate: 0,
+          source: 'Resolving current server pricing…',
+          pricingPending: true,
+        };
+      });
+      setScope('dealer');
+      setDealerType(nextDealerType);
+      setDealers([nextDealer]);
+      setSelectedDealer(nextDealer);
+      setCustomer({ name: nextDealer.businessName || '', phone: nextDealer.mobile || '', address: nextDealer.address || '' });
+      setItems(nextItems);
+      setSummary({});
+      setSourceDealerOrderRequest(prefill.sourceDealerOrderRequest || dealerOrderRequestId);
+      setSourceRequestNumber(prefillResponse.data?.request?.requestNumber || request.requestNumber || '');
+      setForm(current => ({ ...current, remarks: prefill.remarks || '' }));
+      setPrefillNeedsPreview(true);
+    }).catch((error) => {
+      if (requestId === prefillRequest.current) setPrefillError(error.message || 'Could not load request prefill.');
+    }).finally(() => {
+      if (requestId === prefillRequest.current) setPrefillLoading(false);
+    });
+    return () => { prefillRequest.current += 1; };
+  }, [open, dealerOrderRequestId]);
+
+  useEffect(() => {
     if (!open || scope !== 'dealer' || !dealerType) { setDealers([]); return undefined; }
     const timer = setTimeout(async () => {
       setDealerLoading(true);
@@ -88,7 +174,10 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   }, [open, scope, dealerType, selectedType?.pricingTier, dealerSearch]);
 
   const minimalItems = (source) => source.map((item) => ({
-    product: productIdOf(item), quantity: Number(item.quantity || 1),
+    product: productIdOf(item),
+    unit: item.unit,
+    quantity: Number(item.quantity || 1),
+    sqft: item.sqft || undefined,
     ...(item.manualRate != null ? { manualRate: Number(item.manualRate) } : {}),
   }));
 
@@ -113,11 +202,13 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
     });
   };
 
-  const previewAll = useCallback(async (source, showError = true) => {
+  const previewAll = useCallback(async (source, showError = true, markPending = true) => {
     if (!source.length) { setSummary({}); return source; }
     const requestId = ++previewRequest.current;
     setPricing(true);
-    setItems((current) => current.map((item) => ({ ...item, pricingPending: true })));
+    if (markPending) {
+      setItems((current) => current.map((item) => ({ ...item, pricingPending: true })));
+    }
     try {
       const response = await salesService.previewQuotationPricing({
         ...target,
@@ -146,9 +237,15 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
     } finally { if (requestId === previewRequest.current) setPricing(false); }
   }, [target, scope, customer.name, customer.phone, customer.address, form.quotationDate, form.freightCharges, form.loadingCharges, form.installationCharges, form.otherCharges]);
 
+  useEffect(() => {
+    if (!prefillNeedsPreview || !targetReady || !items.length) return;
+    setPrefillNeedsPreview(false);
+    previewAll(items).catch(() => {});
+  }, [prefillNeedsPreview, targetReady, items, previewAll]);
+
   const queuePreview = (nextItems) => {
     clearTimeout(pricingTimer.current);
-    pricingTimer.current = setTimeout(() => previewAll(nextItems).catch(() => {}), 350);
+    pricingTimer.current = setTimeout(() => previewAll(nextItems, true, false).catch(() => {}), 800);
   };
   useEffect(() => () => clearTimeout(pricingTimer.current), []);
   useEffect(() => {
@@ -156,6 +253,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   }, [form.quotationDate, form.freightCharges, form.loadingCharges, form.installationCharges, form.otherCharges, customer.name, customer.phone, customer.address]);
 
   const clearResolvedLines = () => {
+    clearTimeout(pricingTimer.current);
     previewRequest.current += 1;
     setPricing(false);
     setBrowserOpen(false);
@@ -193,9 +291,16 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
       productName: product.itemName,
       productCode: product.productCode,
       productImage: product.images?.[0] || '',
-      unit: product.unit || 'Box',
+      unit: product.unit || 'Unit',
       quantity: 1,
+      sqft: product.sqftPerBox || null,   // pre-fill sqft = 1 box worth
+      sqftPerBox: product.sqftPerBox || null,
+      // outOfStock is determined at submit time based on stockAtQuotation vs quantity.
+      // Set a sensible initial value: true if stock is 0.
+      outOfStock: (product.stockAtQuotation ?? Number(product.stock?.availableQty ?? product.stockAvailable ?? 0)) <= 0,
+      stockAtQuotation: product.stockAtQuotation ?? Number(product.stock?.availableQty ?? product.stockAvailable ?? 0),
       stockAvailable: Number(product.stock?.availableQty ?? product.stockAvailable ?? 0),
+      stockUnit: product.stock?.displayUnit || product.unit || 'units',
       manualRate: null,
       baseRate: Number(product.baseRate || 0),
       effectiveRate: Number(product.effectiveRate || 0),
@@ -212,7 +317,10 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   const updateItem = (key, changes) => {
     const nextItems = items.map((item) => item.key === key ? { ...item, ...changes } : item);
     setItems(nextItems);
-    queuePreview(nextItems);
+    // Quantities change line totals and may affect slab pricing, so debounce a
+    // fresh authoritative preview for every commercially relevant line edit.
+    const priceAffecting = ['product', 'manualRate', 'quantity', 'sqft'].some(field => field in changes);
+    if (priceAffecting) queuePreview(nextItems);
   };
   const removeItem = (key) => {
     const nextItems = items.filter((item) => item.key !== key);
@@ -221,7 +329,15 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
   };
 
   const reset = () => {
+    clearTimeout(pricingTimer.current);
     previewRequest.current += 1;
+    prefillRequest.current += 1;
+    setSourceDealerOrderRequest(null);
+    setSourceRequestNumber('');
+    setPrefillLoading(false);
+    setPrefillError('');
+    setPrefillNeedsPreview(false);
+    setAlreadyLinkedQuotation(null);
     setScope('dealer');
     setDealerType(dealerTypes[0]?._id);
     setSelectedDealer(null);
@@ -239,6 +355,10 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
 
   const handleClose = () => { reset(); onClose(); };
   const handleSubmit = async () => {
+    const quotationDate = dayjs(form.quotationDate);
+    const validUntil = dayjs(form.validUntil);
+    if (!quotationDate.isValid() || !validUntil.isValid()) { message.error('Enter valid quotation and validity dates'); return; }
+    if (validUntil.startOf('day').isBefore(quotationDate.startOf('day'))) { message.error('Valid until cannot be before quotation date'); return; }
     if (scope === 'dealer' && !selectedDealer) { message.error('Select a registered dealer'); return; }
     if (scope === 'walk_in' && !customer.name.trim()) { message.error('Enter the walk-in customer name'); return; }
     if (!items.length) { message.error('Add at least one product'); return; }
@@ -247,6 +367,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
       const pricedItems = await previewAll(items);
       const response = await salesService.createQuotation({
         ...target,
+        ...(sourceDealerOrderRequest ? { sourceDealerOrderRequest } : {}),
         customerType: scope === 'walk_in' ? 'retail' : undefined,
         customerName: customer.name || undefined,
         customerPhone: customer.phone || undefined,
@@ -281,12 +402,58 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
           <div className="min-w-0">
             <div className="truncate text-xs font-semibold text-slate-800">{item.productName}</div>
             <div className="text-[10px] text-slate-400">{item.productCode || 'No code'} · {item.unit}</div>
-            <div className="text-[10px] text-emerald-600">Branch stock at selection: {Number(item.stockAvailable || 0).toLocaleString('en-IN')}</div>
+            <div className="text-[10px] text-emerald-600">Branch stock at selection: {Number(item.stockAvailable || 0).toLocaleString('en-IN')} {item.stockUnit || item.unit}</div>
+            {item.outOfStock && (
+              <div className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-bold text-amber-700 border border-amber-300">
+                ⏳ Pre-order · No stock at quotation
+              </div>
+            )}
           </div>
         </div>
       ),
     },
-    { title: 'Quantity', width: 105, render: (_, item) => <InputNumber min={1} value={item.quantity} onChange={(value) => updateItem(item.key, { quantity: value || 1 })} className="w-full" /> },
+    {
+      title: 'Quantity / UOM',
+      width: 180,
+      render: (_, item) => (
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <div className="text-[9px] text-gray-500 font-medium mb-1">Quantity ({item.unit || 'Unit'})</div>
+            <InputNumber
+              min={0.01}
+              step={1}
+              value={item.quantity}
+              disabled={requestMode}
+              onChange={(value) => {
+                const qty = value || 1;
+                const sqft = /box/i.test(item.unit || '') && item.sqftPerBox
+                  ? Math.round(qty * item.sqftPerBox * 100) / 100
+                  : undefined;
+                updateItem(item.key, { quantity: qty, ...(sqft !== undefined ? { sqft } : {}) });
+              }}
+              className="w-full"
+            />
+          </div>
+          {/box/i.test(item.unit || '') && item.sqftPerBox ? (
+            <div className="flex-1">
+              <div className="text-[9px] text-emerald-600 font-medium mb-1">Sqft ({item.sqftPerBox}/box)</div>
+              <InputNumber
+                min={0.01}
+                step={0.5}
+                value={item.sqft ?? Math.round(item.quantity * item.sqftPerBox * 100) / 100}
+                disabled={requestMode}
+                onChange={(value) => {
+                  const sqft = value || 0;
+                  updateItem(item.key, { sqft, quantity: Math.ceil(sqft / item.sqftPerBox) });
+                }}
+                className="w-full"
+                placeholder="enter sqft"
+              />
+            </div>
+          ) : null}
+        </div>
+      ),
+    },
     {
       title: 'Selling rate', width: 190,
       render: (_, item) => <div><strong className="text-emerald-700">{item.pricingPending ? 'Resolving…' : money(item.effectiveRate)}</strong><div className="max-w-44 truncate text-[10px] text-slate-400">Base {money(item.baseRate)} · {item.source}</div></div>,
@@ -303,7 +470,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
       title: 'Line total', width: 135,
       render: (_, item) => <div><strong>{money(item.lineTotal)}</strong>{item.taxAmount > 0 && <div className="text-[10px] text-slate-400">Tax {money(item.taxAmount)}</div>}</div>,
     },
-    { title: '', width: 48, fixed: 'right', render: (_, item) => <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} /> },
+    { title: '', width: 48, fixed: 'right', render: (_, item) => requestMode ? null : <Button type="text" danger icon={<DeleteOutlined />} onClick={() => removeItem(item.key)} /> },
   ];
 
   const total = summary.grandTotal ?? summary.total ?? items.reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
@@ -313,8 +480,8 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
       <Modal
         title={(
           <div>
-            <div className="text-base font-semibold text-gray-800">Create Quotation</div>
-            <div className="mt-0.5 text-xs font-normal text-gray-500">Prepare a customer quotation using live branch stock and configured pricing.</div>
+            <div className="text-base font-semibold text-gray-800">{requestMode ? `Create Quotation from ${sourceRequestNumber || 'Order Request'}` : 'Create Quotation'}</div>
+            <div className="mt-0.5 text-xs font-normal text-gray-500">{requestMode ? 'Dealer and requested quantities are locked to the approved request.' : 'Prepare a customer quotation using live branch stock and configured pricing.'}</div>
           </div>
         )}
         open={open}
@@ -325,10 +492,14 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
         destroyOnHidden
         footer={[
           <Button key="cancel" onClick={handleClose}>Cancel</Button>,
-          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={handleSubmit} loading={submitting}>Create Quotation</Button>,
+          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={handleSubmit} loading={submitting} disabled={prefillLoading || Boolean(prefillError) || Boolean(alreadyLinkedQuotation)}>Create Quotation</Button>,
         ]}
       >
         <div className="mt-4 space-y-4">
+          {prefillLoading ? <Alert type="info" showIcon message="Loading approved dealer order request…" /> : null}
+          {prefillError ? <Alert type="error" showIcon message="Could not prepare quotation" description={prefillError} /> : null}
+          {alreadyLinkedQuotation ? <Alert type="success" showIcon message={`Quotation ${alreadyLinkedQuotation.quotationNumber || ''} already exists`} description={`This request was already linked successfully. Current quotation status: ${alreadyLinkedQuotation.status || 'created'}. Close this window to view it in the quotation list.`} /> : null}
+          {requestMode && !prefillError && !alreadyLinkedQuotation ? <Alert type="success" showIcon message={`Approved request ${sourceRequestNumber || ''}`} description="Dealer, products and quantities are locked. Rates, discounts, GST and totals are recalculated from current server rules." /> : null}
           <Alert
             type="info"
             showIcon
@@ -342,11 +513,11 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
               <div className="mb-1.5 text-xs text-gray-500">Customer type</div>
               <div className="flex flex-wrap gap-2">
                 {dealerTypes.map((type) => (
-                  <Button key={type._id} type={scope === 'dealer' && dealerType === type._id ? 'primary' : 'default'} onClick={() => changeTarget(type._id)}>
+                  <Button key={type._id} disabled={requestMode} type={scope === 'dealer' && dealerType === type._id ? 'primary' : 'default'} onClick={() => changeTarget(type._id)}>
                     {type.name}<span className="ml-1 text-[10px] opacity-60">{type.pricingTier}</span>
                   </Button>
                 ))}
-                <Button type={scope === 'walk_in' ? 'primary' : 'default'} onClick={() => changeTarget('walk_in')}>Walk-in Retail</Button>
+                <Button disabled={requestMode} type={scope === 'walk_in' ? 'primary' : 'default'} onClick={() => changeTarget('walk_in')}>Walk-in Retail</Button>
               </div>
             </div>
 
@@ -357,6 +528,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
                   <Select
                     id="quotation-customer" aria-label="Registered customer"
                     showSearch filterOption={false} onSearch={setDealerSearch} loading={dealerLoading}
+                    disabled={requestMode}
                     value={selectedDealer?._id} onChange={selectDealer} className="w-full"
                     placeholder={`Search registered ${selectedType?.name || 'dealer'}`}
                     options={dealers.map((dealer) => ({ value: dealer._id, label: `${dealer.businessName} (${dealer.dealerCode || 'No code'})` }))}
@@ -383,8 +555,8 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
           </Card>
 
           <Card size="small" styles={{ body: { padding: 0 } }} title="Quotation items" extra={(
-            <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady} onClick={() => setBrowserOpen(true)}>
-              Browse Products {items.length ? `(${items.length})` : ''}
+            <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady || requestMode} onClick={() => setBrowserOpen(true)}>
+              {requestMode ? `Approved Products (${items.length})` : `Browse Products ${items.length ? `(${items.length})` : ''}`}
             </Button>
           )}>
             <div className="border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-500">
@@ -409,11 +581,36 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess }) => {
                 <Row gutter={[12, 12]}>
                   <Col xs={24} sm={12}>
                     <label htmlFor="quotation-date" className="mb-1 block text-xs text-gray-500">Quotation date</label>
-                    <Input id="quotation-date" type="date" value={form.quotationDate} onChange={(event) => setForm((current) => ({ ...current, quotationDate: event.target.value }))} />
+                    <DatePicker
+                      id="quotation-date"
+                      value={form.quotationDate && dayjs(form.quotationDate).isValid() ? dayjs(form.quotationDate) : null}
+                      format="DD MMM YYYY"
+                      allowClear={false}
+                      className="w-full"
+                      onChange={(value) => {
+                        if (!value) return;
+                        const nextQuotationDate = value.format('YYYY-MM-DD');
+                        setForm((current) => ({
+                          ...current,
+                          quotationDate: nextQuotationDate,
+                          validUntil: dayjs(current.validUntil).isBefore(value, 'day') ? nextQuotationDate : current.validUntil,
+                        }));
+                      }}
+                    />
                   </Col>
                   <Col xs={24} sm={12}>
-                    <label htmlFor="quotation-valid-until" className="mb-1 block text-xs text-gray-500">Valid until</label>
-                    <Input id="quotation-valid-until" type="date" value={form.validUntil} onChange={(event) => setForm((current) => ({ ...current, validUntil: event.target.value }))} />
+                    <label htmlFor="quotation-valid-until" className="mb-1 block text-xs text-gray-500">Valid until (inclusive)</label>
+                    <DatePicker
+                      id="quotation-valid-until"
+                      value={form.validUntil && dayjs(form.validUntil).isValid() ? dayjs(form.validUntil) : null}
+                      format="DD MMM YYYY"
+                      allowClear={false}
+                      presets={validityPresets()}
+                      disabledDate={(date) => date.startOf('day').isBefore(dayjs(form.quotationDate).startOf('day'))}
+                      onChange={(value) => value && setForm((current) => ({ ...current, validUntil: value.format('YYYY-MM-DD') }))}
+                      className="w-full"
+                    />
+                    <div className="mt-1 text-[10px] text-gray-400">Valid through the end of the selected business date.</div>
                   </Col>
                   <Col xs={12} md={6}>
                     <label htmlFor="quotation-freight" className="mb-1 block text-xs text-gray-500">Freight charges</label>

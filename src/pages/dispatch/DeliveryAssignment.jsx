@@ -180,6 +180,7 @@ const DeliveryAssignment = () => {
         onOk={handleAssign} confirmLoading={assignLoading}
         okText="Assign & Mark Loaded"
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+        width={800}
         destroyOnHidden
       >
         <Divider />

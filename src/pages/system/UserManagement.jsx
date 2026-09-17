@@ -137,6 +137,105 @@ const AssignmentScopeField = ({
   );
 };
 
+const AccountAccessPreview = ({ form, permissionsConfig, rolePermissions, roleInfo }) => (
+  <Form.Item
+    noStyle
+    shouldUpdate={(previous, current) => (
+      previous.role !== current.role
+      || previous.permissionMode !== current.permissionMode
+      || previous.permissions !== current.permissions
+    )}
+  >
+    {() => {
+      const role = form.getFieldValue('role');
+      if (!role) return null;
+
+      const permissionMode = form.getFieldValue('permissionMode') || 'role_default';
+      const roleDefaultPermissionIds = rolePermissions[role] || [];
+      const grantedPermissionIds = permissionMode === 'custom'
+        ? (form.getFieldValue('permissions') || [])
+        : roleDefaultPermissionIds;
+      const grantsAllPermissions = grantedPermissionIds.includes('*');
+      const appPermissionCatalog = Object.entries(permissionsConfig)
+        .filter(([category]) => category.toLowerCase().includes('app'))
+        .map(([category, permissions]) => ({
+          category,
+          permissions: (permissions || []).filter((permission) => permission.id !== '*'),
+        }))
+        .filter((group) => group.permissions.length > 0);
+      const grantedAppPermissionGroups = appPermissionCatalog
+        .map((group) => ({
+          ...group,
+          permissions: group.permissions.filter((permission) => (
+            grantsAllPermissions || grantedPermissionIds.includes(permission.id)
+          )),
+        }))
+        .filter((group) => group.permissions.length > 0);
+      const pickingSortingCatalog = appPermissionCatalog.filter(({ category }) => {
+        const normalizedCategory = category.toLowerCase();
+        return normalizedCategory.includes('picking') && normalizedCategory.includes('sorting');
+      });
+      const pickingSortingPermissionIds = new Set(
+        pickingSortingCatalog.flatMap((group) => group.permissions.map((permission) => permission.id)),
+      );
+      const roleHasPickingSortingAccess = pickingSortingPermissionIds.size > 0 && (
+        roleDefaultPermissionIds.includes('*')
+        || roleDefaultPermissionIds.some((permissionId) => pickingSortingPermissionIds.has(permissionId))
+      );
+      const accountHasPickingSortingAccess = pickingSortingPermissionIds.size > 0 && (
+        grantsAllPermissions
+        || grantedPermissionIds.some((permissionId) => pickingSortingPermissionIds.has(permissionId))
+      );
+      const selectedRoleInfo = roleInfo[role];
+
+      return (
+        <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-gray-800">Selected role</span>
+            <Tag color={selectedRoleInfo?.color || 'default'}>{selectedRoleInfo?.name || role}</Tag>
+            <Tag>{permissionMode === 'custom' ? 'Custom permissions' : 'Role defaults'}</Tag>
+          </div>
+          <p className="mt-1 text-xs text-gray-600">
+            {selectedRoleInfo?.description || 'No role description is available.'}
+          </p>
+
+          <div className="mt-3 border-t border-blue-100 pt-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-800">
+              Application permission preview
+            </div>
+            {grantedAppPermissionGroups.length ? (
+              <div className="space-y-2">
+                {grantedAppPermissionGroups.map((group) => (
+                  <div key={group.category} className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-xs font-medium text-gray-700">{group.category}</span>
+                    {group.permissions.map((permission) => (
+                      <Tag key={permission.id} color="blue">{permission.name}</Tag>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-gray-500">
+                No application-specific permissions are granted by the current permission mode.
+              </span>
+            )}
+          </div>
+
+          {(roleHasPickingSortingAccess || accountHasPickingSortingAccess) && (
+            <Alert
+              className="mt-3"
+              type="info"
+              showIcon
+              message={`${pickingSortingCatalog.map((group) => group.category).join(', ')} assignment guidance`}
+              description="Assign at least one branch, choose the default branch used after sign-in, and set Warehouse Scope to All or Selected. Selected warehouses are limited to the assigned branches."
+            />
+          )}
+        </div>
+      );
+    }}
+  </Form.Item>
+);
+
 const UserManagement = () => {
   const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState([]);
@@ -345,6 +444,12 @@ const UserManagement = () => {
       }
     } catch (error) {
       if (error.errorFields) return;
+      if (error.code === 'PHONE_ALREADY_USED') {
+        const duplicateMessage = error.message || 'This phone number is already used by another user.';
+        form.setFields([{ name: 'phone', errors: [duplicateMessage] }]);
+        message.error(duplicateMessage);
+        return;
+      }
       message.error(error.message || 'Failed to save user');
     } finally {
       setLoading(false);
@@ -572,10 +677,10 @@ const UserManagement = () => {
       <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Manage users, role-derived permissions, and assignment scopes</p>
+          <p className="mt-0.5 text-sm text-gray-500">Manage application login, roles, permissions, branches, and operational access in one place</p>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openUserModal()} size="large" loading={metadataLoading}>
-          Add New User
+          Add Application User
         </Button>
       </div>
 
@@ -630,22 +735,48 @@ const UserManagement = () => {
       </div>
 
       <Modal
-        title={selectedUser ? 'Edit User' : 'Add New User'}
+        title={selectedUser ? 'Edit Account & Application Access' : 'Add Account & Application Access'}
         open={userModalOpen}
         onCancel={closeUserModal}
         onOk={handleSaveUser}
-        okText={selectedUser ? 'Update' : 'Create'}
+        okText={selectedUser ? 'Update Account' : 'Create Account'}
         confirmLoading={loading}
         width="min(960px, 94vw)"
         style={{ top: 20 }}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" className="mt-4">
+          <Alert
+            className="mb-2"
+            type="info"
+            showIcon
+            message="Application account access is managed here"
+            description="Application login, roles, permissions, branches, and warehouse access are managed in User Management. HRMS stores employee details only."
+          />
+          <Divider orientation="left">Account &amp; Application Access</Divider>
           <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-4">
             <Form.Item name="name" label="Full Name" rules={[{ required: true, message: 'Name is required' }]}><Input /></Form.Item>
             <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Username is required' }]}><Input /></Form.Item>
             <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input /></Form.Item>
-            <Form.Item name="phone" label="Phone" rules={[{ required: true, message: 'Phone is required' }]}><Input /></Form.Item>
+            <Form.Item
+              name="phone"
+              label="Mobile Number"
+              rules={[
+                { required: true, message: 'Mobile number is required' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const input = String(value).trim();
+                    const digits = input.replace(/\D/g, '');
+                    return /^[\d\s()+.-]+$/.test(input) && digits.length >= 10 && digits.length <= 15
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Enter a valid mobile number using digits and standard formatting'));
+                  },
+                },
+              ]}
+            >
+              <Input inputMode="tel" autoComplete="tel" maxLength={20} placeholder="e.g. 9876543210" />
+            </Form.Item>
             <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Select a role' }]}>
               <Select options={manageableRoleOptions} optionFilterProp="label" showSearch />
             </Form.Item>
@@ -673,6 +804,13 @@ const UserManagement = () => {
               )}
             </Form.Item>
           </div>
+
+          <AccountAccessPreview
+            form={form}
+            permissionsConfig={permissionsConfig}
+            rolePermissions={rolePermissions}
+            roleInfo={roleInfo}
+          />
 
           <Divider orientation="left">Branch Assignment</Divider>
           <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-4">
@@ -788,6 +926,7 @@ const UserManagement = () => {
         onOk={handleAdminResetPassword}
         okText="Set Temporary Password"
         confirmLoading={loading}
+        width={580}
         destroyOnHidden
       >
         <Alert

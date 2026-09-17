@@ -2,16 +2,25 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const DealerMaster = () => {
+  const { hasPermission } = useAuth();
+  const canAssignSalesExecutive = hasPermission('dealer.assignment.manage');
   const [dealers, setDealers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: undefined, dealerType: undefined, region: undefined });
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, blocked: 0 });
-  const [options, setOptions] = useState({ dealerTypes: [], dealerCategories: [], regions: [], routes: [] });
+  const [options, setOptions] = useState({
+    dealerTypes: [],
+    dealerCategories: [],
+    regions: [],
+    routes: [],
+    salesExecutives: [],
+  });
 
   // Form
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -19,7 +28,7 @@ const DealerMaster = () => {
   const [viewDealer, setViewDealer] = useState(null);
   const [form] = Form.useForm();
 
-  // Load options
+  // Load dealer masters independently from the assignment-only user lookup.
   useEffect(() => {
     Promise.all([
       masterService.getDealerTypes({ limit: 100 }),
@@ -27,16 +36,30 @@ const DealerMaster = () => {
       masterService.getRegions({ limit: 100 }),
       masterService.getRoutes({ limit: 100 }),
       masterService.getDealerStats(),
-    ]).then(([dt, dc, reg, rt, st]) => {
-      setOptions({
-        dealerTypes: dt.success ? dt.data : [],
-        dealerCategories: dc.success ? dc.data : [],
-        regions: reg.success ? reg.data : [],
-        routes: rt.success ? rt.data : [],
-      });
-      if (st.success) setStats(st.data);
-    });
+    ])
+      .then(([dt, dc, reg, rt, st]) => {
+        setOptions(current => ({
+          ...current,
+          dealerTypes: dt.success ? dt.data : [],
+          dealerCategories: dc.success ? dc.data : [],
+          regions: reg.success ? reg.data : [],
+          routes: rt.success ? rt.data : [],
+        }));
+        if (st.success) setStats(st.data);
+      })
+      .catch(err => message.error(err.message || 'Could not load dealer options.'));
   }, []);
+
+  useEffect(() => {
+    if (!canAssignSalesExecutive) return;
+    masterService.getSalesExecutives()
+      .then(response => {
+        if (response.success) {
+          setOptions(current => ({ ...current, salesExecutives: response.data }));
+        }
+      })
+      .catch(err => message.error(err.message || 'Could not load Sales Executives.'));
+  }, [canAssignSalesExecutive]);
 
   const fetchDealers = useCallback(async () => {
     setLoading(true);
@@ -56,12 +79,25 @@ const DealerMaster = () => {
   const openForm = (dealer = null) => {
     setEditingDealer(dealer);
     if (dealer) {
+      const currentSalesExecutive = dealer.assignedSalesExecutive;
+      if (
+        canAssignSalesExecutive &&
+        currentSalesExecutive?._id &&
+        !options.salesExecutives.some(user => user._id === currentSalesExecutive._id)
+      ) {
+        setOptions(current => ({
+          ...current,
+          salesExecutives: [...current.salesExecutives, currentSalesExecutive],
+        }));
+      }
       form.setFieldsValue({
         ...dealer,
         dealerType: dealer.dealerType?._id || dealer.dealerType,
         dealerCategory: dealer.dealerCategory?._id || dealer.dealerCategory,
         assignedRegion: dealer.assignedRegion?._id || dealer.assignedRegion,
         assignedRoute: dealer.assignedRoute?._id || dealer.assignedRoute,
+        assignedSalesExecutive:
+          dealer.assignedSalesExecutive?._id || dealer.assignedSalesExecutive,
       });
     } else {
       form.resetFields();
@@ -73,10 +109,16 @@ const DealerMaster = () => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const payload = { ...values };
+      if (canAssignSalesExecutive) {
+        payload.assignedSalesExecutive = values.assignedSalesExecutive || null;
+      } else {
+        delete payload.assignedSalesExecutive;
+      }
       setLoading(true);
       const res = editingDealer
-        ? await masterService.updateDealer(editingDealer._id, values)
-        : await masterService.createDealer(values);
+        ? await masterService.updateDealer(editingDealer._id, payload)
+        : await masterService.createDealer(payload);
       if (res.success) {
         message.success(res.message);
         setDrawerOpen(false);
@@ -105,6 +147,7 @@ const DealerMaster = () => {
     { title: 'City', dataIndex: 'city', key: 'city', width: 100 },
     { title: 'Type', key: 'type', width: 100, render: (_, r) => <span className="text-xs">{r.dealerType?.name || '-'}</span> },
     { title: 'Region', key: 'region', width: 100, render: (_, r) => <span className="text-xs">{r.assignedRegion?.name || '-'}</span> },
+    { title: 'Sales Executive', key: 'salesExecutive', width: 150, render: (_, r) => r.assignedSalesExecutive ? <Tag color="blue">{r.assignedSalesExecutive.name}</Tag> : <Tag>Unassigned</Tag> },
     { title: 'Credit Limit', dataIndex: 'creditLimit', key: 'cl', width: 100, render: v => <span className="text-sm">₹{(v||0).toLocaleString()}</span> },
     { title: 'Outstanding', dataIndex: 'currentOutstanding', key: 'out', width: 100, render: v => <span className={`text-sm font-medium ${v > 0 ? 'text-red-600' : 'text-green-600'}`}>₹{(v||0).toLocaleString()}</span> },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 80, render: s => <Tag color={s === 'active' ? 'green' : s === 'blocked' ? 'red' : 'orange'}>{s}</Tag> },
@@ -217,6 +260,28 @@ const DealerMaster = () => {
                   <Col span={6}><Form.Item name="assignedRegion" label="Region"><Select placeholder="Select" allowClear showSearch optionFilterProp="label" options={options.regions.map(r => ({value:r._id,label:r.name}))} /></Form.Item></Col>
                   <Col span={6}><Form.Item name="assignedRoute" label="Route"><Select placeholder="Select" allowClear showSearch optionFilterProp="label" options={options.routes.map(r => ({value:r._id,label:r.name}))} /></Form.Item></Col>
                 </Row>
+                {canAssignSalesExecutive && (
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        name="assignedSalesExecutive"
+                        label="Assign Sales Executive"
+                        extra="Active Sales Executive users from User Management"
+                      >
+                        <Select
+                          placeholder="Select Sales Executive"
+                          allowClear
+                          showSearch
+                          optionFilterProp="label"
+                          options={options.salesExecutives.map(user => ({
+                            value: user._id,
+                            label: `${user.name}${user.phone ? ` · ${user.phone}` : ''}${user.status === 'Inactive' ? ' · Inactive (current)' : ''}`,
+                          }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
 
                 <Divider orientation="left" plain>Financial</Divider>
                 <Row gutter={16}>

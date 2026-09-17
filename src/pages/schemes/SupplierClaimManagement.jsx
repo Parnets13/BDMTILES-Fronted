@@ -95,7 +95,7 @@ const SupplierClaimManagement = () => {
         </div>}
       </Modal>
 
-      <Modal title="Capture supplier-issued GST credit note" open={!!creditTarget} onCancel={() => setCreditTarget(null)} onOk={uploadCreditNote} confirmLoading={saving} okText="Submit for verification">
+      <Modal title="Capture supplier-issued GST credit note" open={!!creditTarget} onCancel={() => setCreditTarget(null)} onOk={uploadCreditNote} confirmLoading={saving} okText="Submit for verification" width={700}>
         <div className="space-y-3 mt-3">
           <div className="rounded bg-blue-50 p-3 text-xs text-blue-800">This evidence does not create a second ledger posting. The approved internal debit memo remains authoritative.</div>
           <div><label className="text-xs text-gray-500 block mb-1">Credit-note number *</label><Input value={creditForm.noteNumber} onChange={event => setCreditForm(current => ({ ...current, noteNumber: event.target.value }))} /></div>

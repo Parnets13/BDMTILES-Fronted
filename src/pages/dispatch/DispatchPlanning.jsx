@@ -164,7 +164,7 @@ const DispatchPlanning = () => {
       {/* Create Dispatch Modal */}
       <Modal title="Create Dispatch Plan" open={showCreate}
         onCancel={() => setShowCreate(false)} onOk={handleCreate}
-        confirmLoading={createLoading} okText="Create Dispatch" width={720} destroyOnHidden>
+        confirmLoading={createLoading} okText="Create Dispatch" width={900} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-3 gap-3">
             <div>

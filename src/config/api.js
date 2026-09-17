@@ -1,7 +1,91 @@
 import axios from 'axios';
+import { notifyError } from './notify.js';
 
 export const createIdempotencyKey = () => globalThis.crypto?.randomUUID?.()
   || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+// ═══════════════════════════════════════════════════════════════
+// Global human-readable error notification
+// Every API failure surfaces a clear message for normal users
+// instead of being silently logged to the console only.
+// ═══════════════════════════════════════════════════════════════
+const ERROR_TITLES = {
+  400: 'Invalid Request',
+  401: 'Session Expired',
+  403: 'Access Denied',
+  404: 'Not Found',
+  409: 'Cannot Complete This Action',
+  422: 'Validation Error',
+  428: 'Action Required',
+  429: 'Too Many Requests',
+  500: 'Server Error',
+  502: 'Server Unavailable',
+  503: 'Server Unavailable',
+};
+
+const FALLBACK_MESSAGES = {
+  400: 'The request could not be processed. Please check the details and try again.',
+  401: 'Your session has expired. Please sign in again.',
+  403: 'You do not have permission to perform this action. Contact your admin if you need access.',
+  404: 'The requested item could not be found. It may have been deleted or moved.',
+  409: 'This action conflicts with the current data. Refresh the page and try again.',
+  422: 'Some details are invalid or missing. Please review the form and correct any issues.',
+  428: 'A required condition was not met. Please select an active branch and try again.',
+  429: 'Too many requests. Please wait a moment and try again.',
+  500: 'The server ran into a problem. Please try again shortly.',
+  502: 'The server is temporarily unavailable. Please try again in a few moments.',
+  503: 'The server is temporarily unavailable. Please try again in a few moments.',
+};
+
+// Certain paths are handled locally (e.g. login shows its own error), skip the global toast.
+const SILENT_PATHS = ['/auth/login', '/auth/refresh-token', '/auth/forgot-password', '/auth/reset-password'];
+
+let lastNotificationKey = '';
+let lastNotificationTime = 0;
+
+function showGlobalError(status, serverMessage, url) {
+  // Skip auth paths — they handle errors locally
+  if (SILENT_PATHS.some(path => String(url || '').includes(path))) return;
+  // Skip 401 — AuthContext already shows the session-expiry message
+  if (status === 401) return;
+
+  let title = ERROR_TITLES[status] || 'Something Went Wrong';
+  let message = serverMessage || FALLBACK_MESSAGES[status] || 'An unexpected error occurred. Please try again.';
+
+  // Make dependency-blocked delete messages extra clear for normal users.
+  // Backend sends: "Cannot delete Dealer. Referenced by: sales orders, quotations, invoices."
+  if (/cannot delete.*referenced by/i.test(message)) {
+    title = 'Cannot Delete — Record Is In Use';
+    // Extract the references and reformat
+    const refs = message.match(/referenced by:\s*(.+?)\.?$/i)?.[1] || '';
+    const model = message.match(/cannot delete\s+(\w+)/i)?.[1] || 'record';
+    message = `This ${model.toLowerCase()} is linked to ${refs || 'other records'} and cannot be deleted until those references are removed or reassigned.`;
+  }
+  // "Cannot delete X in "status" status" → friendlier
+  if (/cannot delete.*in ".*" status/i.test(message)) {
+    title = 'Cannot Delete';
+  }
+  // 428 "Select an active branch before deleting" → friendlier
+  if (status === 428) {
+    title = 'Branch Not Selected';
+    message = message || 'Please select an active branch from the header before performing this action.';
+  }
+
+  // Deduplicate rapid-fire identical toasts (e.g. parallel calls all failing)
+  const key = `${status}:${message}`;
+  const now = Date.now();
+  if (key === lastNotificationKey && now - lastNotificationTime < 3000) return;
+  lastNotificationKey = key;
+  lastNotificationTime = now;
+
+  notifyError({
+    message: title,
+    description: message,
+    placement: 'topRight',
+    duration: status >= 500 ? 6 : 4.5,
+    style: { borderLeft: '4px solid #ef4444' },
+  });
+}
 
 const PRODUCTION_API_URL = 'https://bdmtiles-backend.onrender.com/api/v1';
 const DEVELOPMENT_API_URL = 'http://localhost:5000/api/v1';
@@ -105,7 +189,17 @@ api.interceptors.response.use(
 
     error.status = status;
     error.code = error.response?.data?.code || error.code;
+    error.details = error.response?.data?.details || error.details;
     error.message = error.response?.data?.message || error.message || 'Something went wrong';
+
+    // Show a user-facing notification for every API error so the user always
+    // sees what went wrong, regardless of which page/modal they're on.
+    if (error.code === 'ERR_NETWORK' || error.message === 'Network Error') {
+      showGlobalError(0, 'Cannot reach the server. Check your internet connection and try again.', config.url);
+    } else {
+      showGlobalError(status, error.message, config.url);
+    }
+
     return Promise.reject(error);
   }
 );

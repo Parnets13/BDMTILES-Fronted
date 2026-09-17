@@ -197,7 +197,7 @@ const LeaveManagement = () => {
 
       {/* Apply Leave Modal */}
       <Modal title="Apply Leave" open={applyModal} onCancel={() => { setApplyModal(false); applyForm.resetFields(); }}
-        onOk={handleApplyLeave} okText="Submit" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={500}>
+        onOk={handleApplyLeave} okText="Submit" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={720}>
         <Form form={applyForm} layout="vertical" className="mt-4">
           <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"
@@ -217,7 +217,7 @@ const LeaveManagement = () => {
 
       {/* Reject Reason Modal */}
       <Modal title="Reject Leave" open={rejectModal} onCancel={() => { setRejectModal(false); setRejectingId(null); setRejectReason(''); }}
-        onOk={handleReject} okText="Reject" okButtonProps={{ danger: true }}>
+        onOk={handleReject} okText="Reject" okButtonProps={{ danger: true }} width={560}>
         <div className="mt-4">
           <label className="text-sm font-medium text-gray-700 mb-2 block">Reason for Rejection</label>
           <Input.TextArea rows={3} value={rejectReason} onChange={e => setRejectReason(e.target.value)} placeholder="Enter rejection reason..." />

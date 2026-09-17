@@ -335,6 +335,7 @@ const PickingListPage = () => {
         onOk={submitGenerate}
         confirmLoading={generating}
         okText="Generate"
+        width={720}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
       >
         <p className="text-sm text-gray-500 mb-3">
@@ -354,13 +355,13 @@ const PickingListPage = () => {
       </Modal>
 
       {/* Assign a pick list to a staff member */}
-      <Modal
-        open={!!assignRecord}
+      <Modal open={!!assignRecord}
         title={assignRecord ? `Assign ${assignRecord.pickListNumber}` : 'Assign'}
         onCancel={() => setAssignRecord(null)}
         onOk={submitAssign}
         confirmLoading={assigning}
         okText="Assign"
+        width={640}
       >
         <p className="text-sm text-gray-500 mb-3">Assign this pick list to a warehouse staff member.</p>
         <Select

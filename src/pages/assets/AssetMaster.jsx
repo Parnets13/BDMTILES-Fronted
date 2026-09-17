@@ -323,7 +323,7 @@ export default function AssetMaster() {
         confirmLoading={saving}
         okText={editAsset ? 'Update' : 'Create'}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        width={720}
+        width={900}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>

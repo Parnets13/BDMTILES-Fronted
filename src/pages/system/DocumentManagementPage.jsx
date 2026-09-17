@@ -66,7 +66,7 @@ const DocumentManagementPage = () => {
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={documents} rowKey="_id" loading={loading} size="middle" pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }} onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       </div>
-      <Modal title="Upload Document" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={600}>
+      <Modal title="Upload Document" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={800}>
         <UploadDocForm onSuccess={() => { setShowCreate(false); fetchDocuments(); loadStats(); }} onCancel={() => setShowCreate(false)} />
       </Modal>
     </div>

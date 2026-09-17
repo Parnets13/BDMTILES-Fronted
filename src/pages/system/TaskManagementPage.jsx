@@ -83,7 +83,7 @@ const TaskManagementPage = () => {
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={tasks} rowKey="_id" loading={loading} size="middle" pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }} onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       </div>
-      <Modal title="New Task" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={600}>
+      <Modal title="New Task" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={800}>
         <CreateTaskForm onSubmit={handleCreate} onCancel={() => setShowCreate(false)} />
       </Modal>
     </div>

@@ -118,7 +118,9 @@ const QuotationProductBrowser = ({
 
   const toggleProduct = (product) => {
     const productId = idOf(product);
-    if (alreadySelectedIds.has(productId) || Number(product.stock?.availableQty ?? product.stockAvailable ?? 0) <= 0) return;
+    // Already in quotation — block
+    if (alreadySelectedIds.has(productId)) return;
+    // Out-of-stock products CAN be selected for pre-order (no stock block)
     setSelected((current) => current.some((row) => idOf(row) === productId)
       ? current.filter((row) => idOf(row) !== productId)
       : [...current, product]);
@@ -132,7 +134,16 @@ const QuotationProductBrowser = ({
 
   const handleDone = () => {
     if (!selected.length) return;
-    onDone(selected);
+    // Stamp stockAtQuotation snapshot on each product. outOfStock is left as
+    // false here because quantity hasn't been entered yet — the correct
+    // outOfStock flag (stockAtQuotation < quantity) is computed in minimalItems
+    // when the quotation is submitted.
+    const withOosFlag = selected.map(product => ({
+      ...product,
+      outOfStock: false,
+      stockAtQuotation: Number(product.stock?.availableQty ?? product.stockAvailable ?? 0),
+    }));
+    onDone(withOosFlag);
     setSelected([]);
   };
 
@@ -229,7 +240,7 @@ const QuotationProductBrowser = ({
                   <button
                     type="button"
                     key={productId}
-                    disabled={isAdded || unavailable}
+                    disabled={isAdded}
                     onClick={() => toggleProduct(product)}
                     className={`group relative w-full overflow-hidden rounded-2xl border bg-white p-4 text-left transition-all ${
                       isSelected
@@ -237,7 +248,7 @@ const QuotationProductBrowser = ({
                         : isAdded
                           ? 'cursor-not-allowed border-emerald-200 bg-emerald-50/50 opacity-75'
                           : unavailable
-                            ? 'cursor-not-allowed border-slate-200 opacity-55 grayscale'
+                            ? 'border-amber-300 bg-amber-50/40 hover:-translate-y-0.5 hover:border-amber-400 hover:shadow-lg'
                             : 'border-slate-200 hover:-translate-y-0.5 hover:border-orange-300 hover:shadow-lg'
                     }`}
                   >
@@ -266,8 +277,8 @@ const QuotationProductBrowser = ({
                             <div className="max-w-72 truncate text-[10px] text-slate-500">{product.sourceName || product.source || 'Product tier'}{product.fallbackApplied ? ' · fallback applied' : ''}</div>
                           </div>
                           <div className="text-right">
-                            <Tag color={unavailable ? 'red' : stock <= 10 ? 'gold' : 'green'} className="m-0 font-semibold">
-                              {unavailable ? 'Out of stock' : `${stock.toLocaleString('en-IN')} available`}
+                            <Tag color={unavailable ? 'volcano' : stock <= 10 ? 'gold' : 'green'} className="m-0 font-semibold">
+                              {unavailable ? 'No Stock' : `${stock.toLocaleString('en-IN')} ${product.stock?.displayUnit || product.unit || 'units'} available`}
                             </Tag>
                             <div className="mt-1 text-[10px] text-slate-400">Branch-wide snapshot</div>
                           </div>
@@ -275,10 +286,13 @@ const QuotationProductBrowser = ({
                         <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] text-slate-500">
                           {[product.brand?.name, product.category?.name, product.subcategory?.name, product.tileSize, product.finish, product.colour]
                             .filter(Boolean).map((value) => <span key={value} className="rounded-md bg-slate-100 px-2 py-1">{value}</span>)}
+                          {product.sqftPerBox ? <span className="rounded-md bg-emerald-50 text-emerald-700 px-2 py-1 font-semibold">{product.sqftPerBox} sqft/box</span> : null}
                         </div>
                       </div>
                     </div>
                     {isAdded && <div className="absolute right-4 top-4 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold text-white">Already in quotation</div>}
+                    {!isAdded && unavailable && isSelected && <div className="absolute right-4 top-4 rounded-full bg-amber-500 px-2.5 py-1 text-[10px] font-bold text-white">Pre-order</div>}
+                    {!isAdded && unavailable && !isSelected && <div className="absolute left-4 top-4 rounded-full bg-amber-100 border border-amber-300 px-2.5 py-1 text-[10px] font-semibold text-amber-700">Pre-order available</div>}
                   </button>
                 );
               })}

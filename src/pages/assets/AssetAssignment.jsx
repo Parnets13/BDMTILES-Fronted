@@ -272,6 +272,7 @@ export default function AssetAssignment() {
         confirmLoading={saving}
         okText="Save"
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+        width={900}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>

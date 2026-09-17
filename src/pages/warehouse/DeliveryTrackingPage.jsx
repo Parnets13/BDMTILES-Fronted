@@ -15,7 +15,11 @@ const DeliveryTrackingPage = () => {
   const canComplete = hasPermission('delivery.complete');
   const canException = hasPermission('delivery.exception');
   const canFail = hasPermission('delivery.fail');
+  const canDispatchReturn = hasPermission('dispatch.return');
+  const canWarehouseVerify = hasPermission('warehouse.verification');
+  const canApproveOrder = hasPermission('sales.order.approve');
   const [deliveries, setDeliveries] = useState([]);
+  const [dispatchReturns, setDispatchReturns] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({});
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
@@ -31,7 +35,8 @@ const DeliveryTrackingPage = () => {
   const [saving, setSaving] = useState(false);
 
   const loadStats = () => { api.get('/deliveries/stats').then(res => { if (res.success) setStats(res.data); }).catch(() => {}); };
-  useEffect(() => { loadStats(); }, []);
+  const loadDispatchReturns = () => { api.get('/dispatch-returns').then(res => { if (res.success) setDispatchReturns(res.data || []); }).catch(() => {}); };
+  useEffect(() => { loadStats(); loadDispatchReturns(); }, []);
 
   const fetchDeliveries = useCallback(async () => {
     setLoading(true);
@@ -43,10 +48,17 @@ const DeliveryTrackingPage = () => {
   }, [pagination.current, pagination.pageSize, search, statusFilter]);
   useEffect(() => { fetchDeliveries(); }, [fetchDeliveries]);
 
-  const refresh = () => { fetchDeliveries(); loadStats(); };
+  const refresh = () => { fetchDeliveries(); loadStats(); loadDispatchReturns(); };
   const handleAction = async (id, action, body = {}) => {
     try {
       const res = await api.patch(`/deliveries/${id}/${action}`, body);
+      if (res?.success) { message.success(res.message); refresh(); }
+    } catch (err) { message.error(err.message); }
+  };
+
+  const handleDispatchReturnAction = async (id, action, body = {}) => {
+    try {
+      const res = await api.patch(`/dispatch-returns/${id}/${action}`, body);
       if (res?.success) { message.success(res.message); refresh(); }
     } catch (err) { message.error(err.message); }
   };
@@ -74,7 +86,7 @@ const DeliveryTrackingPage = () => {
       if (!res.success) return;
       const delivery = res.data;
       setCompleteRecord(delivery);
-      setCompleteForm({ deliveredBoxes: delivery.totalBoxes || 0, shortBoxes: 0, damagedBoxes: 0, receiverName: delivery.receiverName || '', podImage: delivery.podImage || '', podSignature: delivery.podSignature || '', podDocumentUrl: delivery.podDocumentUrl || '', deliveryRemarks: delivery.deliveryRemarks || '', shortRemarks: '', damagedRemarks: '', verificationException: false, exceptionReason: '' });
+      setCompleteForm({ deliveredBoxes: delivery.totalBoxes || 0, shortBoxes: 0, damagedBoxes: 0, receiverName: delivery.receiverName || '', podImage: delivery.podImage || '', podSignature: delivery.podSignature || '', podDocumentUrl: delivery.podDocumentUrl || '', deliveryRemarks: delivery.deliveryRemarks || '', shortRemarks: '', damagedRemarks: '', verificationException: false, exceptionReason: '', items: (delivery.items || []).map(item => ({ _id: item._id, acceptedQuantity: Math.max(0, Number(item.dispatchedQuantity || 0) - Number(item.dispatchReturnedQuantity || 0)), shortQuantity: 0, damagedRejectedQuantity: 0, remarks: '' })) });
     } catch (err) { message.error(err.message); }
   };
 
@@ -85,6 +97,24 @@ const DeliveryTrackingPage = () => {
       if (field !== 'deliveredBoxes') next.deliveredBoxes = Math.max(0, Number(completeRecord.totalBoxes || 0) - Number(next.shortBoxes || 0) - Number(next.damagedBoxes || 0));
       return next;
     });
+  };
+
+  const updateDeliveryItemOutcome = (index, field, value) => setCompleteForm(form => ({ ...form, items: (form.items || []).map((item, itemIndex) => {
+    if (itemIndex !== index) return item;
+    const next = { ...item, [field]: Math.max(0, Number(value || 0)) };
+    if (field !== 'acceptedQuantity') next.acceptedQuantity = Math.max(0, Number(completeRecord.items[index].dispatchedQuantity || 0) - Number(next.shortQuantity || 0) - Number(next.damagedRejectedQuantity || 0));
+    return next;
+  }) }));
+
+  const requestDispatchReturn = async delivery => {
+    const items = (delivery.items || []).map(item => ({ deliveryItem: item._id, quantity: Math.max(0, Number(item.dispatchedQuantity || 0) - Number(item.acceptedQuantity || 0) - Number(item.dispatchReturnedQuantity || 0)), condition: 'resaleable' })).filter(item => item.quantity > 0);
+    if (!items.length) return message.warning('No unrecovered, unaccepted dispatched quantity remains.');
+    let reason = '';
+    Modal.confirm({ title: 'Request dispatched-goods recovery?', content: <Input.TextArea className="mt-3" placeholder="Physical recovery reason" onChange={event => { reason = event.target.value; }} />, okText: 'Request recovery', onOk: async () => {
+      if (!reason.trim()) { message.error('Enter a recovery reason'); return Promise.reject(); }
+      const response = await api.post('/dispatch-returns', { delivery: delivery._id, reason: reason.trim(), items });
+      if (response.success) { message.success(response.message); setViewRecord(null); refresh(); }
+    } });
   };
 
   const submitCompletion = async () => {
@@ -134,12 +164,26 @@ const DeliveryTrackingPage = () => {
     <Row gutter={12} className="mb-4"><Col span={3}><Card size="small"><Statistic title="Total" value={stats.total || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="Assigned" value={stats.assigned || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="In Transit" value={stats.inTransit || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="Delivered" value={stats.delivered || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="Today" value={stats.todayDelivered || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="Failed" value={stats.failed || 0} /></Card></Col><Col span={3}><Card size="small"><Statistic title="Rescheduled" value={stats.rescheduled || 0} /></Card></Col></Row>
     <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4 flex gap-3"><Input placeholder="Search delivery, SO, dealer..." prefix={<SearchOutlined />} value={search} onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }} className="w-64" allowClear /><Select placeholder="Status" value={statusFilter} onChange={setStatusFilter} allowClear className="w-40" options={Object.keys(STATUS_COLORS).map(value => ({ value, label: value.replace(/_/g, ' ') }))} /><Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button></div>
     <div className="bg-white rounded-lg border border-gray-200"><Table columns={columns} dataSource={deliveries} rowKey="_id" loading={loading} size="middle" scroll={{ x: 1150 }} pagination={{ ...pagination, showSizeChanger: true }} onChange={page => setPagination(current => ({ ...current, current: page.current, pageSize: page.pageSize }))} /></div>
+    {dispatchReturns.length > 0 && <div className="bg-white rounded-lg border border-gray-200 mt-4 p-3"><h2 className="font-semibold mb-2">Dispatched Goods Recovery</h2><Table size="small" pagination={false} rowKey="_id" dataSource={dispatchReturns} columns={[
+      { title: 'Recovery #', dataIndex: 'returnNumber' }, { title: 'Delivery', render: (_, row) => row.delivery?.deliveryNumber || '—' },
+      { title: 'Order', render: (_, row) => row.salesOrder?.orderNumber || '—' }, { title: 'Reason', dataIndex: 'reason' },
+      { title: 'Status', dataIndex: 'status', render: value => <Tag>{value.replace(/_/g, ' ')}</Tag> },
+      { title: 'Actions', render: (_, row) => <Space>{canDispatchReturn && canWarehouseVerify && row.status === 'requested' && <Button size="small" onClick={() => handleDispatchReturnAction(row._id, 'verify')}>Warehouse verify</Button>}{canDispatchReturn && canApproveOrder && row.status === 'warehouse_verified' && <><Button size="small" type="primary" onClick={() => handleDispatchReturnAction(row._id, 'approve')}>Approve & post</Button><Button size="small" danger onClick={() => handleDispatchReturnAction(row._id, 'reject', { reason: 'Rejected from delivery tracking' })}>Reject</Button></>}</Space> },
+    ]} /></div>}
 
     {otpRecord && <Modal open title={`Verify OTP — ${otpRecord.deliveryNumber}`} onCancel={() => setOtpRecord(null)} onOk={submitOtp} confirmLoading={saving} okText="Verify OTP"><Input size="large" maxLength={6} value={otp} onChange={event => setOtp(event.target.value.replace(/\D/g, ''))} placeholder="Six-digit customer OTP" className="mt-3" /></Modal>}
 
-    {completeRecord && <Modal open title={`Complete Delivery — ${completeRecord.deliveryNumber}`} onCancel={() => setCompleteRecord(null)} onOk={submitCompletion} confirmLoading={saving} okText="Complete delivery" width={760}>
+    {completeRecord && <Modal open title={`Complete Delivery — ${completeRecord.deliveryNumber}`} onCancel={() => setCompleteRecord(null)} onOk={submitCompletion} confirmLoading={saving} okText="Complete delivery" width={900}>
       <div className="space-y-3 mt-3">
         <div className="grid grid-cols-4 gap-2"><div><label className="text-xs text-gray-500">Total boxes</label><InputNumber disabled value={completeRecord.totalBoxes} className="w-full" /></div><div><label className="text-xs text-gray-500">Delivered</label><InputNumber min={0} value={completeForm.deliveredBoxes} onChange={value => updateBoxOutcome('deliveredBoxes', value)} className="w-full" /></div><div><label className="text-xs text-gray-500">Short</label><InputNumber min={0} value={completeForm.shortBoxes} onChange={value => updateBoxOutcome('shortBoxes', value)} className="w-full" /></div><div><label className="text-xs text-gray-500">Damaged</label><InputNumber min={0} value={completeForm.damagedBoxes} onChange={value => updateBoxOutcome('damagedBoxes', value)} className="w-full" /></div></div>
+        {!!completeRecord.items?.length && <><Divider>Item acceptance reconciliation</Divider><Table size="small" pagination={false} rowKey="_id" dataSource={completeRecord.items} columns={[
+          { title: 'Item', render: (_, item) => `${item.productName || item.product || 'Product'} · ${item.shade || 'no shade'} / ${item.batch || 'no batch'}` },
+          { title: 'Dispatched', dataIndex: 'dispatchedQuantity', width: 100 },
+          { title: 'Accepted', width: 110, render: (_, item, index) => <InputNumber min={0} value={completeForm.items?.[index]?.acceptedQuantity} onChange={value => updateDeliveryItemOutcome(index, 'acceptedQuantity', value)} /> },
+          { title: 'Short', width: 110, render: (_, item, index) => <InputNumber min={0} value={completeForm.items?.[index]?.shortQuantity} onChange={value => updateDeliveryItemOutcome(index, 'shortQuantity', value)} /> },
+          { title: 'Damaged rejected', width: 140, render: (_, item, index) => <InputNumber min={0} value={completeForm.items?.[index]?.damagedRejectedQuantity} onChange={value => updateDeliveryItemOutcome(index, 'damagedRejectedQuantity', value)} /> },
+          { title: 'Reason', width: 180, render: (_, item, index) => <Input value={completeForm.items?.[index]?.remarks} onChange={event => setCompleteForm(form => ({ ...form, items: form.items.map((row, rowIndex) => rowIndex === index ? { ...row, remarks: event.target.value } : row) }))} /> },
+        ]} /></>}
         <div className="grid grid-cols-2 gap-2"><Input value={completeForm.receiverName} onChange={event => setCompleteForm(form => ({ ...form, receiverName: event.target.value }))} placeholder="Receiver name *" /><Input value={completeForm.podImage} onChange={event => setCompleteForm(form => ({ ...form, podImage: event.target.value }))} placeholder="POD photo URL" /><Input value={completeForm.podSignature} onChange={event => setCompleteForm(form => ({ ...form, podSignature: event.target.value }))} placeholder="Signature URL / evidence" /><Input value={completeForm.podDocumentUrl} onChange={event => setCompleteForm(form => ({ ...form, podDocumentUrl: event.target.value }))} placeholder="POD document URL" /></div>
         {completeForm.shortBoxes > 0 && <Input value={completeForm.shortRemarks} onChange={event => setCompleteForm(form => ({ ...form, shortRemarks: event.target.value }))} placeholder="Short-box discrepancy remarks" />}
         {completeForm.damagedBoxes > 0 && <Input value={completeForm.damagedRemarks} onChange={event => setCompleteForm(form => ({ ...form, damagedRemarks: event.target.value }))} placeholder="Damaged-box discrepancy remarks" />}
@@ -149,13 +193,19 @@ const DeliveryTrackingPage = () => {
       </div>
     </Modal>}
 
-    {failureRecord && <Modal open title={`Fail / Reschedule — ${failureRecord.deliveryNumber}`} onCancel={() => setFailureRecord(null)} onOk={submitFailure} confirmLoading={saving} okText={failureForm.rescheduleDate ? 'Reschedule' : 'Record failure'}><div className="space-y-3 mt-3"><Select className="w-full" value={failureForm.failureReason} onChange={value => setFailureForm(form => ({ ...form, failureReason: value }))} options={FAILURE_REASONS.map(value => ({ value, label: value.replace(/_/g, ' ') }))} /><Input.TextArea rows={2} value={failureForm.failureRemarks} onChange={event => setFailureForm(form => ({ ...form, failureRemarks: event.target.value }))} placeholder="Failure remarks" /><div><label className="text-xs text-gray-500">Reschedule date/time (leave blank for terminal failure)</label><Input type="datetime-local" value={failureForm.rescheduleDate} onChange={event => setFailureForm(form => ({ ...form, rescheduleDate: event.target.value }))} /></div></div></Modal>}
+    {failureRecord && <Modal open title={`Fail / Reschedule — ${failureRecord.deliveryNumber}`} onCancel={() => setFailureRecord(null)} onOk={submitFailure} confirmLoading={saving} okText={failureForm.rescheduleDate ? 'Reschedule' : 'Record failure'} width={640}><div className="space-y-3 mt-3"><Select className="w-full" value={failureForm.failureReason} onChange={value => setFailureForm(form => ({ ...form, failureReason: value }))} options={FAILURE_REASONS.map(value => ({ value, label: value.replace(/_/g, ' ') }))} /><Input.TextArea rows={2} value={failureForm.failureRemarks} onChange={event => setFailureForm(form => ({ ...form, failureRemarks: event.target.value }))} placeholder="Failure remarks" /><div><label className="text-xs text-gray-500">Reschedule date/time (leave blank for terminal failure)</label><Input type="datetime-local" value={failureForm.rescheduleDate} onChange={event => setFailureForm(form => ({ ...form, rescheduleDate: event.target.value }))} /></div></div></Modal>}
 
     {viewRecord && <Modal open title={`Authoritative Delivery Detail — ${viewRecord.deliveryNumber}`} onCancel={() => setViewRecord(null)} width={1000} footer={<Button onClick={() => setViewRecord(null)}>Close</Button>}>
       <div className="space-y-4 text-sm mt-3">
         <div className="grid grid-cols-3 gap-3"><div className="bg-gray-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Delivery To</div><b>{viewRecord.dealerName}</b><div className="text-xs">{viewRecord.contactPhone} · {viewRecord.deliveryAddress}</div></div><div className="bg-blue-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Trip / Driver</div><b>{viewRecord.dispatchTrip?.tripNumber || viewRecord.tripNumber}</b><div className="text-xs">{viewRecord.dispatchTrip?.routeName || '—'} · {viewRecord.dispatchTrip?.vehicleNumber || '—'} · {viewRecord.dispatchTrip?.driverName || '—'} ({viewRecord.dispatchTrip?.driverPhone || '—'})</div></div><div className="bg-green-50 p-3 rounded border"><Tag color={STATUS_COLORS[viewRecord.status]}>{viewRecord.status.replace(/_/g, ' ')}</Tag><div>OTP: <b>{viewRecord.otpVerified ? 'Verified' : 'Pending'}</b></div><div>Receiver: <b>{viewRecord.receiverName || '—'}</b></div></div></div>
         <div className="grid grid-cols-4 gap-2 text-xs"><div>Total: <b>{viewRecord.totalBoxes}</b></div><div>Delivered: <b>{viewRecord.deliveredBoxes || 0}</b></div><div>Short: <b>{viewRecord.shortBoxes || 0}</b></div><div>Damaged: <b>{viewRecord.damagedBoxes || 0}</b></div></div>
         <Timeline items={[{ color: 'green', children: `Created: ${new Date(viewRecord.createdAt).toLocaleString('en-IN')}` }, viewRecord.startTime && { color: 'blue', children: `Started: ${new Date(viewRecord.startTime).toLocaleString('en-IN')}` }, viewRecord.reachTime && { color: 'cyan', children: `Reached: ${new Date(viewRecord.reachTime).toLocaleString('en-IN')}` }, viewRecord.otpVerifiedAt && { color: 'purple', children: `OTP verified: ${new Date(viewRecord.otpVerifiedAt).toLocaleString('en-IN')}` }, viewRecord.completionTime && { color: 'green', children: `Completed: ${new Date(viewRecord.completionTime).toLocaleString('en-IN')}` }].filter(Boolean)} />
+        {!!viewRecord.items?.length && <><Divider>Dispatched item reconciliation</Divider><Table size="small" pagination={false} rowKey="_id" dataSource={viewRecord.items} columns={[
+          { title: 'Line', render: (_, item) => `${item.productName || item.product || 'Product'} · ${item.shade || '—'} / ${item.batch || '—'}` },
+          { title: 'Dispatched', dataIndex: 'dispatchedQuantity' }, { title: 'Accepted', dataIndex: 'acceptedQuantity' },
+          { title: 'Short', dataIndex: 'shortQuantity' }, { title: 'Damaged rejected', dataIndex: 'damagedRejectedQuantity' },
+          { title: 'Recovered', dataIndex: 'dispatchReturnedQuantity' }, { title: 'Resolution', dataIndex: 'discrepancyResolutionState', render: value => <Tag>{value}</Tag> },
+        ]} />{['failed', 'partially_delivered', 'in_transit', 'reached'].includes(viewRecord.status) && <Button danger className="mt-2" onClick={() => requestDispatchReturn(viewRecord)}>Request physical dispatch recovery</Button>}</>}
         {!!viewRecord.salesOrder?.items?.length && <><Divider>Sales Order lines</Divider><Table size="small" pagination={false} rowKey={item => item._id} dataSource={viewRecord.salesOrder.items} columns={[{ title: 'Product', render: (_, item) => <div className="flex items-center gap-2"><ProductImage src={item.productImage} size="sm" /><div><b>{item.productName}</b><div className="text-xs text-gray-400">{item.productCode}</div></div></div> }, { title: 'Ordered', dataIndex: 'quantity' }, { title: 'Dispatched', dataIndex: 'dispatchedQuantity' }, { title: 'Shade / Batch', render: (_, item) => `${item.shade || '—'} / ${item.batch || '—'}` }]} /></>}
         {!!viewRecord.discrepancies?.length && <div className="bg-orange-50 border border-orange-200 rounded p-3"><b>Discrepancies</b>{viewRecord.discrepancies.map(item => <div key={item._id} className="text-xs mt-1">{item.type}: {item.boxes} box(es) · {item.status} · {item.remarks || 'No remarks'}</div>)}</div>}
         {viewRecord.verificationException?.used && <div className="bg-red-50 border border-red-200 rounded p-3">Authorized verification exception: {viewRecord.verificationException.reason}</div>}

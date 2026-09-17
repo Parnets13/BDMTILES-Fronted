@@ -128,7 +128,7 @@ const LoansAdvances = () => {
       </div>
 
       <Modal title="New Loan / Advance" open={createModal} onCancel={() => { setCreateModal(false); createForm.resetFields(); }}
-        onOk={handleCreateLoan} okText="Create" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={520}>
+        onOk={handleCreateLoan} okText="Create" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={800}>
         <Form form={createForm} layout="vertical" className="mt-4">
           <Form.Item name="employee" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"

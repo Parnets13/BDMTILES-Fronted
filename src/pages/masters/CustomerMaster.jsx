@@ -272,7 +272,7 @@ const CustomerMaster = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditingCustomer(null); }}
         onOk={handleSave}
         okText={editingCustomer ? 'Update' : 'Create'}
-        width={720}
+        width={900}
         confirmLoading={loading}
         destroyOnHidden
       >

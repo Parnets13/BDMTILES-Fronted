@@ -181,7 +181,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
                 <td className="px-1.5 py-1">
                   <div className="flex items-center gap-1">
                     <ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="xs" />
-                    <div><div className="font-medium">{item.productName}</div><div className="text-[8px] text-gray-400">{item.productCode}</div></div>
+                    <div><div className="font-medium">{item.productName}</div><div className="text-[8px] text-gray-400">{item.productCode}{item.product?.sqftPerBox ? ` · ${item.product.sqftPerBox} sqft/box` : item.sqftPerBox ? ` · ${item.sqftPerBox} sqft/box` : ''}</div></div>
                   </div>
                 </td>
                 <td className="px-1.5 py-1">{item.hsnCode || '—'}</td>

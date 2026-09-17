@@ -166,7 +166,7 @@ const AttendanceDashboard = () => {
 
       {/* Mark Attendance Modal */}
       <Modal title="Mark Attendance" open={markModal} onCancel={() => { setMarkModal(false); markForm.resetFields(); }}
-        onOk={handleMarkAttendance} okText="Mark" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}>
+        onOk={handleMarkAttendance} okText="Mark" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={720}>
         <Form form={markForm} layout="vertical" className="mt-4">
           <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"

@@ -191,10 +191,10 @@ const SELeadApp = () => {
       <Modal open={!!declineLead} title="Decline lead" onCancel={() => setDeclineLead(null)} onOk={() => respond(declineLead, false)} okButtonProps={{ danger: true, disabled: !declineReason.trim() }}>
         <Input.TextArea value={declineReason} onChange={(event) => setDeclineReason(event.target.value)} placeholder="Reason is required" />
       </Modal>
-      <Modal open={!!followupLead} title="Record follow-up" onCancel={() => setFollowupLead(null)} onOk={saveFollowup}>
+      <Modal open={!!followupLead} title="Record follow-up" onCancel={() => setFollowupLead(null)} onOk={saveFollowup} width={640}>
         <Form form={followupForm} layout="vertical"><Form.Item name="outcome" label="Outcome" rules={[{ required: true }]}><Select options={['interested', 'not_interested', 'callback', ...(canConvert ? ['converted'] : []), 'no_response', 'visit_scheduled', 'quotation_sent'].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></Form.Item><Form.Item name="notes" label="Notes"><Input.TextArea /></Form.Item><Form.Item name="nextFollowupDate" label="Next follow-up"><DatePicker showTime className="w-full" /></Form.Item></Form>
       </Modal>
-      <Modal open={!!visitLead} title="Schedule visit" onCancel={() => setVisitLead(null)} onOk={saveVisit}>
+      <Modal open={!!visitLead} title="Schedule visit" onCancel={() => setVisitLead(null)} onOk={saveVisit} width={580}>
         <Form form={visitForm} layout="vertical"><Form.Item name="scheduledAt" label="Schedule" rules={[{ required: true }]}><DatePicker showTime className="w-full" /></Form.Item><Form.Item name="address" label="Location"><Input /></Form.Item><Form.Item name="remarks" label="Remarks"><Input.TextArea /></Form.Item></Form>
       </Modal>
     </div>

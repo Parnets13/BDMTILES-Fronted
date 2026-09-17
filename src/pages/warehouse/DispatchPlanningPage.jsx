@@ -195,7 +195,7 @@ const DispatchPlanningPage = () => {
         </Modal>
       )}
 
-      {verifyRecord && <Modal open title={`Final Dispatch Verification — ${verifyRecord.tripNumber}`} onCancel={() => setVerifyRecord(null)} onOk={submitFinalVerification} confirmLoading={verifyLoading} okText="Verify for dispatch" width={700}>
+      {verifyRecord && <Modal open title={`Final Dispatch Verification — ${verifyRecord.tripNumber}`} onCancel={() => setVerifyRecord(null)} onOk={submitFinalVerification} confirmLoading={verifyLoading} okText="Verify for dispatch" width={860}>
         <div className="space-y-4 mt-3 text-sm">
           <div className="bg-blue-50 border border-blue-100 rounded p-3">This is a separate final gate. Stock is not consumed until an authorized user dispatches after this checklist is complete.</div>
           <div className="grid grid-cols-2 gap-3"><div><label className="text-xs text-gray-500">Final order count</label><InputNumber min={0} className="w-full" value={verifyForm.finalOrderCount} onChange={value => setVerifyForm(form => ({ ...form, finalOrderCount: value || 0 }))} /></div><div><label className="text-xs text-gray-500">Final box count</label><InputNumber min={0} className="w-full" value={verifyForm.finalBoxCount} onChange={value => setVerifyForm(form => ({ ...form, finalBoxCount: value || 0 }))} /></div></div>

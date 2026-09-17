@@ -389,7 +389,7 @@ const ChequeManagement = () => {
           onChange={page => setPagination(current => ({ ...current, current: page.current, pageSize: page.pageSize }))} />
       </div>
 
-      <Modal title="Add Cheque" open={showCreate} width={720} confirmLoading={createLoading} okText="Save Cheque"
+      <Modal title="Add Cheque" open={showCreate} width={900} confirmLoading={createLoading} okText="Save Cheque"
         onOk={handleCreate} onCancel={() => { setShowCreate(false); resetForm(); }} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <Alert type="info" showIcon message="Link a pending cheque Payment to make clearance and bounce accounting authoritative. Standalone cheques never affect the ledger." />
@@ -448,6 +448,7 @@ const ChequeManagement = () => {
         <Modal title={`${actionTitle[actionModal.type]} Cheque #${actionModal.cheque.chequeNumber}`} open
           onCancel={() => { setActionModal(null); setActionData({}); }} onOk={handleAction}
           confirmLoading={actionLoading} okText={actionTitle[actionModal.type]}
+          width={700}
           okButtonProps={{ danger: ['bounce', 'return'].includes(actionModal.type) }}>
           <div className="space-y-3 mt-4 text-sm">
             <div className="bg-gray-50 p-3 rounded border">

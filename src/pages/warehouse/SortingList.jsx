@@ -79,9 +79,11 @@ const SortingList = () => {
         || !row.barcodeConfirmed || !row.shadeConfirmed || !row.batchConfirmed;
     });
     if (invalid) return message.error('Every item needs exact sorted/short/damaged quantities and barcode, shade, and batch confirmation');
+    const discrepancyWithoutReason = sortItems.find(row => (Number(row.shortQty || 0) > 0 || Number(row.damagedQty || 0) > 0) && !String(row.remarks || remarks).trim());
+    if (discrepancyWithoutReason) return message.error('A reason is required for every nonzero sorting shortage or damage');
     setSaving(true);
     try {
-      const res = await api.patch(`/pick-lists/${detail._id}/sort`, { items: sortItems, deliveryRoute: route, remarks });
+      const res = await api.patch(`/pick-lists/${detail._id}/sort`, { items: sortItems, deliveryRoute: route, remarks, reason: remarks });
       if (res.success) { message.success(res.message); setDetail(null); fetchPickLists(); }
     } catch (err) { message.error(err.message); }
     finally { setSaving(false); }
@@ -162,11 +164,11 @@ const SortingList = () => {
           { title: 'Identity', width: 210, render: (_, item, index) => detail.status === 'verified' ? <Space direction="vertical" size={0}><Checkbox checked={sortItems[index]?.barcodeConfirmed} onChange={e => updateSortItem(index, 'barcodeConfirmed', e.target.checked)}>Barcode</Checkbox><Checkbox checked={sortItems[index]?.shadeConfirmed} onChange={e => updateSortItem(index, 'shadeConfirmed', e.target.checked)}>Shade</Checkbox><Checkbox checked={sortItems[index]?.batchConfirmed} onChange={e => updateSortItem(index, 'batchConfirmed', e.target.checked)}>Batch</Checkbox></Space> : <span>{item.sortingBarcodeConfirmed && item.sortingShadeConfirmed && item.sortingBatchConfirmed ? 'Confirmed' : '—'}</span> },
           { title: 'Remarks', width: 170, render: (_, item, index) => detail.status === 'verified' ? <Input value={sortItems[index]?.remarks} onChange={e => updateSortItem(index, 'remarks', e.target.value)} /> : item.sortingRemarks || '—' },
         ]} />
-        <div className="text-xs text-blue-700 bg-blue-50 p-2 rounded">Sorting discrepancies are recorded as evidence only. This step does not move or restore inventory quantities.</div>
+        <div className="text-xs text-orange-800 bg-orange-50 border border-orange-200 p-2 rounded">Posting is irreversible: sorting short reduces reserved and total stock and increases short; sorting damage moves reserved stock to damaged. A reason is mandatory for every discrepancy.</div>
       </div>
     </Modal>}
 
-    {packRecord && <Modal open title={`Pack ${packRecord.pickListNumber}`} onCancel={() => setPackRecord(null)} onOk={submitPack} confirmLoading={saving} okText="Confirm packing"><div className="grid grid-cols-2 gap-4 mt-4"><div><label className="text-xs text-gray-500 block mb-1">Physical total boxes *</label><InputNumber min={1} value={packForm.totalBoxes} onChange={value => setPackForm(form => ({ ...form, totalBoxes: value || 0 }))} className="w-full" /></div><div><label className="text-xs text-gray-500 block mb-1">Total weight (kg)</label><InputNumber min={0} value={packForm.totalWeight} onChange={value => setPackForm(form => ({ ...form, totalWeight: value || 0 }))} className="w-full" /></div><div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Delivery route</label><Input value={packForm.deliveryRoute} onChange={event => setPackForm(form => ({ ...form, deliveryRoute: event.target.value }))} /></div></div></Modal>}
+    {packRecord && <Modal open title={`Pack ${packRecord.pickListNumber}`} onCancel={() => setPackRecord(null)} onOk={submitPack} confirmLoading={saving} okText="Confirm packing" width={640}><div className="grid grid-cols-2 gap-4 mt-4"><div><label className="text-xs text-gray-500 block mb-1">Physical total boxes *</label><InputNumber min={1} value={packForm.totalBoxes} onChange={value => setPackForm(form => ({ ...form, totalBoxes: value || 0 }))} className="w-full" /></div><div><label className="text-xs text-gray-500 block mb-1">Total weight (kg)</label><InputNumber min={0} value={packForm.totalWeight} onChange={value => setPackForm(form => ({ ...form, totalWeight: value || 0 }))} className="w-full" /></div><div className="col-span-2"><label className="text-xs text-gray-500 block mb-1">Delivery route</label><Input value={packForm.deliveryRoute} onChange={event => setPackForm(form => ({ ...form, deliveryRoute: event.target.value }))} /></div></div></Modal>}
   </div>;
 };
 

@@ -2,10 +2,19 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ConfigProvider } from 'antd';
+import { ConfigProvider, App as AntdApp } from 'antd';
 import { AuthProvider } from './context/AuthContext.jsx';
 import App from './App.jsx';
+import { setNotificationApi } from './config/notify.js';
 import './index.css';
+
+// Bridge antd's context-aware notification API to the axios interceptor so
+// global error toasts render correctly under antd v5 + React 19.
+const NotificationBridge = () => {
+  const { notification } = AntdApp.useApp();
+  React.useEffect(() => { setNotificationApi(notification); }, [notification]);
+  return null;
+};
 
 // ═══════════════════════════════════════════════════════════
 // GLOBAL: Prevent accidental value changes on number inputs
@@ -127,13 +136,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <BrowserRouter>
       <QueryClientProvider client={queryClient}>
         <ConfigProvider theme={antdTheme}>
-          <LightboxProvider>
-            <ConfirmProvider>
-              <AuthProvider>
-                <App />
-              </AuthProvider>
-            </ConfirmProvider>
-          </LightboxProvider>
+          <AntdApp>
+            <NotificationBridge />
+            <LightboxProvider>
+              <ConfirmProvider>
+                <AuthProvider>
+                  <App />
+                </AuthProvider>
+              </ConfirmProvider>
+            </LightboxProvider>
+          </AntdApp>
         </ConfigProvider>
       </QueryClientProvider>
     </BrowserRouter>

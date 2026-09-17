@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Tooltip, Row, Col, Card, Statistic, InputNumber, Divider, Popconfirm } from 'antd';
-import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadOutlined, AuditOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EyeOutlined, CheckCircleOutlined, ReloadOutlined, AuditOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import { createIdempotencyKey } from '../../config/api.js';
@@ -21,6 +21,7 @@ const GRNEntryPage = () => {
   const [filters, setFilters] = useState({ status: undefined });
   const [stats, setStats] = useState({});
   const [showCreateGRN, setShowCreateGRN] = useState(false);
+  const [editGRN, setEditGRN] = useState(null);
   const [viewGRN, setViewGRN] = useState(null);
 
   const fetchStats = () => {
@@ -68,6 +69,21 @@ const GRNEntryPage = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const openEditGRN = async (row) => {
+    try {
+      const res = await purchaseService.getGRN(row._id);
+      setEditGRN(res.data || row);
+      setShowCreateGRN(true);
+    } catch (err) { message.error(err.message || 'Unable to open GRN for editing'); }
+  };
+
+  const handleDeleteGRN = async (id) => {
+    try {
+      const res = await purchaseService.deleteGRN(id);
+      if (res.success) { message.success('Draft GRN deleted'); fetchGRNs(); fetchStats(); }
+    } catch (err) { message.error(err.message || 'Failed to delete GRN'); }
+  };
+
   const handleApprove = async (id) => {
     try {
       const res = await purchaseService.approveGRN(id);
@@ -85,13 +101,19 @@ const GRNEntryPage = () => {
     { title: 'Invoice No', dataIndex: 'supplierInvoiceNo', width: 120, render: v => <span className="text-xs">{v || '-'}</span> },
     { title: 'Vehicle', dataIndex: 'vehicleNo', width: 100, render: v => <span className="text-xs">{v || '-'}</span> },
     { title: 'Status', dataIndex: 'status', width: 100, render: s => <Tag color={STATUS_COLORS[s]}>{s}</Tag> },
-    { title: 'Actions', width: 100, render: (_, r) => (
+    { title: 'Actions', width: 170, render: (_, r) => (
       <Space size="small">
         <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} /></Tooltip>
         {r.status === 'draft' && (
-          <Popconfirm title="Verify this GRN? Values become ready for posting approval." onConfirm={() => handleVerify(r._id)} okText="Verify" cancelText="Cancel">
-            <Tooltip title="Verify"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-orange-600" /></Tooltip>
-          </Popconfirm>
+          <>
+            <Tooltip title="Edit"><Button type="text" size="small" icon={<EditOutlined />} className="text-slate-600" onClick={() => openEditGRN(r)} /></Tooltip>
+            <Popconfirm title="Verify this GRN? Values become ready for posting approval." onConfirm={() => handleVerify(r._id)} okText="Verify" cancelText="Cancel">
+              <Tooltip title="Verify"><Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-orange-600" /></Tooltip>
+            </Popconfirm>
+            <Popconfirm title="Delete this draft GRN?" onConfirm={() => handleDeleteGRN(r._id)} okText="Delete" okButtonProps={{ danger: true }} cancelText="Cancel">
+              <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
+            </Popconfirm>
+          </>
         )}
         {r.status === 'verified' && canPostGRN && (
           <Popconfirm title="Post GRN and update stock?" onConfirm={() => handleApprove(r._id)} okText="Post" cancelText="Cancel">
@@ -106,7 +128,7 @@ const GRNEntryPage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Goods Receipt Note (GRN)</h1><p className="text-sm text-gray-500 mt-0.5">Record incoming goods against purchase orders</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => setShowCreateGRN(true)}>New GRN</Button>
+        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => { setEditGRN(null); setShowCreateGRN(true); }}>New GRN</Button>
       </div>
 
       {/* Stats */}
@@ -138,7 +160,8 @@ const GRNEntryPage = () => {
       {/* Create GRN Overlay */}
       {showCreateGRN && (
         <CreateGRN
-          onClose={() => setShowCreateGRN(false)}
+          editGRN={editGRN}
+          onClose={() => { setShowCreateGRN(false); setEditGRN(null); }}
           onSuccess={() => { fetchGRNs(); fetchStats(); }}
         />
       )}
@@ -220,7 +243,8 @@ const GRNEntryPage = () => {
 };
 
 // ===================== CREATE GRN (Full-page overlay) =====================
-const CreateGRN = ({ onClose, onSuccess }) => {
+const CreateGRN = ({ onClose, onSuccess, editGRN = null }) => {
+  const isEdit = Boolean(editGRN?._id);
   const grnSubmissionKey = useRef(createIdempotencyKey());
   const [availablePOs, setAvailablePOs] = useState([]);
   const [selectedPO, setSelectedPO] = useState(null);
@@ -228,10 +252,10 @@ const CreateGRN = ({ onClose, onSuccess }) => {
   const [warehouses, setWarehouses] = useState([]);
 
   const [formData, setFormData] = useState({
-    grnDate: new Date().toISOString().split('T')[0],
-    supplierInvoiceNo: '',
-    vehicleNo: '',
-    remarks: '',
+    grnDate: editGRN?.grnDate ? new Date(editGRN.grnDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+    supplierInvoiceNo: editGRN?.supplierInvoiceNo || '',
+    vehicleNo: editGRN?.vehicleNo || '',
+    remarks: editGRN?.qcRemarks || editGRN?.remarks || '',
   });
 
   const [loading, setLoading] = useState(false);
@@ -244,6 +268,35 @@ const CreateGRN = ({ onClose, onSuccess }) => {
       if (r.success) setWarehouses(r.data);
     }).catch(() => {});
   }, []);
+
+  // When editing a draft, pre-fill the item grid from the saved GRN and lock the PO.
+  useEffect(() => {
+    if (!isEdit) return;
+    setSelectedPO({ _id: editGRN.purchaseOrder?._id || editGRN.purchaseOrder, poNumber: editGRN.poNumber, supplier: editGRN.supplier });
+    setItems((editGRN.items || []).map((item, idx) => {
+      const received = Number(item.receivedQty || 0);
+      const damaged = Number(item.damagedQty || 0);
+      const ordered = Number(item.orderedQty ?? item.receivedQty ?? 0);
+      return {
+        key: idx,
+        purchaseOrderItem: item.purchaseOrderItem,
+        product: item.product?._id || item.product,
+        productCode: item.productCode,
+        productName: item.productName || item.product?.itemName,
+        productImage: item.productImage || item.product?.images?.[0] || '',
+        unit: item.unit || 'Box',
+        orderedQty: ordered,
+        receivedQty: received,
+        acceptedQty: Number(item.acceptedQty ?? Math.max(0, received - damaged)),
+        shortQty: Math.max(0, ordered - received),
+        damagedQty: damaged,
+        shade: item.shade || '',
+        batch: item.batch || '',
+        warehouse: item.warehouse?._id || item.warehouse || '',
+        rack: item.rack || item.zone || '',
+      };
+    }));
+  }, [isEdit, editGRN]);
 
   const handleSelectPO = (poId) => {
     const po = availablePOs.find(p => p._id === poId);
@@ -305,14 +358,16 @@ const CreateGRN = ({ onClose, onSuccess }) => {
           shade: i.shade, batch: i.batch, warehouse: i.warehouse, rack: i.rack,
         })),
       };
-      const res = await purchaseService.createGRN(payload, grnSubmissionKey.current);
+      const res = isEdit
+        ? await purchaseService.updateGRN(editGRN._id, payload)
+        : await purchaseService.createGRN(payload, grnSubmissionKey.current);
       if (res.success) {
         grnSubmissionKey.current = createIdempotencyKey();
-        message.success(`GRN ${res.data.grnNumber || ''} created!`);
+        message.success(`GRN ${res.data.grnNumber || ''} ${isEdit ? 'updated' : 'created'}!`);
         onSuccess?.();
         onClose();
       }
-    } catch (err) { message.error(err.message || 'Failed to create GRN'); }
+    } catch (err) { message.error(err.message || `Failed to ${isEdit ? 'update' : 'create'} GRN`); }
     finally { setLoading(false); }
   };
 
@@ -348,9 +403,9 @@ const CreateGRN = ({ onClose, onSuccess }) => {
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden">
           {/* Header */}
           <div className="shrink-0 border-b px-6 py-3 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-800">New Goods Receipt Note</h2>
+            <h2 className="text-xl font-bold text-gray-800">{isEdit ? `Edit GRN ${editGRN.grnNumber || ''}` : 'New Goods Receipt Note'}</h2>
             <div className="flex gap-2">
-              <Button type="primary" onClick={handleSubmit} loading={loading}>Save GRN</Button>
+              <Button type="primary" onClick={handleSubmit} loading={loading}>{isEdit ? 'Save Changes' : 'Save GRN'}</Button>
               <span className="cursor-pointer text-gray-400 hover:text-gray-700 text-xl px-1 ml-2" onClick={handleCancelCreateGRN}>✕</span>
             </div>
           </div>
@@ -366,11 +421,15 @@ const CreateGRN = ({ onClose, onSuccess }) => {
                   className="w-full"
                   size="large"
                   showSearch
+                  disabled={isEdit}
+                  value={isEdit ? (editGRN.poNumber || selectedPO?._id) : undefined}
                   filterOption={(input, option) => (option?.label ?? '').toLowerCase().includes(input.toLowerCase())}
-                  options={availablePOs.map(po => ({
-                    value: po._id,
-                    label: `${po.poNumber} - ${po.supplierName || po.supplier?.businessName || 'Supplier'} (₹${(po.grandTotal || 0).toLocaleString()})`,
-                  }))}
+                  options={isEdit
+                    ? [{ value: editGRN.poNumber || selectedPO?._id, label: editGRN.poNumber || 'Linked purchase order' }]
+                    : availablePOs.map(po => ({
+                      value: po._id,
+                      label: `${po.poNumber} - ${po.supplierName || po.supplier?.businessName || 'Supplier'} (₹${(po.grandTotal || 0).toLocaleString()})`,
+                    }))}
                   onChange={handleSelectPO}
                 />
               </div>

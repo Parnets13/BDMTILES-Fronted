@@ -23,7 +23,6 @@ const hrmsService = {
   // Backward-compatible alias: the backend now deactivates and never physically deletes.
   deleteEmployee: (id) => api.delete(`/hrms/employees/${id}`),
   exitEmployee: (id, data) => api.post(`/hrms/employees/${id}/exit`, data),
-  getEmployeeAppAccessOptions: () => api.get('/hrms/employees/app-access-options'),
   getEmployeeStats: () => api.get('/hrms/employees/stats'),
 
   // Attendance

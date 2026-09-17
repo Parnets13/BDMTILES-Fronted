@@ -3,7 +3,6 @@ import {
   Alert,
   Button,
   Card,
-  Checkbox,
   Col,
   DatePicker,
   Divider,
@@ -36,10 +35,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import hrmsService from '../../services/hrmsService.js';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
-// Non-app HR designations for staff who do NOT need mobile/app access.
-// App-role designations (Picking Staff, Sorting/Loading Staff, etc.) come from the
-// backend role catalog (roleOptions) so that Designation === Access, single source of truth.
-const NON_APP_DESIGNATIONS = ['Driver', 'Helper', 'Accountant', 'Office Assistant', 'Intern'];
+const DESIGNATIONS = ['Driver', 'Helper', 'Accountant', 'Office Assistant', 'Intern'];
 const EMPLOYMENT_TYPES = ['Full Time', 'Part Time', 'Contract', 'Daily Wage'];
 const SHIFTS = ['General', 'Morning (6AM-2PM)', 'Evening (2PM-10PM)', 'Night (10PM-6AM)'];
 const GENDERS = ['Male', 'Female', 'Other'];
@@ -47,7 +43,6 @@ const EMPLOYEE_STATUSES = ['Active', 'Inactive', 'On Notice'];
 
 const branchValue = (branch) => String(branch?._id || branch || '');
 const money = (value) => `₹${Number(value || 0).toLocaleString()}`;
-const accessColor = (status) => status === 'Active' ? 'green' : status === 'Inactive' ? 'red' : 'default';
 
 const EmployeeRegistration = () => {
   const { user, activeBranchId, setActiveBranch, branchEpoch } = useAuth();
@@ -57,7 +52,6 @@ const EmployeeRegistration = () => {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ department: undefined, status: undefined });
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, onNotice: 0, terminated: 0 });
-  const [roleOptions, setRoleOptions] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
   const [viewEmployee, setViewEmployee] = useState(null);
@@ -72,40 +66,6 @@ const EmployeeRegistration = () => {
       value: branchValue(branch),
       label: `${branch.branchCode ? `${branch.branchCode} — ` : ''}${branch.name}`,
     })), [user?.assignedBranches]);
-
-  // ── Multi-select Designation === Access ────────────────────────────────────
-  // An employee can hold SEVERAL app-access designations at once (e.g. Picking +
-  // Sorting + Loading). Checked roles are stored in appAccess.roles[]; the app
-  // grants the union of their permissions. roleOptions come from the backend:
-  // [{ value: 'picking_staff', label: 'Picking Staff' }, ...]
-  const roleToLabel = useMemo(() => {
-    const map = {};
-    roleOptions.forEach((option) => { map[option.value] = option.label; });
-    return map;
-  }, [roleOptions]);
-
-  // Checkbox options for the multi-select — one box per assignable app role.
-  const accessRoleCheckboxes = useMemo(
-    () => roleOptions.map((option) => ({ value: option.value, label: option.label })),
-    [roleOptions],
-  );
-
-  // Human-readable permission preview for a set of selected roles.
-  const rolePermissionPreview = useCallback((roles = []) => {
-    const preview = {
-      picking_staff: 'Picking: pick lists, picked/short/damaged, barcode·shade·batch',
-      sorting_staff: 'Sorting + Loading: sort, pack, ready for dispatch, scan-verify loading',
-      warehouse_manager: 'Full warehouse: picking, sorting, loading, dispatch, delivery',
-    };
-    return roles.map((role) => preview[role] || roleToLabel[role] || role);
-  }, [roleToLabel]);
-
-  // Watch the selected roles so the preview + derived designation stay live.
-  const selectedRoles = Form.useWatch(['appAccess', 'roles'], form) || [];
-  const hasAppAccess = selectedRoles.length > 0;
-  // The stored `designation` string is derived from the selected role labels so
-  // the employee table stays readable and designation always mirrors access.
-  const designationSummary = selectedRoles.map((role) => roleToLabel[role] || role).join(', ');
 
   const fetchStats = useCallback(async () => {
     if (!activeBranchId) return setStats({ total: 0, active: 0, inactive: 0, onNotice: 0, terminated: 0 });
@@ -148,13 +108,6 @@ const EmployeeRegistration = () => {
     fetchStats();
   }, [fetchEmployees, fetchStats]);
 
-  useEffect(() => {
-    if (!activeBranchId) return;
-    hrmsService.getEmployeeAppAccessOptions()
-      .then((response) => setRoleOptions(response.data?.roles || []))
-      .catch((error) => message.error(error.message || 'Failed to load app-access roles'));
-  }, [activeBranchId, branchEpoch]);
-
   const calculateSalary = (values) => {
     const gross = Number(values?.basicSalary || 0)
       + Number(values?.hra || 0)
@@ -177,7 +130,6 @@ const EmployeeRegistration = () => {
     employmentType: 'Full Time',
     shift: 'General',
     leaveBalance: { casual: 12, sick: 6, earned: 0, unpaid: 0 },
-    appAccess: { enabled: false, roles: [] },
   });
 
   const closeDrawer = () => {
@@ -189,27 +141,14 @@ const EmployeeRegistration = () => {
   const openDrawer = (employee = null) => {
     setEditingEmployee(employee);
     if (employee) {
-      // Pre-check the multi-select boxes from the roles the linked user satisfies.
-      const grantedRoles = employee.appAccess?.roles || [];
-      // Designation mirrors access when app roles exist; else keep the HR title.
-      // The designation Select uses mode="tags" (array value).
-      const designation = grantedRoles.length
-        ? [grantedRoles.map((role) => roleToLabel[role] || role).join(', ')]
-        : (employee.designation ? [employee.designation] : []);
+      const employeeFormValues = { ...employee };
+      delete employeeFormValues.appAccess;
       form.setFieldsValue({
-        ...employee,
-        designation,
+        ...employeeFormValues,
+        designation: employee.designation ? [employee.designation] : [],
         branchId: branchValue(employee.branchId),
         dateOfBirth: employee.dateOfBirth ? dayjs(employee.dateOfBirth) : null,
         dateOfJoining: employee.dateOfJoining ? dayjs(employee.dateOfJoining) : null,
-        appAccess: {
-          roles: grantedRoles,
-          enabled: Boolean(employee.appAccess?.enabled),
-          username: employee.appAccess?.username,
-          email: employee.appAccess?.email || employee.email,
-          phone: employee.appAccess?.phone || employee.mobile,
-          temporaryPassword: undefined,
-        },
       });
       calculateSalary(employee);
     } else {
@@ -224,30 +163,18 @@ const EmployeeRegistration = () => {
     try {
       setLoading(true);
       const values = await form.validateFields();
-      const appAccess = values.appAccess || {};
-      // Multi-select designations drive access: the ticked roles ARE the access.
-      // antd Checkbox.Group yields an array; ignore any empty/falsy entries.
-      const roles = (appAccess.roles || []).filter(Boolean);
-      // Designation string mirrors the access (or the free-typed HR title for
-      // non-app staff). The `designation` field uses mode="tags" so it's an array.
       const rawDesignation = Array.isArray(values.designation) ? values.designation[0] : values.designation;
-      const designation = roles.length
-        ? roles.map((role) => roleToLabel[role] || role).join(', ')
-        : (rawDesignation || '');
+      const designation = String(rawDesignation || '').trim();
       const payload = {
         ...values,
         designation,
         dateOfBirth: values.dateOfBirth ? values.dateOfBirth.format('YYYY-MM-DD') : null,
         dateOfJoining: values.dateOfJoining ? values.dateOfJoining.format('YYYY-MM-DD') : null,
-        appAccess: {
-          ...appAccess,
-          roles,
-          enabled: roles.length > 0,
-        },
       };
+      delete payload.appAccess;
       if (!designation) {
         setLoading(false);
-        message.error('Select a designation or at least one app-access role.');
+        message.error('Select or enter a designation.');
         return;
       }
       const response = editingEmployee
@@ -269,7 +196,7 @@ const EmployeeRegistration = () => {
       setLoading(true);
       const response = await hrmsService.deactivateEmployee(employee._id);
       if (!response.success) throw new Error(response.message || 'Deactivation failed');
-      message.success(response.message);
+      message.success('Employee deactivated. Records were preserved.');
       if (viewEmployee?._id === employee._id) setViewEmployee(response.data);
       await Promise.all([fetchEmployees(), fetchStats()]);
     } catch (error) {
@@ -293,7 +220,7 @@ const EmployeeRegistration = () => {
         exitReason: values.exitReason.trim(),
       });
       if (!response.success) throw new Error(response.message || 'Exit failed');
-      message.success(response.message);
+      message.success('Employee exit recorded. Records were preserved.');
       setExitEmployeeRecord(null);
       exitForm.resetFields();
       if (viewEmployee?._id === response.data?._id) setViewEmployee(response.data);
@@ -315,12 +242,6 @@ const EmployeeRegistration = () => {
     { title: 'Mobile', dataIndex: 'mobile', key: 'mobile', width: 120 },
     { title: 'Joining', dataIndex: 'dateOfJoining', key: 'dateOfJoining', width: 105, render: (value) => value ? dayjs(value).format('DD/MM/YY') : '-' },
     {
-      title: 'App Access', key: 'appAccess', width: 135,
-      render: (_, employee) => employee.appAccess?.linked
-        ? <Tag color={accessColor(employee.appAccess.status)}>{employee.appAccess.status}</Tag>
-        : <Tag>Not provisioned</Tag>,
-    },
-    {
       title: 'Status', dataIndex: 'status', key: 'status', width: 105,
       render: (status) => <Tag color={status === 'Active' ? 'green' : status === 'On Notice' ? 'orange' : 'red'}>{status || 'Active'}</Tag>,
     },
@@ -333,7 +254,7 @@ const EmployeeRegistration = () => {
           <Tooltip title="Record exit"><Button type="text" size="small" danger icon={<LogoutOutlined />} disabled={employee.status === 'Terminated'} onClick={() => openExit(employee)} /></Tooltip>
           <Popconfirm
             title="Deactivate this employee?"
-            description="The employee and references are preserved. Linked app access will be revoked."
+            description="The employee and references are preserved."
             okText="Deactivate"
             okButtonProps={{ danger: true }}
             onConfirm={() => handleDeactivate(employee)}
@@ -351,7 +272,7 @@ const EmployeeRegistration = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Employee Registration</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Branch-scoped employee records, lifecycle, and app access</p>
+          <p className="text-sm text-gray-500 mt-0.5">Branch-scoped employee records and lifecycle management</p>
         </div>
         <Button
           type="primary"
@@ -411,7 +332,7 @@ const EmployeeRegistration = () => {
             <div className="sticky top-0 z-10 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between rounded-t-xl">
               <div>
                 <h2 className="text-lg font-bold text-gray-800">{editingEmployee ? 'Edit Employee' : 'Add New Employee'}</h2>
-                <p className="text-xs text-gray-500">Passwords are accepted only as temporary credentials and are never displayed after save.</p>
+                <p className="text-xs text-gray-500">Maintain personal, employment, salary, leave, and lifecycle details.</p>
               </div>
               <Space>
                 <Button type="primary" onClick={handleSave} loading={loading} style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>{editingEmployee ? 'Update Employee' : 'Save Employee'}</Button>
@@ -452,21 +373,15 @@ const EmployeeRegistration = () => {
                     <Form.Item
                       name="designation"
                       label="Designation"
-                      rules={[{ required: true }]}
-                      extra={
-                        hasAppAccess
-                          ? <span className="text-xs text-green-600">Auto-set from App Access below</span>
-                          : <span className="text-xs text-gray-400">e.g. Driver, Accountant — or set App Access below</span>
-                      }>
+                      rules={[{ required: true, message: 'Select or enter a designation.' }]}
+                      extra={<span className="text-xs text-gray-400">Select a standard HR designation or enter another title</span>}>
                       <Select
-                        options={NON_APP_DESIGNATIONS.map((value) => ({ value, label: value }))}
+                        options={DESIGNATIONS.map((value) => ({ value, label: value }))}
                         showSearch
                         allowClear
-                        // Free-form allowed for HR titles not in the list.
                         mode="tags"
                         maxCount={1}
-                        placeholder="Select or type designation"
-                        disabled={hasAppAccess}
+                        placeholder="Select or enter designation"
                       />
                     </Form.Item>
                   </Col>
@@ -489,156 +404,6 @@ const EmployeeRegistration = () => {
                   <Col xs={24} md={8}><Form.Item name="empId" label="Employee Code"><Input placeholder="Auto-generated if empty" /></Form.Item></Col>
                   <Col xs={24} md={8}><Form.Item name="status" label="Status"><Select options={EMPLOYEE_STATUSES.map((value) => ({ value, label: value }))} disabled={editingEmployee?.status === 'Terminated'} /></Form.Item></Col>
                 </Row>
-
-                <Divider />
-                <h3 className="text-base font-semibold text-gray-700 mb-3">App Access</h3>
-
-                {/* ── Picking & Sorting mobile app callout ── */}
-                <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex items-start gap-3">
-                    <span className="text-2xl">📱</span>
-                    <div className="flex-1">
-                      <p className="font-semibold text-blue-800 mb-1">
-                        BDM Tiles — Picking &amp; Sorting mobile app
-                      </p>
-                      <p className="text-sm text-blue-700 mb-3">
-                        Enable app access to let this employee log in to the warehouse mobile app.
-                        The credentials you set here are their login details. They will be prompted
-                        to change the temporary password on first login.
-                      </p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                        <div className="rounded bg-white border border-blue-200 p-3">
-                          <p className="font-semibold text-blue-800 mb-1">📦 Picking Staff</p>
-                          <p className="text-gray-600 text-xs">
-                            Role: <code className="bg-blue-50 px-1 rounded">picking_staff</code>
-                          </p>
-                          <p className="text-gray-600 text-xs mt-1">
-                            Grants: assign self, start picking, record picked/short/damaged quantities,
-                            confirm barcode · shade · batch, and sorting.
-                          </p>
-                        </div>
-                        <div className="rounded bg-white border border-purple-200 p-3">
-                          <p className="font-semibold text-purple-800 mb-1">🔀 Sorting / Loading Staff</p>
-                          <p className="text-gray-600 text-xs">
-                            Role: <code className="bg-purple-50 px-1 rounded">sorting_staff</code>
-                          </p>
-                          <p className="text-gray-600 text-xs mt-1">
-                            Grants: verify sorting quantities, record discrepancies, pack (boxes + weight),
-                            mark ready for dispatch, and scan-verify vehicle loading.
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-xs text-blue-600 mt-2">
-                        💡 Tick every designation this employee works as — they can do all of them in the app.
-                        Selecting multiple grants the <strong>combined</strong> permissions.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <Alert
-                  className="mb-4"
-                  type={editingEmployee?.appAccess?.linked ? 'success' : 'info'}
-                  showIcon
-                  message={
-                    editingEmployee?.appAccess?.linked
-                      ? `Linked account — ${editingEmployee.appAccess.role ?? 'role unknown'} · ${editingEmployee.appAccess.status}`
-                      : 'No app account linked yet'
-                  }
-                  description={
-                    editingEmployee?.appAccess?.linked
-                      ? `Username: ${editingEmployee.appAccess.username}  ·  Email: ${editingEmployee.appAccess.email}${editingEmployee.appAccess.mustChangePassword ? '  ·  ⚠ Password change required on next login' : ''}`
-                      : 'Enable the toggle below to create login credentials for the BDM Tiles Picking & Sorting app. The employee must change their temporary password on first login.'
-                  }
-                />
-
-                {/* Multi-select designations = app access. Ticking any box grants access. */}
-                <Form.Item
-                  name={['appAccess', 'roles']}
-                  label="Designations / Access (select one or more)"
-                  extra="Each ticked designation adds its permissions. Leave all unticked for no app access.">
-                  <Checkbox.Group className="w-full">
-                    <Row gutter={[12, 12]}>
-                      {accessRoleCheckboxes.map((option) => (
-                        <Col xs={24} sm={12} md={8} key={option.value}>
-                          <Checkbox value={option.value} className="w-full">
-                            {option.label}
-                          </Checkbox>
-                        </Col>
-                      ))}
-                    </Row>
-                  </Checkbox.Group>
-                </Form.Item>
-
-                {hasAppAccess && (
-                  <>
-                    {/* Combined-permission preview for every ticked designation. */}
-                    <div className="mb-3 rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm">
-                      <p className="font-semibold text-green-800 mb-1">
-                        Combined app access ({selectedRoles.length} designation{selectedRoles.length > 1 ? 's' : ''})
-                      </p>
-                      <ul className="list-disc list-inside text-xs text-green-700 space-y-0.5">
-                        {rolePermissionPreview(selectedRoles).map((line, index) => (
-                          <li key={index}>{line}</li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <Row gutter={16} className="mb-2">
-                      <Col xs={24} md={5}>
-                        <Form.Item
-                          name={['appAccess', 'username']}
-                          label="Username"
-                          rules={[{ required: true, message: 'Username is required' }]}
-                          extra="Employee uses this to log in">
-                          <Input autoComplete="off" placeholder="e.g. ravi.picker" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={5}>
-                        <Form.Item
-                          name={['appAccess', 'email']}
-                          label="App Email"
-                          rules={[{ required: true, type: 'email', message: 'Valid email required' }]}
-                          extra="Can also be used to log in">
-                          <Input autoComplete="off" placeholder="employee@company.com" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={4}>
-                        <Form.Item
-                          name={['appAccess', 'phone']}
-                          label="App Phone"
-                          rules={[{ required: true, message: 'Phone is required' }]}>
-                          <Input placeholder="10-digit mobile" />
-                        </Form.Item>
-                      </Col>
-                      <Col xs={24} md={5}>
-                        <Form.Item
-                          name={['appAccess', 'temporaryPassword']}
-                          label={editingEmployee?.appAccess?.linked ? 'Reset Temporary Password' : 'Temporary Password'}
-                          rules={[
-                            ...(editingEmployee?.appAccess?.linked ? [] : [{ required: true, message: 'Temporary password is required' }]),
-                            { min: 10, message: 'Use at least 10 characters' },
-                            {
-                              validator: (_, value) => !value || (
-                                /[a-z]/.test(value)
-                                && /[A-Z]/.test(value)
-                                && /\d/.test(value)
-                                && /[^A-Za-z0-9]/.test(value)
-                              ) ? Promise.resolve() : Promise.reject(new Error('Include uppercase, lowercase, number, and special character')),
-                            },
-                          ]}
-                          extra={
-                            editingEmployee?.appAccess?.linked
-                              ? 'Leave blank to keep the current password.'
-                              : '⚠ Employee must change this on first login (min 10 chars, mixed case + number + special).'
-                          }>
-                          <Input.Password autoComplete="new-password" placeholder="Min 10 chars" />
-                        </Form.Item>
-                      </Col>
-                    </Row>
-
-                  </>
-                )}
 
                 <Divider />
                 <h3 className="text-base font-semibold text-gray-700 mb-3">Bank Details</h3>
@@ -696,9 +461,10 @@ const EmployeeRegistration = () => {
         onOk={handleExit}
         okText="Confirm Exit"
         okButtonProps={{ danger: true }}
+        width={700}
         confirmLoading={loading}
       >
-        <Alert className="mb-4" type="warning" showIcon message="This terminates employment and guarantees linked app access is revoked. Records are preserved." />
+        <Alert className="mb-4" type="warning" showIcon message="This records the end of employment while preserving employee history and references." />
         <Form form={exitForm} layout="vertical">
           <Form.Item name="exitDate" label="Exit Date" rules={[{ required: true }]}><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item>
           <Form.Item name="exitReason" label="Exit Reason" rules={[{ required: true, whitespace: true }]}><Input.TextArea rows={4} maxLength={500} showCount /></Form.Item>
@@ -723,20 +489,6 @@ const EmployeeRegistration = () => {
               <div><span className="text-gray-500 block">Email</span><strong>{viewEmployee.email || '-'}</strong></div>
               <div><span className="text-gray-500 block">Joined</span><strong>{viewEmployee.dateOfJoining ? dayjs(viewEmployee.dateOfJoining).format('DD/MM/YYYY') : '-'}</strong></div>
               <div><span className="text-gray-500 block">Net Salary</span><strong>{money(viewEmployee.netSalary)}</strong></div>
-            </div>
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-semibold text-gray-700">Linked App Access</h3>
-                <Tag color={accessColor(viewEmployee.appAccess?.status)}>{viewEmployee.appAccess?.status || 'Not provisioned'}</Tag>
-              </div>
-              {viewEmployee.appAccess?.linked ? (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div><span className="text-gray-500 block">Username</span><strong>{viewEmployee.appAccess.username}</strong></div>
-                  <div><span className="text-gray-500 block">Role</span><strong>{roleOptions.find((option) => option.value === viewEmployee.appAccess.role)?.label || viewEmployee.appAccess.role}</strong></div>
-                  <div><span className="text-gray-500 block">Email</span><strong>{viewEmployee.appAccess.email}</strong></div>
-                  <div><span className="text-gray-500 block">Password change</span><strong>{viewEmployee.appAccess.mustChangePassword ? 'Required' : 'Not flagged'}</strong></div>
-                </div>
-              ) : <span className="text-gray-500">No user account is linked to this employee.</span>}
             </div>
             {viewEmployee.status === 'Terminated' && (
               <div className="rounded-lg border border-red-200 bg-red-50 p-4">

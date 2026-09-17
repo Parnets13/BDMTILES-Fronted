@@ -439,7 +439,7 @@ const App = () => {
         <Route
           path="/inventory/stock-adjustment"
           element={
-            <ProtectedRoute requiredPermission="stock.adjustment">
+            <ProtectedRoute requiredAnyPermissions={['stock.adjustment.create', 'stock.adjustment.submit', 'stock.adjustment.approve', 'stock.adjustment.reverse', 'stock.adjustment']}>
               <StockAdjustmentPage />
             </ProtectedRoute>
           }
@@ -558,7 +558,7 @@ const App = () => {
         <Route
           path="/dealer-app/order-requests"
           element={
-            <ProtectedRoute requiredPermission="dealer.order.requests">
+            <ProtectedRoute requiredPermission="dealer.order_request.review">
               <DealerOrderRequests />
             </ProtectedRoute>
           }
@@ -567,7 +567,7 @@ const App = () => {
         {/* Sales Executive App */}
         <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEAttendanceViewer /></ProtectedRoute>} />
         <Route path="/se-app/dealer-visits" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerVisits /></ProtectedRoute>} />
-        <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerAssignment /></ProtectedRoute>} />
+        <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredPermission="dealer.assignment.manage"><SEDealerAssignment /></ProtectedRoute>} />
         <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="se.route.plan"><SERoutePlan /></ProtectedRoute>} />
         <Route path="/se-app/dealer-insights" element={<ProtectedRoute requiredPermission="se.dealer.insights"><SEDealerInsights /></ProtectedRoute>} />
         <Route path="/se-app/collections" element={<ProtectedRoute requiredPermission="se.collections.view"><SECollections /></ProtectedRoute>} />
@@ -585,7 +585,7 @@ const App = () => {
         <Route path="/de-app/history" element={<ProtectedRoute requiredPermission="de.history.view"><DEHistory /></ProtectedRoute>} />
 
         {/* Inventory — additional */}
-        <Route path="/inventory/physical-audit" element={<ProtectedRoute requiredPermission="stock.adjustment"><PhysicalAudit /></ProtectedRoute>} />
+        <Route path="/inventory/physical-audit" element={<ProtectedRoute requiredAnyPermissions={['stock.audit.create', 'stock.audit.count', 'stock.audit.submit', 'stock.audit.approve', 'stock.audit.reverse']}><PhysicalAudit /></ProtectedRoute>} />
         <Route path="/inventory/stock-alerts" element={<ProtectedRoute requiredPermission="stock.view"><StockAlerts /></ProtectedRoute>} />
         <Route path="/inventory/samples" element={<ProtectedRoute requiredPermission="stock.view"><SampleManagement /></ProtectedRoute>} />
 

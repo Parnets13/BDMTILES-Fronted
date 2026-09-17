@@ -441,7 +441,8 @@ const SalesReturnPage = () => {
                             <td className="px-3 py-2"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                             <td className="px-3 py-2">
                               <div className="font-medium">{item.productName}</div>
-                              <div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div>
+                            <div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div>
+                              <div className="text-[10px] text-gray-400">SO line: {item.salesOrderItem || 'legacy/unlinked'} · Context: {item.returnContext || 'legacy_invoice'}</div>
                             </td>
                             <td className="px-3 py-2 text-right font-medium">{item.returnQty || item.quantity || 0} {item.unit}</td>
                             <td className="px-3 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>

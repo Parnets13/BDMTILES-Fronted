@@ -327,7 +327,7 @@ const ExpenseManagement = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
         onOk={handleSubmit}
         okText="Submit"
-        width={600}
+        width={800}
         confirmLoading={loading}
         destroyOnHidden
       >
@@ -389,7 +389,7 @@ const ExpenseManagement = () => {
         onOk={handleReject}
         okText="Reject"
         okButtonProps={{ danger: true }}
-        destroyOnHidden
+        width={560}
       >
         <div className="py-2">
           <label className="text-sm text-gray-600 block mb-2">Reason for rejection *</label>

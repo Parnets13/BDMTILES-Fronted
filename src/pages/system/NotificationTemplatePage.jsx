@@ -43,7 +43,7 @@ const NotificationTemplatePage = () => {
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={templates} rowKey="_id" size="middle" pagination={false} />
       </div>
-      <Modal title={editRecord ? 'Edit Template' : 'New Template'} open={showCreate} onCancel={() => { setShowCreate(false); setEditRecord(null); }} footer={null} width={700} destroyOnHidden>
+      <Modal title={editRecord ? 'Edit Template' : 'New Template'} open={showCreate} onCancel={() => { setShowCreate(false); setEditRecord(null); }} footer={null} width={900} destroyOnHidden>
         <TemplateForm editRecord={editRecord} onSuccess={() => { setShowCreate(false); setEditRecord(null); fetchTemplates(); }} onCancel={() => { setShowCreate(false); setEditRecord(null); }} />
       </Modal>
     </div>

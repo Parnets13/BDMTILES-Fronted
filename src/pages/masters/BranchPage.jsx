@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Button, Card, Col, Form, Input, Modal, Popconfirm, Row, Select,
+  Alert, Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select,
   Space, Statistic, Table, Tag, message,
 } from 'antd';
 import {
@@ -20,6 +20,9 @@ const initialValues = {
   status: 'active',
   fiscalYearStartMonth: 4,
   timezone: 'Asia/Kolkata',
+  reorderFallbackLevel: 10,
+  minStockFallbackLevel: 5,
+  minimumReorderQuantity: 10,
 };
 
 const BranchPage = () => {
@@ -72,6 +75,9 @@ const BranchPage = () => {
         fiscalYearStartMonth: branch.settings?.fiscalYearStartMonth || 4,
         timezone: branch.settings?.timezone || 'Asia/Kolkata',
         invoiceTerms: branch.settings?.invoiceTerms || '',
+        reorderFallbackLevel: branch.settings?.inventory?.reorderFallbackLevel ?? 10,
+        minStockFallbackLevel: branch.settings?.inventory?.minStockFallbackLevel ?? 5,
+        minimumReorderQuantity: branch.settings?.inventory?.minimumReorderQuantity ?? 10,
       });
       setOpen(true);
     } catch (error) {
@@ -83,8 +89,21 @@ const BranchPage = () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      const { fiscalYearStartMonth, timezone, invoiceTerms, ...branch } = values;
-      const payload = { branch: undefined, ...branch, settings: { fiscalYearStartMonth, timezone, invoiceTerms } };
+      const {
+        fiscalYearStartMonth, timezone, invoiceTerms,
+        reorderFallbackLevel, minStockFallbackLevel, minimumReorderQuantity,
+        ...branch
+      } = values;
+      const payload = {
+        branch: undefined,
+        ...branch,
+        settings: {
+          fiscalYearStartMonth,
+          timezone,
+          invoiceTerms,
+          inventory: { reorderFallbackLevel, minStockFallbackLevel, minimumReorderQuantity },
+        },
+      };
       const response = editing
         ? await masterService.updateBranch(editing._id, payload)
         : await masterService.createBranch(payload);
@@ -182,7 +201,7 @@ const BranchPage = () => {
         />
       </div>
 
-      <Modal title={editing ? 'Edit Branch' : 'Add Branch'} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} width={760} destroyOnHidden>
+      <Modal title={editing ? 'Edit Branch' : 'Add Branch'} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} width={900} destroyOnHidden>
         <Form form={form} layout="vertical" initialValues={initialValues} className="mt-4">
           <Row gutter={16}>
             <Col span={8}><Form.Item name="branchCode" label="Branch Code" rules={[{ required: true }]}><Input placeholder="BLR" /></Form.Item></Col>
@@ -208,9 +227,16 @@ const BranchPage = () => {
             <Col span={8}><Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="fiscalYearStartMonth" label="Fiscal Year Start"><Select options={[{ value: 4, label: 'April' }, { value: 1, label: 'January' }]} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="timezone" label="Timezone"><Input /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="fiscalYearStartMonth" label="Fiscal Year Start"><Select options={[{ value: 4, label: 'April' }, { value: 1, label: 'January' }]} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="timezone" label="Timezone"><Input /></Form.Item></Col>
           </Row>
+          <div className="text-sm font-semibold text-gray-700 mb-2">Inventory alert defaults</div>
+          <Row gutter={16}>
+            <Col xs={24} md={8}><Form.Item name="minStockFallbackLevel" label="Minimum stock fallback" tooltip="Critical threshold used when a product minimum is not configured." rules={[{ required: true }]}><InputNumber min={0} className="w-full" /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="reorderFallbackLevel" label="Reorder fallback" tooltip="Low-stock threshold used when a product reorder level is not configured." rules={[{ required: true }]}><InputNumber min={1} className="w-full" /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="minimumReorderQuantity" label="Minimum reorder quantity" rules={[{ required: true }]}><InputNumber min={1} className="w-full" /></Form.Item></Col>
+          </Row>
+          <Alert type="info" showIcon className="mb-4" message="Effective reorder is always at least the effective minimum stock level." />
           <Form.Item name="invoiceTerms" label="Default Invoice Terms"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>
