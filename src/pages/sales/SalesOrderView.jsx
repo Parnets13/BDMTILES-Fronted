@@ -638,7 +638,15 @@ const SalesOrderView = ({ orderId, branchId, readOnlyBranch = false, onClose, on
               <div className="value">{order.dealerName || order.dealer?.businessName || order.customerName || '—'}</div>
               <div style={{ fontSize: '11px', color: '#666', marginTop: '3px' }}>{order.dealer?.city}</div>
               {order.dealer?.gstin && <div style={{ fontSize: '10px', color: '#888' }}>GSTIN: {order.dealer.gstin}</div>}
-              <div style={{ fontSize: '10px', color: '#888' }}>Code: {order.dealerCode || order.dealer?.dealerCode || '—'}</div>
+              {/* From origin/master: walk-in and storefront orders have no dealer
+                  code, so fall back to the customer's phone number. */}
+              <div style={{ fontSize: '10px', color: '#888' }}>
+                {order.dealerCode || order.dealer?.dealerCode
+                  ? `Code: ${order.dealerCode || order.dealer?.dealerCode}`
+                  : order.customerPhone
+                    ? `Phone: ${order.customerPhone}`
+                    : '—'}
+              </div>
             </div>
             <div className="info-box">
               <div className="label">Ship To</div>

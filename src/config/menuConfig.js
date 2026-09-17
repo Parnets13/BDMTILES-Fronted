@@ -43,6 +43,9 @@ import {
   Clock,
   Briefcase,
   ReceiptIcon,
+  Globe,
+  Image,
+  Megaphone,
 } from 'lucide-react';
 
 /**
@@ -113,12 +116,98 @@ const menuConfig = {
       },
     ],
   },
+  webManagement: {
+    id: 'web-management',
+    title: 'Web Management',
+    icon: Globe,
+    hasSubmenu: true,
+    modulePermissions: ['webmanagement.manage'],
+    items: [
+      {
+        id: 'web-site-settings',
+        title: 'Site Settings',
+        icon: Settings,
+        path: '/web-management/site-settings',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-marquee',
+        title: 'Top Bar (Scrolling)',
+        icon: Megaphone,
+        path: '/web-management/top-bar',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-banners',
+        title: 'Home Banner',
+        icon: Image,
+        path: '/web-management/banners',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-categories',
+        title: 'Category Management',
+        icon: Archive,
+        path: '/web-management/categories',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-pincodes',
+        title: 'Delivery Pincodes',
+        icon: MapPin,
+        path: '/web-management/pincodes',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-pincode-requests',
+        title: 'Delivery Requests',
+        icon: MessageCircle,
+        path: '/web-management/pincode-requests',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-testimonials',
+        title: 'What our customers say',
+        icon: MessageCircle,
+        path: '/web-management/testimonials',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-video-testimonials',
+        title: 'Video Testimonials',
+        icon: Image,
+        path: '/web-management/video-testimonials',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-tile-rooms',
+        title: 'Shop by Room',
+        icon: Building2,
+        path: '/web-management/tile-rooms',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-tile-types',
+        title: 'Shop by Tile Type',
+        icon: Package,
+        path: '/web-management/tile-types',
+        permission: 'webmanagement.manage',
+      },
+      {
+        id: 'web-tile-sizes',
+        title: 'Shop by Size',
+        icon: Tag,
+        path: '/web-management/tile-sizes',
+        permission: 'webmanagement.manage',
+      },
+    ],
+  },
   masters: {
     id: 'masters',
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master'],
+    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage'],
     items: [
       {
         id: 'product-master',
@@ -225,6 +314,13 @@ const menuConfig = {
         path: '/masters/customers',
         permission: 'customer.master',
       },
+      {
+        id: 'bdm-cash-wallet',
+        title: 'BDM Cash Wallets',
+        icon: Wallet,
+        path: '/masters/wallets',
+        permission: 'wallet.manage',
+      },
     ],
   },
   salesPurchase: {
@@ -239,6 +335,13 @@ const menuConfig = {
         title: 'Sales Order Dashboard',
         icon: BarChart,
         path: '/sales-purchase/sales-order-dashboard',
+        permission: 'sales.order.dashboard',
+      },
+      {
+        id: 'website-orders',
+        title: 'Website Orders',
+        icon: Globe,
+        path: '/sales-purchase/website-orders',
         permission: 'sales.order.dashboard',
       },
       {
@@ -1146,6 +1249,7 @@ export const getRoleMenuSections = () => {
   const allSections = [
     menuConfig.dashboard,
     menuConfig.system,
+    menuConfig.webManagement,
     menuConfig.masters,
     menuConfig.salesPurchase,
     menuConfig.inventory,

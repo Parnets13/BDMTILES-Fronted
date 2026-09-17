@@ -126,6 +126,8 @@ const ProductMaster = () => {
         brand: product.brand?._id || product.brand,
         category: product.category?._id || product.category,
         subcategory: product.subcategory?._id || product.subcategory,
+        // Convert arrays to editable string format for the textarea fields
+        videos: Array.isArray(product.videos) ? product.videos.join('\n') : (product.videos || ''),
       });
     } else {
       form.resetFields();
@@ -143,7 +145,17 @@ const ProductMaster = () => {
   };
 
   const removeImage = (index) => {
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    const preview = imagePreviews[index];
+    // Free blob URL memory if it was a newly selected file
+    if (preview?.startsWith('blob:')) URL.revokeObjectURL(preview);
+
+    // For newly added files: find which file index corresponds to this preview index.
+    // Existing images come first in imagePreviews, so new files start at offset = (existing count).
+    const existingCount = imagePreviews.filter(p => !p.startsWith('blob:')).length;
+    if (index >= existingCount) {
+      const fileIndex = index - existingCount;
+      setImageFiles(prev => prev.filter((_, i) => i !== fileIndex));
+    }
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
@@ -168,20 +180,39 @@ const ProductMaster = () => {
       setLoading(true);
       const values = await form.validateFields();
 
-      // Upload images first if any new files selected
-      let imageUrls = [];
+      // Upload any newly selected files first
+      let newImageUrls = [];
       if (imageFiles.length > 0) {
         const uploadRes = await productService.uploadImages(imageFiles);
         if (uploadRes.success) {
-          imageUrls = uploadRes.data;
+          newImageUrls = uploadRes.data;
         }
       }
-      // Keep existing image URLs (for edit mode)
-      if (editingProduct?.images) {
-        imageUrls = [...editingProduct.images, ...imageUrls];
-      }
 
-      const productData = { ...values, images: imageUrls };
+      // Build the final image list from imagePreviews (reflects user's removals)
+      // Split into:
+      //   - existing URLs (already on the server — not blob: objects)
+      //   - newly uploaded URLs (just returned from upload)
+      const existingUrls = imagePreviews
+        .filter(src => !src.startsWith('blob:'))            // kept existing images
+        .map(src => {
+          // Strip the API origin prefix so we store relative paths in the DB
+          const apiOrigin = (import.meta.env.VITE_API_BASE_URL || '')
+            .replace(/\/api\/v1\/?$/, '');
+          return apiOrigin && src.startsWith(apiOrigin)
+            ? src.slice(apiOrigin.length)
+            : src;
+        });
+      const imageUrls = [...existingUrls, ...newImageUrls];
+
+      const productData = {
+        ...values,
+        images: imageUrls,
+        // Convert textarea newline-separated strings back to arrays for the backend
+        videos: typeof values.videos === 'string'
+          ? values.videos.split('\n').map(v => v.trim()).filter(Boolean)
+          : (values.videos || []),
+      };
 
       let res;
       if (editingProduct) {
@@ -497,11 +528,6 @@ const ProductMaster = () => {
                     <Input placeholder="Enter alias / alternate name" />
                   </Form.Item>
                 </Col>
-                <Col span={8}>
-                  <Form.Item name="description" label="Description">
-                    <Input.TextArea rows={1} placeholder="Enter product description" />
-                  </Form.Item>
-                </Col>
                 <Col span={4}>
                   <Form.Item name="unit" label="Unit" rules={[{ required: true }]}>
                     <Select options={UNITS.map(u => ({ value: u, label: u }))} placeholder="Select Unit" />
@@ -531,6 +557,39 @@ const ProductMaster = () => {
                 </Form.List>
                 <div className="text-xs text-blue-700 mt-2">Base UOM and factors become immutable after stock history exists. Packaging/display fields remain editable.</div>
               </div>
+              {/* Product Details — the four tabs shown on the website product page */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                <div className="text-sm font-semibold text-blue-800 mb-1">📄 Product Details <span className="font-normal text-blue-600">(shown as tabs on the website product page)</span></div>
+                <div className="text-xs text-blue-500 mb-3">Each field maps to a tab: Description / Applications / Maintenance / Disclaimer. Leave blank to use the default text.</div>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="description" label="Description" tooltip="Short paragraph shown in the Description tab on the product page">
+                      <Input.TextArea rows={3} placeholder="e.g. Premium white 600×600 mm vitrified floor tile with a smooth matt finish. Low water absorption, stain resistant and consistent shade — ideal for living rooms, bedrooms and halls." />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="applications" label="Applications" tooltip="One application area per line — shown as a bullet list in the Applications tab">
+                      <Input.TextArea rows={4} placeholder={`Living Room\nBedroom\nHall & Balcony\nBathroom & Kitchen\nElevation & Facade\nOffice / Commercial\nParking & Passage`} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="maintenance" label="Maintenance" tooltip="One tip per line — shown as a bullet list in the Maintenance tab">
+                      <Input.TextArea rows={4} placeholder={`Clean regularly with a soft mop and mild detergent.\nAvoid harsh acids or abrasive scrubbers on the surface.\nWipe spills promptly to prevent staining.\nUse recommended grout and sealant during installation.`} />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={16}>
+                  <Col span={24}>
+                    <Form.Item name="disclaimer" label="Disclaimer" tooltip="Shown in the Disclaimer tab on the product page">
+                      <Input.TextArea rows={2} placeholder="e.g. Product colours and images shown are indicative and may vary slightly from the actual item due to screen settings and manufacturing batches." />
+                    </Form.Item>
+                  </Col>
+                </Row>
+              </div>
 
               <Divider className="my-4" />
 
@@ -548,6 +607,8 @@ const ProductMaster = () => {
                 <Col span={4}><Form.Item name="applicationArea" label="Application"><Select placeholder="Area" allowClear showSearch options={APPLICATION_AREAS.map(a => ({ value: a, label: a }))} /></Form.Item></Col>
                 <Col span={4}><Form.Item name="antiSkidRating" label="Anti-Skid"><Select placeholder="Rating" allowClear options={ANTI_SKID.map(a => ({ value: a, label: a || 'None' }))} /></Form.Item></Col>
                 <Col span={4}><Form.Item name="countryOfOrigin" label="Origin"><Select showSearch allowClear options={ORIGINS.map(o => ({ value: o, label: o }))} /></Form.Item></Col>
+                <Col span={4}><Form.Item name="waterAbsorption" label="Water Absorption" tooltip="e.g. <0.5% — shown on product spec table"><Input placeholder="e.g. <0.5%" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="breakingStrength" label="Breaking Strength" tooltip="e.g. 2000N — structural strength rating"><Input placeholder="e.g. 2000N" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="manufacturer" label="Manufacturer"><Input placeholder="If different from brand" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="barcode" label="Barcode"><Input placeholder="Barcode/EAN" /></Form.Item></Col>
               </Row>
@@ -603,9 +664,25 @@ const ProductMaster = () => {
                 <Col span={4}><Form.Item name="productType" label="Product Type"><Select options={[{value:'Regular Product',label:'Regular Product'},{value:'AO Product',label:'AO Product'}]} /></Form.Item></Col>
                 <Col span={4}><Form.Item name="isNewArrival" label="New Arrival" valuePropName="checked"><Switch /></Form.Item></Col>
                 <Col span={4}><Form.Item name="isFeatured" label="Featured" valuePropName="checked"><Switch /></Form.Item></Col>
+                <Col span={4}><Form.Item name="isDealOfWeek" label="Deal of the Week" valuePropName="checked"><Switch /></Form.Item></Col>
                 <Col span={4}><Form.Item name="onlineVisible" label="Online Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
                 <Col span={4}><Form.Item name="dealerVisible" label="Dealer Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
               </Row>
+              <Row gutter={16}>
+                <Col span={4}><Form.Item name="rating" label="Rating (0-5)" tooltip="Average customer rating shown on the website"><InputNumber min={0} max={5} step={0.1} className="w-full" placeholder="e.g. 4.5" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="reviewCount" label="Review Count" tooltip="Number of reviews shown on the website"><InputNumber min={0} className="w-full" placeholder="e.g. 128" /></Form.Item></Col>
+              </Row>
+
+              <Divider className="my-3" />
+
+              {/* Tally Integration */}
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                <div className="text-sm font-semibold text-gray-700 mb-2">🔗 Tally Integration</div>
+                <Row gutter={16}>
+                  <Col span={12}><Form.Item name="tallyStockItemName" label="Tally Stock Item Name" tooltip="Must match exactly as it appears in Tally"><Input placeholder="e.g. KAJARIA VITRIFIED 600x600 MATT WHITE" /></Form.Item></Col>
+                  <Col span={12}><Form.Item name="tallyGUID" label="Tally GUID" tooltip="Tally-generated GUID (leave blank if creating from CRM)"><Input placeholder="Auto-populated after first Tally sync" /></Form.Item></Col>
+                </Row>
+              </div>
 
               <Divider className="my-3" />
 
@@ -629,6 +706,29 @@ const ProductMaster = () => {
                 </div>
                 <p className="text-xs text-gray-400 mt-2">Upload product images (JPG, PNG, WEBP). Max 5MB each, up to 10 images.</p>
               </div>
+
+              {/* Videos & Catalogue */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Product Videos <span className="text-gray-400 font-normal">(optional)</span></label>
+                <Form.Item name="videos" noStyle>
+                  <Input.TextArea
+                    rows={2}
+                    placeholder="Paste video URLs, one per line (YouTube, Vimeo, direct MP4, etc.)"
+                    className="font-mono text-xs"
+                  />
+                </Form.Item>
+                <p className="text-xs text-gray-400 mt-1">One URL per line. These show on the product page on the website.</p>
+              </div>
+
+              <Row gutter={16} className="mb-4">
+                <Col span={16}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Catalogue PDF URL <span className="text-gray-400 font-normal">(optional)</span></label>
+                  <Form.Item name="cataloguePdf" noStyle>
+                    <Input placeholder="https://... or /uploads/..." />
+                  </Form.Item>
+                  <p className="text-xs text-gray-400 mt-1">Direct link to a PDF brochure or catalogue for this product.</p>
+                </Col>
+              </Row>
 
               {/* Action Buttons */}
               <div className="mt-6 flex justify-end gap-3 pb-6">
@@ -693,6 +793,8 @@ const ProductMaster = () => {
                   <PreviewItem label="Application" value={previewData.applicationArea} />
                   <PreviewItem label="Anti-Skid" value={previewData.antiSkidRating} />
                   <PreviewItem label="Origin" value={previewData.countryOfOrigin} />
+                  <PreviewItem label="Water Absorption" value={previewData.waterAbsorption} />
+                  <PreviewItem label="Breaking Strength" value={previewData.breakingStrength} />
                   <PreviewItem label="Manufacturer" value={previewData.manufacturer} />
                   <PreviewItem label="Barcode" value={previewData.barcode} />
                   <PreviewItem label="Pcs/Box" value={previewData.piecesPerBox} />
@@ -722,9 +824,20 @@ const ProductMaster = () => {
                   <PreviewItem label="Product Type" value={previewData.productType} />
                   <PreviewItem label="New Arrival" value={previewData.isNewArrival ? 'Yes' : 'No'} />
                   <PreviewItem label="Featured" value={previewData.isFeatured ? 'Yes' : 'No'} />
+                  <PreviewItem label="Deal of the Week" value={previewData.isDealOfWeek ? '🔥 Yes' : 'No'} />
                   <PreviewItem label="Online Visible" value={previewData.onlineVisible ? 'Yes' : 'No'} />
                   <PreviewItem label="Dealer Visible" value={previewData.dealerVisible ? 'Yes' : 'No'} />
                 </div>
+                {(previewData.description || previewData.applications || previewData.maintenance || previewData.disclaimer) && (
+                  <>
+                    <Divider className="my-3" />
+                    <h4 className="font-semibold text-gray-700 text-sm mb-2">📄 Product Details (Website Tabs)</h4>
+                    {previewData.description && <div className="mb-2"><span className="text-xs font-bold text-gray-500">Description:</span><p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{previewData.description}</p></div>}
+                    {previewData.applications && <div className="mb-2"><span className="text-xs font-bold text-gray-500">Applications:</span><p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{previewData.applications}</p></div>}
+                    {previewData.maintenance && <div className="mb-2"><span className="text-xs font-bold text-gray-500">Maintenance:</span><p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{previewData.maintenance}</p></div>}
+                    {previewData.disclaimer && <div className="mb-2"><span className="text-xs font-bold text-gray-500">Disclaimer:</span><p className="text-xs text-gray-700 mt-0.5 whitespace-pre-wrap">{previewData.disclaimer}</p></div>}
+                  </>
+                )}
               </div>
             </div>
           </>
@@ -793,6 +906,8 @@ const ViewProductModal = ({ product, onClose }) => {
               <PreviewItem label="Application" value={product.applicationArea} />
               <PreviewItem label="Anti-Skid" value={product.antiSkidRating} />
               <PreviewItem label="Origin" value={product.countryOfOrigin} />
+              <PreviewItem label="Water Absorption" value={product.waterAbsorption} />
+              <PreviewItem label="Breaking Strength" value={product.breakingStrength} />
               <PreviewItem label="Manufacturer" value={product.manufacturer} />
               <PreviewItem label="Barcode" value={product.barcode} />
               <PreviewItem label="Pcs/Box" value={product.piecesPerBox} />
@@ -820,10 +935,44 @@ const ViewProductModal = ({ product, onClose }) => {
               <PreviewItem label="Reorder Level" value={product.reorderLevel} />
               <PreviewItem label="New Arrival" value={product.isNewArrival ? 'Yes' : 'No'} />
               <PreviewItem label="Featured" value={product.isFeatured ? 'Yes' : 'No'} />
+              <PreviewItem label="Deal of the Week" value={product.isDealOfWeek ? '🔥 Yes' : 'No'} />
               <PreviewItem label="Online Visible" value={product.onlineVisible ? 'Yes' : 'No'} />
               <PreviewItem label="Dealer Visible" value={product.dealerVisible ? 'Yes' : 'No'} />
             </div>
           </div>
+          {(product.tallyStockItemName || product.tallyGUID) && (
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-semibold text-gray-700 text-sm mb-3">🔗 Tally Integration</h4>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <PreviewItem label="Tally Stock Item Name" value={product.tallyStockItemName} />
+                <PreviewItem label="Tally GUID" value={product.tallyGUID} />
+                <PreviewItem label="Tally Sync Status" value={product.tallySyncStatus} />
+              </div>
+            </div>
+          )}
+          {(product.videos?.length > 0 || product.cataloguePdf) && (
+            <div className="border-t pt-4 mt-4">
+              <h4 className="font-semibold text-gray-700 text-sm mb-3">Media</h4>
+              {product.cataloguePdf && (
+                <div className="mb-2 text-sm">
+                  <span className="text-gray-500">Catalogue PDF: </span>
+                  <a href={product.cataloguePdf} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">
+                    {product.cataloguePdf}
+                  </a>
+                </div>
+              )}
+              {product.videos?.length > 0 && (
+                <div className="text-sm">
+                  <span className="text-gray-500">Videos:</span>
+                  <ul className="mt-1 space-y-1">
+                    {product.videos.map((v, i) => (
+                      <li key={i}><a href={v} target="_blank" rel="noopener noreferrer" className="text-blue-600 underline break-all">{v}</a></li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </>

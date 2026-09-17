@@ -96,6 +96,16 @@ const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL
     : DEVELOPMENT_API_URL);
 
 const API_BASE_URL = getApiBaseUrl();
+
+// Server origin (without the /api/v1 suffix) — used to resolve /uploads/... image URLs.
+export const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+
+/** Resolve a possibly-relative upload path (e.g. /uploads/web/x.jpg) to an absolute URL. */
+export const resolveUploadUrl = (url) => {
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${API_ORIGIN}${url.startsWith('/') ? '' : '/'}${url}`;
+};
 const NO_AUTO_REFRESH_PATHS = [
   '/auth/login',
   '/auth/refresh-token',
@@ -156,7 +166,11 @@ api.interceptors.request.use(
       delete config.headers?.['Content-Type'];
     }
     if (token) config.headers.Authorization = `Bearer ${token}`;
-    if (activeBranchId && !String(config.url || '').startsWith('/auth/')) {
+    // Web Management (storefront CMS) content is global — never branch-scoped —
+    // so we skip the branch header for it (like /auth/).
+    const url = String(config.url || '');
+    const isBranchless = url.startsWith('/auth/') || url.startsWith('/web-management');
+    if (activeBranchId && !isBranchless) {
       config.headers['X-Branch-Id'] = activeBranchId;
     }
     return config;

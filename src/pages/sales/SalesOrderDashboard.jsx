@@ -296,6 +296,16 @@ const SalesOrderDashboard = () => {
     { title: 'Status', dataIndex: 'status', width: 115, render: status => <Tag color={STATUS_COLORS[status]}>{status?.replace(/_/g, ' ')}</Tag> },
     { title: 'Payment', dataIndex: 'paymentStatus', width: 90, render: status => <Tag color={PAYMENT_COLORS[status]}>{status}</Tag> },
     {
+      // Kept from origin/master: Tally sync visibility alongside the existing
+      // tallySyncStatus filter.
+      title: 'Tally', dataIndex: 'tallySyncStatus', width: 90,
+      render: status => (
+        <Tag color={status === 'synced' ? 'green' : status === 'pending' ? 'orange' : status === 'failed' ? 'red' : 'default'}>
+          {status === 'not_synced' ? 'Not Synced' : status}
+        </Tag>
+      ),
+    },
+    {
       title: 'Actions', width: 100, fixed: 'right',
       render: (_, record) => (
         <Space size="small">
