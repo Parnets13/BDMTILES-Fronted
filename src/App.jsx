@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext.jsx';
 import { Spin, Result } from 'antd';
 import ProtectedRoute from './components/layout/ProtectedRoute.jsx';
@@ -39,6 +39,8 @@ import BranchPage from './pages/masters/BranchPage.jsx';
 import ExpenseCategoryPage from './pages/masters/ExpenseCategoryPage.jsx';
 import SalesOrderDashboard from './pages/sales/SalesOrderDashboard.jsx';
 import SalesReturnPage from './pages/sales/SalesReturnPage.jsx';
+import WebsiteOrders from './pages/sales/WebsiteOrders.jsx';
+import SalesOrderView from './pages/sales/SalesOrderView.jsx';
 import DealerPaymentsPage from './pages/sales/DealerPaymentsPage.jsx';
 import PurchaseOrderPage from './pages/purchase/PurchaseOrderPage.jsx';
 import GRNEntryPage from './pages/purchase/GRNEntryPage.jsx';
@@ -193,6 +195,16 @@ const UnauthorizedPage = () => (
     />
   </div>
 );
+
+const OrderViewPage = () => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  return (
+    <div className="p-0">
+      <SalesOrderView orderId={id} onClose={() => navigate(-1)} />
+    </div>
+  );
+};
 
 const App = () => {
   const { isAuthenticated, loading, branchEpoch, user } = useAuth();
@@ -383,6 +395,22 @@ const App = () => {
           element={
             <ProtectedRoute requiredPermission="sales.order.dashboard">
               <SalesOrderDashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales-purchase/website-orders"
+          element={
+            <ProtectedRoute requiredPermission="sales.order.dashboard">
+              <WebsiteOrders />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/sales-purchase/order-view/:id"
+          element={
+            <ProtectedRoute requiredPermission="sales.order.dashboard">
+              <OrderViewPage />
             </ProtectedRoute>
           }
         />

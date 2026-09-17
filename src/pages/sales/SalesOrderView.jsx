@@ -193,10 +193,10 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-gray-50 rounded-lg p-4 border">
                 <div className="text-xs text-gray-400 uppercase font-semibold mb-2">Dealer / Customer</div>
-                <div className="text-base font-bold">{order.dealerName || order.dealer?.businessName}</div>
-                <div className="text-sm text-gray-500 mt-1">{order.dealerCode || order.dealer?.dealerCode}</div>
-                <div className="text-sm text-gray-500">{order.dealer?.mobile}</div>
-                <div className="text-sm text-gray-500">{order.dealer?.city}</div>
+                <div className="text-base font-bold">{order.dealerName || order.dealer?.businessName || order.customerName || '—'}</div>
+                <div className="text-sm text-gray-500 mt-1">{order.dealerCode || order.dealer?.dealerCode || order.customerPhone || ''}</div>
+                <div className="text-sm text-gray-500">{order.dealer?.mobile || order.customerPhone || ''}</div>
+                <div className="text-sm text-gray-500">{order.dealer?.city || ''}</div>
                 {order.dealer?.gstin && <div className="text-xs text-gray-400 mt-1">GSTIN: {order.dealer.gstin}</div>}
               </div>
               <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
@@ -325,10 +325,10 @@ const SalesOrderView = ({ orderId, onClose, onStatusChange }) => {
           <div className="info-grid">
             <div className="info-box">
               <div className="label">Bill To</div>
-              <div className="value">{order.dealerName || order.dealer?.businessName}</div>
-              <div style={{fontSize:'11px', color:'#666', marginTop:'3px'}}>{order.dealer?.city}</div>
+              <div className="value">{order.dealerName || order.dealer?.businessName || order.customerName || '—'}</div>
+              <div style={{fontSize:'11px', color:'#666', marginTop:'3px'}}>{order.dealer?.city || ''}</div>
               {order.dealer?.gstin && <div style={{fontSize:'10px', color:'#888'}}>GSTIN: {order.dealer.gstin}</div>}
-              <div style={{fontSize:'10px', color:'#888'}}>Code: {order.dealerCode || order.dealer?.dealerCode}</div>
+              <div style={{fontSize:'10px', color:'#888'}}>{order.dealerCode || order.dealer?.dealerCode ? `Code: ${order.dealerCode || order.dealer?.dealerCode}` : order.customerPhone ? `Phone: ${order.customerPhone}` : ''}</div>
             </div>
             <div className="info-box">
               <div className="label">Ship To</div>

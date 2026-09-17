@@ -61,8 +61,8 @@ const SalesOrderDashboard = () => {
   const columns = [
     { title: 'Order #', dataIndex: 'orderNumber', width: 110, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'orderDate', width: 100, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
-    { title: 'Dealer', key: 'dealer', width: 180, render: (_, r) => (
-      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.dealerName || r.dealer?.businessName || '-'}</div><div className="text-xs text-gray-400">{r.dealerCode || r.dealer?.dealerCode}</div></div>
+    { title: 'Customer / Dealer', key: 'dealer', width: 180, render: (_, r) => (
+      <div><div className="text-sm font-medium truncate max-w-[170px]">{r.dealerName || r.dealer?.businessName || r.customerName || '-'}</div><div className="text-xs text-gray-400">{r.dealerCode || r.dealer?.dealerCode || r.customerPhone || ''}</div></div>
     )},
     { title: 'Items', key: 'items', width: 60, render: (_, r) => <span className="text-sm">{r.items?.length || 0}</span> },
     { title: 'Amount', dataIndex: 'grandTotal', width: 110, render: v => <span className="text-sm font-semibold">₹{(v||0).toLocaleString()}</span> },

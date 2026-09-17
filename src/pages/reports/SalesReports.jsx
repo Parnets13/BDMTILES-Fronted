@@ -38,7 +38,7 @@ const SalesReports = () => {
 
   const dealerCols = [
     { title: '#', render: (_, __, i) => i + 1, width: 40 },
-    { title: 'Dealer', dataIndex: 'dealerName', render: v => v || '—' },
+    { title: 'Customer / Dealer', dataIndex: 'dealerName', render: v => v || '—' },
     { title: 'Orders', dataIndex: 'orders', width: 80 },
     { title: 'Revenue', dataIndex: 'revenue', width: 130, render: v => `₹${(v||0).toLocaleString()}` },
     { title: '% of Total', key: 'pct', width: 100, render: (_, r) => data?.summary?.totalRevenue

@@ -338,6 +338,13 @@ const menuConfig = {
         permission: 'sales.order.dashboard',
       },
       {
+        id: 'website-orders',
+        title: 'Website Orders',
+        icon: Globe,
+        path: '/sales-purchase/website-orders',
+        permission: 'sales.order.dashboard',
+      },
+      {
         id: 'quotation-manager',
         title: 'Quotation Manager',
         icon: FileText,
