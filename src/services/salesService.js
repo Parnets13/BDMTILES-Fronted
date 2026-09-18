@@ -82,6 +82,10 @@ const salesService = {
   convertQuotation: (id) => api.post(`/quotations/${id}/convert`),
   deleteQuotation: (id) => api.delete(`/quotations/${id}`),
   getQuotationStats: () => api.get('/quotations/stats'),
+
+  // Order Assignments
+  assignBranch: (orderId, branchId) => api.patch(`/sales-orders/${orderId}/assign-branch`, { branchId }),
+  assignTransport: (orderId, vehicleId) => api.patch(`/sales-orders/${orderId}/assign-transport`, { vehicleId }),
 };
 
 export default salesService;
