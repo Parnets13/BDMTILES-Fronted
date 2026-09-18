@@ -11,6 +11,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
+import masterService from '../../services/masterService.js';
 import useBranches from '../../hooks/useBranches.js';
 import { hasPermission } from '../../utils/permissions.js';
 import { StatusBadge, PaymentStatusBadge } from '../common/StatusBadges.jsx';
@@ -37,6 +38,14 @@ const WebsiteOrders = () => {
   const [detailOpen, setDetailOpen] = useState(false);
   const [stats, setStats] = useState({ confirmed: 0, processing: 0, dispatched: 0, delivered: 0, cancelled: 0, total: 0 });
   const [statsLoading, setStatsLoading] = useState(false);
+  const [branches, setBranches] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
+  const [branchModalOpen, setBranchModalOpen] = useState(false);
+  const [transportModalOpen, setTransportModalOpen] = useState(false);
+  const [selectedBranchId, setSelectedBranchId] = useState(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState(null);
+  const [assigningBranch, setAssigningBranch] = useState(false);
+  const [assigningTransport, setAssigningTransport] = useState(false);
 
   const canUpdate = hasPermission('sales.order.create');
   const canDelete = hasPermission('sales.order.dashboard');
@@ -101,7 +110,31 @@ const WebsiteOrders = () => {
   useEffect(() => {
     fetchOrders();
     fetchStats();
+    fetchBranches();
+    fetchVehicles();
   }, [pagination.current, pagination.pageSize]);
+
+  const fetchBranches = async () => {
+    try {
+      const res = await masterService.getBranches({ status: 'active', limit: 100 });
+      if (res?.success) {
+        setBranches(res.data || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load branches', err);
+    }
+  };
+
+  const fetchVehicles = async () => {
+    try {
+      const res = await masterService.getVehicles({ isActive: true, limit: 100 });
+      if (res?.success) {
+        setVehicles(res.data || []);
+      }
+    } catch (err) {
+      console.warn('Failed to load vehicles', err);
+    }
+  };
 
   const onSearch = () => {
     setPagination(p => ({ ...p, current: 1 }));
@@ -160,6 +193,58 @@ const WebsiteOrders = () => {
   const closeDetail = () => {
     setDetailOpen(false);
     setTimeout(() => setSelectedOrder(null), 300);
+  };
+
+  const openBranchModal = () => {
+    setSelectedBranchId(selectedOrder?.assignedBranch?._id || null);
+    setBranchModalOpen(true);
+  };
+
+  const openTransportModal = () => {
+    setSelectedVehicleId(selectedOrder?.assignedVehicle?._id || null);
+    setTransportModalOpen(true);
+  };
+
+  const handleAssignBranch = async () => {
+    if (!selectedBranchId) {
+      message.warning('Please select a branch');
+      return;
+    }
+    setAssigningBranch(true);
+    try {
+      const res = await salesService.assignBranch(selectedOrder._id, selectedBranchId);
+      if (res?.success) {
+        message.success('Branch assigned successfully');
+        setBranchModalOpen(false);
+        await openDetail(selectedOrder);
+        fetchOrders();
+      }
+    } catch (err) {
+      message.error(err?.message || 'Failed to assign branch');
+    } finally {
+      setAssigningBranch(false);
+    }
+  };
+
+  const handleAssignTransport = async () => {
+    if (!selectedVehicleId) {
+      message.warning('Please select a vehicle');
+      return;
+    }
+    setAssigningTransport(true);
+    try {
+      const res = await salesService.assignTransport(selectedOrder._id, selectedVehicleId);
+      if (res?.success) {
+        message.success('Transport assigned successfully');
+        setTransportModalOpen(false);
+        await openDetail(selectedOrder);
+        fetchOrders();
+      }
+    } catch (err) {
+      message.error(err?.message || 'Failed to assign transport');
+    } finally {
+      setAssigningTransport(false);
+    }
   };
 
   const columns = useMemo(() => [
@@ -480,6 +565,23 @@ const WebsiteOrders = () => {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="Branch">{selectedOrder.branch?.branchCode || selectedOrder.branch?.name || '—'}</Descriptions.Item>
+              <Descriptions.Item label="Assigned Branch">
+                {selectedOrder.assignedBranch ? (
+                  <Tag color="blue">{selectedOrder.assignedBranch.branchCode || selectedOrder.assignedBranch.name}</Tag>
+                ) : (
+                  <Text type="secondary">Not assigned</Text>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Assigned Transport">
+                {selectedOrder.assignedVehicle ? (
+                  <Tag color="green">
+                    {selectedOrder.assignedVehicle.vehicleNumber}
+                    {selectedOrder.assignedVehicle.driverName && ` - ${selectedOrder.assignedVehicle.driverName}`}
+                  </Tag>
+                ) : (
+                  <Text type="secondary">Not assigned</Text>
+                )}
+              </Descriptions.Item>
               <Descriptions.Item label="Delivery Address" span={2}>
                 <div className="flex items-start gap-1.5">
                   <MapPin size={13} className="text-gray-400 mt-0.5 flex-shrink-0" />
@@ -503,10 +605,17 @@ const WebsiteOrders = () => {
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-10 h-10 rounded bg-gray-100 flex items-center justify-center flex-shrink-0 overflow-hidden">
                           {it.productImage ? (
-                            <img src={it.productImage} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <Package size={18} className="text-gray-400" />
-                          )}
+                            <img 
+                              src={it.productImage} 
+                              alt={it.productName || it.aliasName} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                e.target.style.display = 'none';
+                                e.target.nextSibling.style.display = 'flex';
+                              }}
+                            />
+                          ) : null}
+                          <Package size={18} className="text-gray-400" style={{ display: it.productImage ? 'none' : 'flex' }} />
                         </div>
                         <div className="min-w-0">
                           <div className="text-sm font-medium truncate">{it.productName || it.aliasName}</div>
@@ -546,6 +655,12 @@ const WebsiteOrders = () => {
             </Descriptions>
 
             <div className="flex flex-wrap gap-2 pt-3 justify-end border-t">
+              <Button icon={<Building size={14} />} onClick={openBranchModal}>
+                Assign Branch
+              </Button>
+              <Button icon={<Truck size={14} />} onClick={openTransportModal}>
+                Assign Transport
+              </Button>
               {selectedOrder.status === 'confirmed' && canUpdate && (
                 <Button icon={<Warehouse size={14} />} onClick={() => handleStatusChange(selectedOrder, 'processing', 'Move to processing?')}>
                   Start Processing
@@ -573,6 +688,62 @@ const WebsiteOrders = () => {
           </div>
         )}
       </Drawer>
+
+      {/* Assign Branch Modal */}
+      <Modal
+        title="Assign Branch"
+        open={branchModalOpen}
+        onCancel={() => setBranchModalOpen(false)}
+        onOk={handleAssignBranch}
+        confirmLoading={assigningBranch}
+        okText="Assign"
+      >
+        <div className="py-4">
+          <Select
+            placeholder="Select a branch"
+            style={{ width: '100%' }}
+            value={selectedBranchId}
+            onChange={setSelectedBranchId}
+            showSearch
+            optionFilterProp="children"
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            options={branches.map(b => ({
+              value: b._id,
+              label: `${b.branchCode} - ${b.name}`,
+            }))}
+          />
+        </div>
+      </Modal>
+
+      {/* Assign Transport Modal */}
+      <Modal
+        title="Assign Transport"
+        open={transportModalOpen}
+        onCancel={() => setTransportModalOpen(false)}
+        onOk={handleAssignTransport}
+        confirmLoading={assigningTransport}
+        okText="Assign"
+      >
+        <div className="py-4">
+          <Select
+            placeholder="Select a vehicle"
+            style={{ width: '100%' }}
+            value={selectedVehicleId}
+            onChange={setSelectedVehicleId}
+            showSearch
+            optionFilterProp="children"
+            filterOption={(input, option) =>
+              (option?.label ?? '').toLowerCase().includes(input.toLowerCase())
+            }
+            options={vehicles.map(v => ({
+              value: v._id,
+              label: `${v.vehicleNumber}${v.driverName ? ` - ${v.driverName}` : ''}${v.vehicleType ? ` (${v.vehicleType})` : ''}`,
+            }))}
+          />
+        </div>
+      </Modal>
     </div>
   );
 };
