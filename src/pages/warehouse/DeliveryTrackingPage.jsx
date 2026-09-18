@@ -145,6 +145,16 @@ const DeliveryTrackingPage = () => {
     { title: 'Date', dataIndex: 'deliveryDate', width: 85, render: value => <span className="text-xs">{new Date(value).toLocaleDateString('en-IN')}</span> },
     { title: 'SO #', dataIndex: 'orderNumber', width: 100 },
     { title: 'Dealer', dataIndex: 'dealerName', width: 140 },
+    { title: 'Vehicle', width: 120, render: (_, record) => {
+      const number = record.vehicleNumber || record.dispatchTrip?.vehicleNumber;
+      if (!number) return <span className="text-xs text-gray-400">—</span>;
+      return (
+        <div>
+          <div className="text-xs font-medium">{number}</div>
+          <div className="text-[11px] text-gray-400">{record.driverName || record.dispatchTrip?.driverName || 'No driver'}</div>
+        </div>
+      );
+    } },
     { title: 'Executive', width: 110, render: (_, record) => record.deliveryExecutiveName || record.deliveryExecutive?.name || '—' },
     { title: 'Boxes', width: 100, render: (_, record) => `${record.deliveredBoxes || 0} delivered / ${record.shortBoxes || 0} short / ${record.damagedBoxes || 0} damaged / ${record.totalBoxes} total` },
     { title: 'OTP', dataIndex: 'otpVerified', width: 60, render: value => <Tag color={value ? 'green' : 'default'}>{value ? 'Yes' : 'No'}</Tag> },
@@ -197,7 +207,10 @@ const DeliveryTrackingPage = () => {
 
     {viewRecord && <Modal open title={`Authoritative Delivery Detail — ${viewRecord.deliveryNumber}`} onCancel={() => setViewRecord(null)} width={1000} footer={<Button onClick={() => setViewRecord(null)}>Close</Button>}>
       <div className="space-y-4 text-sm mt-3">
-        <div className="grid grid-cols-3 gap-3"><div className="bg-gray-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Delivery To</div><b>{viewRecord.dealerName}</b><div className="text-xs">{viewRecord.contactPhone} · {viewRecord.deliveryAddress}</div></div><div className="bg-blue-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Trip / Driver</div><b>{viewRecord.dispatchTrip?.tripNumber || viewRecord.tripNumber}</b><div className="text-xs">{viewRecord.dispatchTrip?.routeName || '—'} · {viewRecord.dispatchTrip?.vehicleNumber || '—'} · {viewRecord.dispatchTrip?.driverName || '—'} ({viewRecord.dispatchTrip?.driverPhone || '—'})</div></div><div className="bg-green-50 p-3 rounded border"><Tag color={STATUS_COLORS[viewRecord.status]}>{viewRecord.status.replace(/_/g, ' ')}</Tag><div>OTP: <b>{viewRecord.otpVerified ? 'Verified' : 'Pending'}</b></div><div>Receiver: <b>{viewRecord.receiverName || '—'}</b></div></div></div>
+        <div className="grid grid-cols-3 gap-3"><div className="bg-gray-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Delivery To</div><b>{viewRecord.dealerName}</b><div className="text-xs">{viewRecord.contactPhone} · {viewRecord.deliveryAddress}</div></div>{/* Vehicle and driver come from the delivery's own snapshot, so a later edit to
+    the trip cannot change what a completed delivery says it shipped on. The trip
+    is only a fallback for records created before the snapshot existed. */}
+<div className="bg-blue-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase">Trip / Vehicle / Driver</div><b>{viewRecord.dispatchTrip?.tripNumber || viewRecord.tripNumber}</b><div className="text-xs">{viewRecord.dispatchTrip?.routeName || '—'} · <b>{viewRecord.vehicleNumber || viewRecord.dispatchTrip?.vehicleNumber || '—'}</b>{(viewRecord.vehicleType || viewRecord.dispatchTrip?.vehicleType) ? ` (${String(viewRecord.vehicleType || viewRecord.dispatchTrip?.vehicleType).replace(/_/g, ' ')})` : ''} · {viewRecord.driverName || viewRecord.dispatchTrip?.driverName || '—'} ({viewRecord.driverPhone || viewRecord.dispatchTrip?.driverPhone || '—'})</div></div><div className="bg-green-50 p-3 rounded border"><Tag color={STATUS_COLORS[viewRecord.status]}>{viewRecord.status.replace(/_/g, ' ')}</Tag><div>OTP: <b>{viewRecord.otpVerified ? 'Verified' : 'Pending'}</b></div><div>Receiver: <b>{viewRecord.receiverName || '—'}</b></div></div></div>
         <div className="grid grid-cols-4 gap-2 text-xs"><div>Total: <b>{viewRecord.totalBoxes}</b></div><div>Delivered: <b>{viewRecord.deliveredBoxes || 0}</b></div><div>Short: <b>{viewRecord.shortBoxes || 0}</b></div><div>Damaged: <b>{viewRecord.damagedBoxes || 0}</b></div></div>
         <Timeline items={[{ color: 'green', children: `Created: ${new Date(viewRecord.createdAt).toLocaleString('en-IN')}` }, viewRecord.startTime && { color: 'blue', children: `Started: ${new Date(viewRecord.startTime).toLocaleString('en-IN')}` }, viewRecord.reachTime && { color: 'cyan', children: `Reached: ${new Date(viewRecord.reachTime).toLocaleString('en-IN')}` }, viewRecord.otpVerifiedAt && { color: 'purple', children: `OTP verified: ${new Date(viewRecord.otpVerifiedAt).toLocaleString('en-IN')}` }, viewRecord.completionTime && { color: 'green', children: `Completed: ${new Date(viewRecord.completionTime).toLocaleString('en-IN')}` }].filter(Boolean)} />
         {!!viewRecord.items?.length && <><Divider>Dispatched item reconciliation</Divider><Table size="small" pagination={false} rowKey="_id" dataSource={viewRecord.items} columns={[

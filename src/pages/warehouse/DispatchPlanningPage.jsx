@@ -218,12 +218,30 @@ const DispatchPlanningPage = () => {
 
 // ═══════════════════════════════════════════════
 // CREATE TRIP MODAL
+// Flags documents that are expired or close to it, so a planner sees the problem
+// while choosing rather than after the server refuses the trip.
+const expiryNote = (vehicle) => {
+  const soon = [];
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const cutoff = new Date(today); cutoff.setDate(cutoff.getDate() + 30);
+  for (const [field, label] of [['fitnessExpiry', 'Fitness'], ['insuranceExpiry', 'Insurance']]) {
+    if (!vehicle[field]) continue;
+    const when = new Date(vehicle[field]);
+    if (Number.isNaN(when.getTime())) continue;
+    if (when < today) soon.push(`${label} EXPIRED`);
+    else if (when < cutoff) soon.push(`${label} expires ${when.toLocaleDateString('en-IN')}`);
+  }
+  return soon.length ? ` · ⚠ ${soon.join(', ')}` : '';
+};
+
 // ═══════════════════════════════════════════════
 const CreateTripModal = ({ open, onClose, onSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [readyOrders, setReadyOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
-  const [form, setForm] = useState({ vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
+  // `vehicle` is the Vehicle Master id and is what the server trusts. The number
+  // and type are display-only here: the backend re-reads them from the master.
+  const [form, setForm] = useState({ vehicle: undefined, vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
   const [selectedOrders, setSelectedOrders] = useState([]);
   const [readySearch, setReadySearch] = useState('');
   const [readyPagination, setReadyPagination] = useState({ current: 1, pageSize: 10, total: 0 });
@@ -240,13 +258,28 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
     }).catch(() => {});
   }, [open, readyPagination.current, readyPagination.pageSize, readySearch]);
 
+  // Only active vehicles can be dispatched, so don't offer the rest.
   useEffect(() => {
-    if (open) api.get('/masters/vehicles', { params: { limit: 50 } }).then(r => { if (r.success) setVehicles(r.data || []); }).catch(() => {});
+    if (open) api.get('/masters/vehicles', { params: { limit: 200, isActive: true } }).then(r => { if (r.success) setVehicles(r.data || []); }).catch(() => {});
   }, [open]);
+
+  // Picking a vehicle carries its type and its usual driver across, so the planner
+  // isn't retyping what the master already knows. Both stay editable.
+  const chooseVehicle = (vehicleId) => {
+    const picked = vehicles.find(v => String(v._id) === String(vehicleId));
+    setForm(f => ({
+      ...f,
+      vehicle: vehicleId,
+      vehicleNumber: picked?.vehicleNumber || '',
+      vehicleType: picked?.vehicleType || '',
+      driverName: picked?.driverName || f.driverName,
+      driverPhone: picked?.driverPhone || f.driverPhone,
+    }));
+  };
 
   const handleSubmit = async () => {
     if (selectedOrders.length === 0) { message.error('Select at least one order for the trip'); return; }
-    if (!form.vehicleNumber) { message.error('Enter vehicle number'); return; }
+    if (!form.vehicle) { message.error('Select a vehicle from Vehicle Master'); return; }
 
     setLoading(true);
     try {
@@ -254,13 +287,18 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
         ...form,
         pickListIds: selectedOrders.map(pickList => pickList._id),
       });
-      if (res.success) { message.success(res.message); onSuccess?.(); handleClose(); }
+      if (res.success) {
+        message.success(res.message);
+        // Capacity mismatches are advisory; surface them without blocking the trip.
+        (res.warnings || []).forEach(warning => message.warning(warning, 6));
+        onSuccess?.(); handleClose();
+      }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
   };
 
   const handleClose = () => {
-    setForm({ vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
+    setForm({ vehicle: undefined, vehicleNumber: '', vehicleType: '', driverName: '', driverPhone: '', routeName: '', remarks: '' });
     setSelectedOrders([]);
     setReadySearch('');
     setReadyPagination({ current: 1, pageSize: 10, total: 0 });
@@ -271,19 +309,43 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
     setSelectedOrders(prev => prev.find(o => o._id === order._id) ? prev.filter(o => o._id !== order._id) : [...prev, order]);
   };
 
+  const selectedVehicle = vehicles.find(v => String(v._id) === String(form.vehicle));
+  const tripBoxes = selectedOrders.reduce((sum, order) => sum + Number(order.totalBoxes || 0), 0);
+
   return (
     <Modal title="Create Dispatch Trip" open={open} onCancel={handleClose} width={850} footer={null} destroyOnHidden>
       <div className="space-y-4 mt-4">
         {/* Vehicle & Driver */}
         <div className="grid grid-cols-4 gap-3">
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Vehicle # *</label>
-            <Input value={form.vehicleNumber} onChange={e => setForm(f => ({ ...f, vehicleNumber: e.target.value }))} placeholder="MH-12-AB-1234" size="large" />
+            <label className="text-xs text-gray-500 block mb-1">Vehicle *</label>
+            <Select
+              value={form.vehicle}
+              onChange={chooseVehicle}
+              className="w-full"
+              size="large"
+              placeholder="Select from Vehicle Master"
+              showSearch
+              optionFilterProp="label"
+              notFoundContent={vehicles.length ? 'No match' : 'No active vehicles in Vehicle Master'}
+              options={vehicles.map(v => ({
+                value: String(v._id),
+                label: v.vehicleNumber,
+                title: [v.vehicleType, v.capacity ? `${v.capacity} ${v.capacityUnit || ''}`.trim() : null].filter(Boolean).join(' · '),
+              }))}
+              optionRender={option => (
+                <div>
+                  <div className="font-medium">{option.data.label}</div>
+                  {option.data.title ? <div className="text-xs text-gray-400">{option.data.title}</div> : null}
+                </div>
+              )}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Vehicle Type</label>
-            <Select value={form.vehicleType || undefined} onChange={v => setForm(f => ({ ...f, vehicleType: v }))} className="w-full" size="large" placeholder="Type" allowClear
-              options={[{ value: 'Mini Truck', label: 'Mini Truck' }, { value: 'Tata Ace', label: 'Tata Ace' }, { value: 'Bolero', label: 'Bolero' }, { value: '14ft', label: '14ft Truck' }, { value: '17ft', label: '17ft Truck' }, { value: '22ft', label: '22ft Container' }]} />
+            {/* Read-only: the type belongs to the vehicle record, and letting it be
+                edited here is how the two vocabularies drifted apart before. */}
+            <Input value={selectedVehicle?.vehicleType || ''} placeholder="From Vehicle Master" size="large" readOnly disabled />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Driver Name</label>
@@ -294,6 +356,16 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
             <Input value={form.driverPhone} onChange={e => setForm(f => ({ ...f, driverPhone: e.target.value }))} placeholder="Phone" size="large" />
           </div>
         </div>
+
+        {selectedVehicle ? (
+          <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            <b className="text-gray-700">{selectedVehicle.vehicleNumber}</b>
+            {selectedVehicle.capacity ? ` · rated ${selectedVehicle.capacity} ${selectedVehicle.capacityUnit || ''}` : ''}
+            {selectedVehicle.make || selectedVehicle.model ? ` · ${[selectedVehicle.make, selectedVehicle.model].filter(Boolean).join(' ')}` : ''}
+            {expiryNote(selectedVehicle)}
+            {selectedOrders.length ? ` · this trip: ${tripBoxes} box(es)` : ''}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3">
           <div>

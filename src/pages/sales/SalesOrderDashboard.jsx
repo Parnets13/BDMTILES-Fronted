@@ -42,7 +42,6 @@ const EMPTY_FILTERS = {
   orderType: undefined,
   deliveryPriority: undefined,
   cancellationRequestStatus: undefined,
-  tallySyncStatus: undefined,
   source: undefined,
   amountMin: undefined,
   amountMax: undefined,
@@ -296,16 +295,6 @@ const SalesOrderDashboard = () => {
     { title: 'Status', dataIndex: 'status', width: 115, render: status => <Tag color={STATUS_COLORS[status]}>{status?.replace(/_/g, ' ')}</Tag> },
     { title: 'Payment', dataIndex: 'paymentStatus', width: 90, render: status => <Tag color={PAYMENT_COLORS[status]}>{status}</Tag> },
     {
-      // Kept from origin/master: Tally sync visibility alongside the existing
-      // tallySyncStatus filter.
-      title: 'Tally', dataIndex: 'tallySyncStatus', width: 90,
-      render: status => (
-        <Tag color={status === 'synced' ? 'green' : status === 'pending' ? 'orange' : status === 'failed' ? 'red' : 'default'}>
-          {status === 'not_synced' ? 'Not Synced' : status}
-        </Tag>
-      ),
-    },
-    {
       title: 'Actions', width: 100, fixed: 'right',
       render: (_, record) => (
         <Space size="small">
@@ -342,7 +331,6 @@ const SalesOrderDashboard = () => {
       <Select placeholder="Order type" value={filters.orderType} onChange={value => updateFilters({ orderType: value })} allowClear options={selectOptions(['dealer', 'wholesaler', 'retail', 'distributor', 'builder', 'online', 'project'])} />
       <Select placeholder="Delivery priority" value={filters.deliveryPriority} onChange={value => updateFilters({ deliveryPriority: value })} allowClear options={selectOptions(['normal', 'urgent', 'vip'])} />
       <Select placeholder="Cancellation request" value={filters.cancellationRequestStatus} onChange={value => updateFilters({ cancellationRequestStatus: value })} allowClear options={selectOptions(['none', 'pending', 'approved', 'rejected'])} />
-      <Select placeholder="Tally sync" value={filters.tallySyncStatus} onChange={value => updateFilters({ tallySyncStatus: value })} allowClear options={selectOptions(['not_synced', 'pending', 'synced', 'failed'])} />
       <Select placeholder="Source" value={filters.source} onChange={value => updateFilters({ source: value })} allowClear options={[{ value: 'quotation', label: 'Quotation conversion' }, { value: 'legacy_direct', label: 'Legacy direct' }]} />
       <RangePicker className="w-full" placeholder={['Expected delivery from', 'Expected delivery to']} value={dateRangeValue(filters.expectedDeliveryFrom, filters.expectedDeliveryTo)} onChange={rangeChange('expectedDeliveryFrom', 'expectedDeliveryTo')} />
       <InputNumber className="w-full" min={0} prefix="₹" placeholder="Minimum amount" value={filters.amountMin} onChange={value => updateFilters({ amountMin: value ?? undefined })} />

@@ -140,7 +140,6 @@ const SupplierInvoicePage = () => {
     { title: 'GRNs', key: 'grns', width: 60, render: (_, r) => <span className="text-xs">{r.linkedGRNs?.length || 0}</span> },
     { title: 'Due Date', dataIndex: 'dueDate', width: 90, render: v => v ? <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> : '—' },
     { title: 'Status', dataIndex: 'status', width: 110, render: s => <Tag color={STATUS_COLORS[s]}>{s?.replace('_', ' ')}</Tag> },
-    { title: 'Tally', dataIndex: 'tallySyncStatus', width: 80, render: s => <Tag color={s === 'synced' ? 'green' : 'default'}>{s === 'not_synced' ? '—' : s}</Tag> },
     { title: 'Actions', width: 90, render: (_, r) => (
       <Space size="small">
         <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} />

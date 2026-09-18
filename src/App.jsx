@@ -88,7 +88,7 @@ import Customer360 from './pages/crm/Customer360.jsx';
 import ComplaintDashboard from './pages/complaints/ComplaintDashboard.jsx';
 import ApprovalWorkflow from './pages/approvals/ApprovalWorkflow.jsx';
 
-// Week 9+10 — Dashboard, Reports, Tally, Schemes
+// Week 9+10 — Dashboard, Reports, Schemes
 import OwnerDashboard from './pages/dashboard/OwnerDashboard.jsx';
 import SalesReports from './pages/reports/SalesReports.jsx';
 import PurchaseReports from './pages/reports/PurchaseReports.jsx';
@@ -101,7 +101,6 @@ import FinanceStatements from './pages/reports/FinanceStatements.jsx';
 import HRReports from './pages/reports/HRReports.jsx';
 import ActivityLogs from './pages/reports/ActivityLogs.jsx';
 import SEPerformance from './pages/reports/SEPerformance.jsx';
-import TallyDashboard from './pages/tally/TallyDashboard.jsx';
 import SupplierSchemeEntry from './pages/schemes/SupplierSchemeEntry.jsx';
 import SupplierSchemeAnalysis from './pages/schemes/SupplierSchemeAnalysis.jsx';
 import SupplierClaimManagement from './pages/schemes/SupplierClaimManagement.jsx';
@@ -151,6 +150,7 @@ import ExpenseManagement from './pages/finance/ExpenseManagement.jsx';
 
 // Dealer App
 import DealerOrderRequests from './pages/dealer-app/DealerOrderRequests.jsx';
+import DealerSupportChat from './pages/dealer-app/DealerSupportChat.jsx';
 
 // Assets
 import AssetMaster from './pages/assets/AssetMaster.jsx';
@@ -605,7 +605,7 @@ const App = () => {
           path="/dealer-app/support-chat"
           element={
             <ProtectedRoute requiredPermission="support.chat">
-              <PlaceholderPage title="Support Chat" />
+              <DealerSupportChat />
             </ProtectedRoute>
           }
         />
@@ -625,7 +625,9 @@ const App = () => {
         <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="se.route.plan"><SERoutePlan /></ProtectedRoute>} />
         <Route path="/se-app/dealer-insights" element={<ProtectedRoute requiredPermission="se.dealer.insights"><SEDealerInsights /></ProtectedRoute>} />
         <Route path="/se-app/collections" element={<ProtectedRoute requiredPermission="se.collections.view"><SECollections /></ProtectedRoute>} />
-        <Route path="/se-app/targets" element={<ProtectedRoute requiredPermission="se.targets.view"><SETargetManagement /></ProtectedRoute>} />
+        {/* Authoring screen, not the executive's own view — gated on the incentive rule
+            permission the /targets API enforces, so an SE cannot set their own target. */}
+        <Route path="/se-app/targets" element={<ProtectedRoute requiredPermission="incentive.rules.view"><SETargetManagement /></ProtectedRoute>} />
         <Route path="/se-app/expenses" element={<ProtectedRoute requiredPermission="sales.executive.app"><SEExpenseViewer /></ProtectedRoute>} />
         <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="sales.executive.app"><PlaceholderPage title="SE Live Tracking — Phase 2 (Socket.io)" /></ProtectedRoute>} />
 
@@ -719,11 +721,6 @@ const App = () => {
         <Route path="/reports/profit-analysis/bill-wise-profit" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
         <Route path="/reports/profit-analysis/category-margin" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
         <Route path="/reports/profit-analysis/deviation-report" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
-
-        {/* Tally Integration */}
-        <Route path="/tally/dashboard" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
-        <Route path="/tally/sync-status" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
-        <Route path="/tally/conflict-resolver" element={<ProtectedRoute requiredPermission="tally.sync"><TallyDashboard /></ProtectedRoute>} />
 
         {/* Approval Workflow */}
         <Route path="/approvals" element={<ProtectedRoute requiredAnyPermissions={['sales.order.approve', 'po.approve', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management']}><ApprovalWorkflow /></ProtectedRoute>} />

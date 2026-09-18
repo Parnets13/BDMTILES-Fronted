@@ -989,36 +989,6 @@ const menuConfig = {
       },
     ],
   },
-  // tally: {
-  //   id: 'tally',
-  //   title: 'Tally Integration',
-  //   icon: FolderSync,
-  //   hasSubmenu: true,
-  //   modulePermissions: ['tally.sync'],
-  //   items: [
-  //     {
-  //       id: 'tally-dashboard',
-  //       title: 'Tally Dashboard',
-  //       icon: BarChart2,
-  //       path: '/tally/dashboard',
-  //       permission: 'tally.sync',
-  //     },
-  //     {
-  //       id: 'tally-sync-status',
-  //       title: 'Sync Status',
-  //       icon: RefreshCw,
-  //       path: '/tally/sync-status',
-  //       permission: 'tally.sync',
-  //     },
-  //     {
-  //       id: 'tally-conflict-resolver',
-  //       title: 'Conflict Resolver',
-  //       icon: CheckCircle,
-  //       path: '/tally/conflict-resolver',
-  //       permission: 'tally.sync',
-  //     },
-  //   ],
-  // },
   supplierIncentive: {
     id: 'supplier-incentive',
     title: 'Supplier Incentive',
@@ -1163,7 +1133,9 @@ const menuConfig = {
         title: 'Targets',
         icon: Target,
         path: '/se-app/targets',
-        permission: 'se.targets.view',
+        // Matches the /targets API guard. se.targets.view is the executive's own
+        // read on the mobile app, not permission to author targets for others.
+        permission: 'incentive.rules.view',
       },
       {
         id: 'se-expenses',
@@ -1261,7 +1233,6 @@ export const getRoleMenuSections = () => {
     menuConfig.hrms,
     menuConfig.finance,
     menuConfig.reports,
-    // menuConfig.tally,
     menuConfig.supplierIncentive,
     menuConfig.dealerSchemes,
     menuConfig.approvals,

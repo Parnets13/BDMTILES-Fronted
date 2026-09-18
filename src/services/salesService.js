@@ -22,6 +22,7 @@ const salesService = {
   getDealerOrderRequest: (id) => api.get(`/dealer-order-requests/${id}`),
   approveDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/approve`, data),
   rejectDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/reject`, data),
+  updateDealerOrderRequest: (id, data) => api.patch(`/dealer-order-requests/${id}`, data),
   getDealerOrderRequestQuotationPrefill: (id) => api.get(`/dealer-order-requests/${id}/quotation-prefill`),
 
   // Search helpers. Object arguments are preferred; positional arguments remain supported.

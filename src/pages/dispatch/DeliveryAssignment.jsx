@@ -24,7 +24,9 @@ const DeliveryAssignment = () => {
   const [vehicles, setVehicles] = useState([]);
 
   const [showAssign, setShowAssign] = useState(null); // dispatch obj
-  const [assignForm, setAssignForm] = useState({ vehicle: '', driverName: '', driverPhone: '', departureTime: '' });
+  // vehicleRef is the Vehicle Master id the server validates; `vehicle` stays the
+  // registration text so existing dispatch records keep displaying correctly.
+  const [assignForm, setAssignForm] = useState({ vehicleRef: undefined, vehicle: '', driverName: '', driverPhone: '', departureTime: '' });
   const [assignLoading, setAssignLoading] = useState(false);
 
   const [viewDispatch, setViewDispatch] = useState(null);
@@ -48,10 +50,23 @@ const DeliveryAssignment = () => {
 
   useEffect(() => { load(1); }, [load]);
   useEffect(() => {
-    masterService.getVehicles?.({ limit: 100 }).then(r => { if (r?.success) setVehicles(r.data || []); }).catch(() => {});
+    masterService.getVehicles?.({ limit: 200, isActive: true }).then(r => { if (r?.success) setVehicles(r.data || []); }).catch(() => {});
   }, []);
 
+  // Choosing the vehicle pulls its usual driver across; both stay editable.
+  const chooseVehicle = (vehicleId) => {
+    const picked = vehicles.find(v => String(v._id) === String(vehicleId));
+    setAssignForm(f => ({
+      ...f,
+      vehicleRef: vehicleId,
+      vehicle: picked?.vehicleNumber || '',
+      driverName: f.driverName || picked?.driverName || '',
+      driverPhone: f.driverPhone || picked?.driverPhone || '',
+    }));
+  };
+
   const handleAssign = async () => {
+    if (!assignForm.vehicleRef) { message.error('Select a vehicle from Vehicle Master'); return; }
     if (!assignForm.driverName.trim()) { message.error('Enter driver name'); return; }
     setAssignLoading(true);
     try {
@@ -84,7 +99,12 @@ const DeliveryAssignment = () => {
       title: 'Vehicle / Driver', key: 'veh',
       render: (_, r) => (
         <div>
-          <div className="font-medium">{r.vehicle || <span className="text-orange-500 text-xs">No vehicle assigned</span>}</div>
+          <div className="font-medium">
+            {r.vehicle || <span className="text-orange-500 text-xs">No vehicle assigned</span>}
+            {r.vehicle && !r.vehicleRef ? (
+              <Tag color="orange" className="ml-1 text-[10px]">not linked to master</Tag>
+            ) : null}
+          </div>
           <div className="text-xs text-gray-400">{r.driverName || ''} {r.driverPhone ? `· ${r.driverPhone}` : ''}</div>
         </div>
       ),
@@ -113,7 +133,7 @@ const DeliveryAssignment = () => {
             <Button size="small" type="primary"
               style={{ background: '#FF5F03', borderColor: '#FF5F03' }}
               icon={<CarOutlined />}
-              onClick={() => { setShowAssign(r); setAssignForm({ vehicle: r.vehicle || '', driverName: r.driverName || '', driverPhone: r.driverPhone || '', departureTime: '' }); }}>
+              onClick={() => { setShowAssign(r); setAssignForm({ vehicleRef: r.vehicleRef ? String(r.vehicleRef) : undefined, vehicle: r.vehicle || '', driverName: r.driverName || '', driverPhone: r.driverPhone || '', departureTime: '' }); }}>
               Assign
             </Button>
           )}
@@ -186,8 +206,21 @@ const DeliveryAssignment = () => {
         <Divider />
         <div className="space-y-3">
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Vehicle No.</label>
-            <Input value={assignForm.vehicle} onChange={e => aset('vehicle', e.target.value)} placeholder="KA01AB1234" />
+            <label className="text-xs text-gray-500 block mb-1">Vehicle *</label>
+            <Select
+              value={assignForm.vehicleRef}
+              onChange={chooseVehicle}
+              className="w-full"
+              placeholder="Select from Vehicle Master"
+              showSearch
+              optionFilterProp="label"
+              notFoundContent={vehicles.length ? 'No match' : 'No active vehicles in Vehicle Master'}
+              options={vehicles.map(v => ({
+                value: String(v._id),
+                label: v.vehicleNumber,
+                title: [v.vehicleType, v.capacity ? `${v.capacity} ${v.capacityUnit || ''}`.trim() : null].filter(Boolean).join(' · '),
+              }))}
+            />
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Driver Name *</label>

@@ -675,17 +675,6 @@ const ProductMaster = () => {
 
               <Divider className="my-3" />
 
-              {/* Tally Integration */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                <div className="text-sm font-semibold text-gray-700 mb-2">🔗 Tally Integration</div>
-                <Row gutter={16}>
-                  <Col span={12}><Form.Item name="tallyStockItemName" label="Tally Stock Item Name" tooltip="Must match exactly as it appears in Tally"><Input placeholder="e.g. KAJARIA VITRIFIED 600x600 MATT WHITE" /></Form.Item></Col>
-                  <Col span={12}><Form.Item name="tallyGUID" label="Tally GUID" tooltip="Tally-generated GUID (leave blank if creating from CRM)"><Input placeholder="Auto-populated after first Tally sync" /></Form.Item></Col>
-                </Row>
-              </div>
-
-              <Divider className="my-3" />
-
               {/* Image Upload */}
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Product Images</label>
@@ -940,16 +929,6 @@ const ViewProductModal = ({ product, onClose }) => {
               <PreviewItem label="Dealer Visible" value={product.dealerVisible ? 'Yes' : 'No'} />
             </div>
           </div>
-          {(product.tallyStockItemName || product.tallyGUID) && (
-            <div className="border-t pt-4 mt-4">
-              <h4 className="font-semibold text-gray-700 text-sm mb-3">🔗 Tally Integration</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <PreviewItem label="Tally Stock Item Name" value={product.tallyStockItemName} />
-                <PreviewItem label="Tally GUID" value={product.tallyGUID} />
-                <PreviewItem label="Tally Sync Status" value={product.tallySyncStatus} />
-              </div>
-            </div>
-          )}
           {(product.videos?.length > 0 || product.cataloguePdf) && (
             <div className="border-t pt-4 mt-4">
               <h4 className="font-semibold text-gray-700 text-sm mb-3">Media</h4>

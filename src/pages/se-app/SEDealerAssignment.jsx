@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, Modal, message } from 'antd';
-import { UserOutlined, ShopOutlined, EnvironmentOutlined, ReloadOutlined, SearchOutlined, EditOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, Modal, Alert, message } from 'antd';
+import { UserOutlined, ShopOutlined, EnvironmentOutlined, ReloadOutlined, SearchOutlined, EditOutlined, TeamOutlined, WarningOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
+
+const executiveIdOf = (dealer) =>
+  (typeof dealer.assignedSalesExecutive === 'object'
+    ? dealer.assignedSalesExecutive?._id
+    : dealer.assignedSalesExecutive) || null;
 
 export default function SEDealerAssignment() {
   const [dealers, setDealers] = useState([]);
@@ -13,92 +18,115 @@ export default function SEDealerAssignment() {
   const [saving, setSaving] = useState(false);
   const [seFilter, setSeFilter] = useState('all');
   const [search, setSearch] = useState('');
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [editModal, setEditModal] = useState(false);
   const [editDealer, setEditDealer] = useState(null);
   const [selectedSE, setSelectedSE] = useState(null);
-  const [stats, setStats] = useState({ total: 0, assigned: 0, unassigned: 0, ses: 0 });
+  const [assignmentReason, setAssignmentReason] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState([]);
+  const [bulkModal, setBulkModal] = useState(false);
+  const [bulkSE, setBulkSE] = useState(null);
+  // Counted server-side. Deriving these from one page of dealers is how the old
+  // version reported the wrong totals as soon as there were more than 100.
+  const [summary, setSummary] = useState({ total: 0, assigned: 0, unassigned: 0, activeExecutives: 0, strandedOnInactive: 0, orphaned: 0, byExecutive: [] });
 
-  const load = async () => {
+  const loadSummary = useCallback(() => {
+    masterService.getDealerAssignmentSummary()
+      .then(res => { if (res?.success) setSummary(res.data || {}); })
+      .catch(() => {});
+  }, []);
+
+  // Filtering and searching happen on the server, so they apply to every dealer
+  // rather than only the ones already downloaded.
+  const loadDealers = useCallback(async () => {
     setLoading(true);
     try {
-      const [dealersRes, usersRes] = await Promise.all([
-        masterService.getDealers({ limit: 100 }),
-        masterService.getSalesExecutives(),
-      ]);
-      const allDealers = dealersRes?.data || [];
-      const allSEs = usersRes?.data || [];
-      setDealers(allDealers);
-      setSalesExecs(allSEs);
-      const assigned = allDealers.filter(d => d.assignedSalesExecutive).length;
-      setStats({ total: allDealers.length, assigned, unassigned: allDealers.length - assigned, ses: allSEs.length });
+      const res = await masterService.getDealers({
+        page: pagination.current,
+        limit: pagination.pageSize,
+        search: search.trim() || undefined,
+        assignedSalesExecutive: seFilter === 'all' ? undefined : seFilter,
+      });
+      if (res?.success) {
+        setDealers(res.data || []);
+        setPagination(current => ({ ...current, total: res.pagination?.totalItems || 0 }));
+      }
     } catch (err) {
       console.error('SEDealerAssignment load error:', err);
-      message.error('Failed to load data');
+      message.error(err.message || 'Failed to load dealers');
     } finally {
       setLoading(false);
     }
-  };
+  }, [pagination.current, pagination.pageSize, search, seFilter]);
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { loadDealers(); }, [loadDealers]);
+  useEffect(() => { loadSummary(); }, [loadSummary]);
+  useEffect(() => {
+    masterService.getSalesExecutives?.().then(r => { if (r?.success) setSalesExecs(r.data || []); }).catch(() => {});
+  }, []);
 
-  const filtered = useMemo(() => {
-    let list = dealers;
-    if (seFilter === 'unassigned') {
-      list = list.filter(d => !d.assignedSalesExecutive);
-    } else if (seFilter !== 'all') {
-      list = list.filter(d => {
-        const seId = typeof d.assignedSalesExecutive === 'object' ? d.assignedSalesExecutive?._id : d.assignedSalesExecutive;
-        return seId === seFilter;
-      });
-    }
-    if (search) {
-      const q = search.toLowerCase();
-      list = list.filter(d =>
-        d.businessName?.toLowerCase().includes(q) ||
-        d.dealerCode?.toLowerCase().includes(q) ||
-        d.city?.toLowerCase().includes(q)
-      );
-    }
-    return list;
-  }, [dealers, seFilter, search]);
-
-  // Group dealers by SE for the quick filter chips
-  const seGroups = useMemo(() => {
-    const map = {};
-    salesExecs.forEach(se => { map[se._id] = { se, count: 0 }; });
-    dealers.forEach(d => {
-      const seId = typeof d.assignedSalesExecutive === 'object' ? d.assignedSalesExecutive?._id : d.assignedSalesExecutive;
-      if (seId && map[seId]) map[seId].count++;
-    });
-    return Object.values(map);
-  }, [salesExecs, dealers]);
+  const refresh = () => { loadDealers(); loadSummary(); setSelectedRowKeys([]); };
+  const changeFilter = (value) => { setSeFilter(value); setPagination(p => ({ ...p, current: 1 })); setSelectedRowKeys([]); };
 
   const openAssign = (dealer) => {
-    const currentSE = typeof dealer.assignedSalesExecutive === 'object' ? dealer.assignedSalesExecutive?._id : dealer.assignedSalesExecutive;
     setEditDealer(dealer);
-    setSelectedSE(currentSE || null);
+    setSelectedSE(executiveIdOf(dealer));
+    setAssignmentReason('');
     setEditModal(true);
   };
+
+  const currentExecutive = typeof editDealer?.assignedSalesExecutive === 'object'
+    ? editDealer.assignedSalesExecutive
+    : null;
+  const currentExecutiveIsRetired = Boolean(
+    currentExecutive?._id && !salesExecs.some(se => String(se._id) === String(currentExecutive._id)),
+  );
 
   const saveAssignment = async () => {
     if (!editDealer) return;
     setSaving(true);
     try {
-      await masterService.updateDealer(editDealer._id, { assignedSalesExecutive: selectedSE || null });
-      message.success('Dealer assignment updated');
-      setEditModal(false);
-      setEditDealer(null);
-      load();
+      const res = await masterService.updateDealer(editDealer._id, {
+        assignedSalesExecutive: selectedSE || null,
+        assignmentReason: assignmentReason.trim(),
+      });
+      if (res?.success) {
+        message.success('Dealer assignment updated');
+        setEditModal(false);
+        setEditDealer(null);
+        refresh();
+      }
     } catch (err) {
       console.error('Assignment save error:', err);
-      message.error('Failed to update assignment');
+      message.error(err.message || 'Failed to update assignment');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveBulk = async () => {
+    setSaving(true);
+    try {
+      const res = await masterService.bulkAssignDealers({
+        dealerIds: selectedRowKeys,
+        assignedSalesExecutive: bulkSE || null,
+        reason: assignmentReason.trim(),
+      });
+      if (res?.success) {
+        message.success(res.message || 'Dealers reassigned');
+        setBulkModal(false);
+        setBulkSE(null);
+        setAssignmentReason('');
+        refresh();
+      }
+    } catch (err) {
+      message.error(err.message || 'Bulk assignment failed');
     } finally {
       setSaving(false);
     }
   };
 
   const columns = [
-    { title: '#', key: 'idx', render: (_, __, i) => i + 1, width: 55 },
     {
       title: 'Dealer',
       key: 'dealer',
@@ -136,16 +164,37 @@ export default function SEDealerAssignment() {
       key: 'se',
       render: (_, r) => {
         const se = typeof r.assignedSalesExecutive === 'object' ? r.assignedSalesExecutive : null;
-        return se ? <Tag color="blue" icon={<UserOutlined />}>{se.name}</Tag> : <Tag color="red">Unassigned</Tag>;
+        if (!se) return <Tag color="red">Unassigned</Tag>;
+        // An inactive executive cannot log in, so their dealers' chat and order
+        // requests go nowhere. Call that out rather than showing a calm blue tag.
+        const inactive = se.status && se.status !== 'Active';
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={inactive ? 'orange' : 'blue'} icon={<UserOutlined />}>{se.name}</Tag>
+            {inactive ? <Text type="warning" style={{ fontSize: 11 }}>Executive is inactive</Text> : null}
+          </Space>
+        );
+      },
+    },
+    {
+      title: 'Last change',
+      key: 'history',
+      render: (_, r) => {
+        const last = (r.assignmentHistory || [])[r.assignmentHistory.length - 1];
+        if (!last) return <Text type="secondary">—</Text>;
+        return (
+          <div style={{ fontSize: 11 }}>
+            <div>{last.fromName || 'Unassigned'} → {last.toName || 'Unassigned'}</div>
+            <Text type="secondary">{new Date(last.at).toLocaleDateString('en-IN')} · {last.byName || 'Staff'}</Text>
+          </div>
+        );
       },
     },
     {
       title: 'Action',
       key: 'action',
       render: (_, r) => (
-        <Button size="small" icon={<EditOutlined />} onClick={() => openAssign(r)}>
-          Assign
-        </Button>
+        <Button size="small" icon={<EditOutlined />} onClick={() => openAssign(r)}>Assign</Button>
       ),
     },
   ];
@@ -155,92 +204,117 @@ export default function SEDealerAssignment() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <Title level={4} style={{ margin: 0, color: '#FF5F03' }}>SE Dealer Assignment</Title>
-          <Text type="secondary">Assign dealers to sales executives — view and update dealer routing</Text>
+          <Text type="secondary">Assign dealers to sales executives — a dealer's branch, chat and order requests all route through this</Text>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+        <Space>
+          {selectedRowKeys.length ? (
+            <Button type="primary" icon={<TeamOutlined />} style={{ background: '#FF5F03', borderColor: '#FF5F03' }}
+              onClick={() => { setBulkSE(null); setAssignmentReason(''); setBulkModal(true); }}>
+              Reassign {selectedRowKeys.length} selected
+            </Button>
+          ) : null}
+          <Button icon={<ReloadOutlined />} onClick={refresh} loading={loading}>Refresh</Button>
+        </Space>
       </div>
 
-      {/* Stats */}
+      {summary.strandedOnInactive > 0 || summary.orphaned > 0 ? (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          style={{ marginBottom: 16 }}
+          message="Some dealers are pointing at an executive who cannot log in"
+          description={[
+            summary.strandedOnInactive ? `${summary.strandedOnInactive} dealer(s) are assigned to an inactive Sales Executive.` : null,
+            summary.orphaned ? `${summary.orphaned} dealer(s) reference a user that no longer exists.` : null,
+            'Their order requests and chat will not reach anyone until they are reassigned.',
+          ].filter(Boolean).join(' ')}
+        />
+      ) : null}
+
+      {summary.unassigned > 0 ? (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message={`${summary.unassigned} dealer(s) have no Sales Executive`}
+          description="Without one they have no branch, so they cannot submit order requests or use chat in the dealer app."
+        />
+      ) : null}
+
       <Row gutter={16} style={{ marginBottom: 24 }}>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ background: '#fff7f0', border: '1px solid #FF5F03' }}>
-            <Statistic title="Total Dealers" value={stats.total} valueStyle={{ color: '#FF5F03' }} />
+          <Card variant="borderless" style={{ background: '#fff7f0', border: '1px solid #FF5F03' }}>
+            <Statistic title="Total Dealers" value={summary.total} valueStyle={{ color: '#FF5F03' }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ background: '#f6ffed', border: '1px solid #52c41a' }}>
-            <Statistic title="Assigned" value={stats.assigned} valueStyle={{ color: '#52c41a' }} />
+          <Card variant="borderless" style={{ background: '#f6ffed', border: '1px solid #52c41a' }}>
+            <Statistic title="Assigned" value={summary.assigned} valueStyle={{ color: '#52c41a' }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ background: '#fff2f0', border: '1px solid #ff4d4f' }}>
-            <Statistic title="Unassigned" value={stats.unassigned} valueStyle={{ color: '#ff4d4f' }} />
+          <Card variant="borderless" style={{ background: '#fff2f0', border: '1px solid #ff4d4f' }}>
+            <Statistic title="Unassigned" value={summary.unassigned} valueStyle={{ color: '#ff4d4f' }} />
           </Card>
         </Col>
         <Col xs={12} sm={6}>
-          <Card bordered={false} style={{ background: '#f0f5ff', border: '1px solid #597ef7' }}>
-            <Statistic title="Sales Executives" value={stats.ses} valueStyle={{ color: '#597ef7' }} />
+          <Card variant="borderless" style={{ background: '#f0f5ff', border: '1px solid #597ef7' }}>
+            <Statistic title="Active Executives" value={summary.activeExecutives} valueStyle={{ color: '#597ef7' }} />
           </Card>
         </Col>
       </Row>
 
-      {/* SE Quick Filter Chips */}
+      {/* Per-executive chips, counted across all dealers rather than one page */}
       <div style={{ marginBottom: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        <Button
-          size="small"
-          type={seFilter === 'all' ? 'primary' : 'default'}
+        <Button size="small" type={seFilter === 'all' ? 'primary' : 'default'}
           style={seFilter === 'all' ? { background: '#FF5F03', borderColor: '#FF5F03' } : {}}
-          onClick={() => setSeFilter('all')}
-        >
-          All ({dealers.length})
+          onClick={() => changeFilter('all')}>
+          All ({summary.total})
         </Button>
-        {seGroups.map(({ se, count }) => (
-          <Button
-            key={se._id}
-            size="small"
-            type={seFilter === se._id ? 'primary' : 'default'}
-            style={seFilter === se._id ? { background: '#FF5F03', borderColor: '#FF5F03' } : {}}
-            onClick={() => setSeFilter(se._id)}
-          >
-            {se.name} ({count})
+        {(summary.byExecutive || []).map(executive => (
+          <Button key={executive._id} size="small"
+            type={seFilter === executive._id ? 'primary' : 'default'}
+            style={seFilter === executive._id ? { background: '#FF5F03', borderColor: '#FF5F03' } : {}}
+            onClick={() => changeFilter(executive._id)}>
+            {executive.name}{executive.status !== 'Active' ? ' (inactive)' : ''} ({executive.dealerCount})
           </Button>
         ))}
-        <Button
-          size="small"
-          type={seFilter === 'unassigned' ? 'primary' : 'default'}
-          danger={seFilter === 'unassigned'}
-          onClick={() => setSeFilter('unassigned')}
-        >
-          Unassigned ({stats.unassigned})
+        <Button size="small" type={seFilter === 'unassigned' ? 'primary' : 'default'}
+          danger={seFilter === 'unassigned'} onClick={() => changeFilter('unassigned')}>
+          Unassigned ({summary.unassigned})
         </Button>
       </div>
 
-      {/* Search */}
       <Card style={{ marginBottom: 16 }}>
         <Input
           prefix={<SearchOutlined />}
           placeholder="Search dealer name, code, city..."
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }}
           style={{ maxWidth: 400 }}
           allowClear
         />
       </Card>
 
-      {/* Table */}
       <Card>
         <Table
           columns={columns}
-          dataSource={filtered}
+          dataSource={dealers}
           rowKey="_id"
           loading={loading}
-          pagination={{ pageSize: 20, showSizeChanger: true, showTotal: (t) => `${t} dealers` }}
-          scroll={{ x: 900 }}
+          rowSelection={{ selectedRowKeys, onChange: setSelectedRowKeys }}
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            showTotal: (t, range) => `${range[0]}-${range[1]} of ${t} dealers`,
+          }}
+          onChange={page => setPagination(p => ({ ...p, current: page.current, pageSize: page.pageSize }))}
+          scroll={{ x: 1050 }}
           locale={{ emptyText: 'No dealers found.' }}
         />
       </Card>
 
-      {/* Assign Modal */}
       <Modal
         title={`Assign SE — ${editDealer?.businessName}`}
         open={editModal}
@@ -250,24 +324,50 @@ export default function SEDealerAssignment() {
         okText="Save Assignment"
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
       >
-        <div style={{ marginBottom: 8 }}>
-          <Text strong>Select Sales Executive</Text>
-        </div>
-        <Select
-          value={selectedSE}
-          onChange={setSelectedSE}
-          style={{ width: '100%' }}
-          placeholder="Choose a sales executive..."
-          allowClear
-        >
-          {salesExecs.map(se => (
-            <Option key={se._id} value={se._id}>
-              <UserOutlined /> {se.name}
+        <div style={{ marginBottom: 8 }}><Text strong>Sales Executive</Text></div>
+        <Select value={selectedSE} onChange={setSelectedSE} style={{ width: '100%' }}
+          placeholder="Choose a sales executive..." allowClear showSearch optionFilterProp="children">
+          {/* The options list only holds active executives, so a dealer sitting on
+              an inactive one would otherwise render as a raw id. Show it, disabled,
+              so the current state is readable and can only be changed away from. */}
+          {currentExecutiveIsRetired ? (
+            <Option key={currentExecutive._id} value={currentExecutive._id} disabled>
+              <UserOutlined /> {currentExecutive.name} — inactive
             </Option>
+          ) : null}
+          {salesExecs.map(se => (
+            <Option key={se._id} value={se._id}><UserOutlined /> {se.name}</Option>
           ))}
         </Select>
+        <div style={{ margin: '12px 0 8px' }}><Text strong>Reason (optional)</Text></div>
+        <Input maxLength={500} value={assignmentReason} onChange={e => setAssignmentReason(e.target.value)}
+          placeholder="e.g. Territory rebalance" />
         <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
-          Clear selection to unassign from current SE.
+          Clearing the selection removes the dealer's executive. They will lose order requests and chat in the dealer app until reassigned.
+        </Text>
+      </Modal>
+
+      <Modal
+        title={`Reassign ${selectedRowKeys.length} dealer(s)`}
+        open={bulkModal}
+        onOk={saveBulk}
+        onCancel={() => setBulkModal(false)}
+        confirmLoading={saving}
+        okText="Reassign"
+        okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+      >
+        <div style={{ marginBottom: 8 }}><Text strong>Move them to</Text></div>
+        <Select value={bulkSE} onChange={setBulkSE} style={{ width: '100%' }}
+          placeholder="Choose a sales executive..." allowClear showSearch optionFilterProp="children">
+          {salesExecs.map(se => (
+            <Option key={se._id} value={se._id}><UserOutlined /> {se.name}</Option>
+          ))}
+        </Select>
+        <div style={{ margin: '12px 0 8px' }}><Text strong>Reason (optional)</Text></div>
+        <Input maxLength={500} value={assignmentReason} onChange={e => setAssignmentReason(e.target.value)}
+          placeholder="e.g. Executive left the company" />
+        <Text type="secondary" style={{ display: 'block', marginTop: 8 }}>
+          Leave the executive empty to unassign all of them. Every change is recorded against the dealer.
         </Text>
       </Modal>
     </div>

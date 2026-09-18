@@ -159,6 +159,9 @@ const QuotationManager = () => {
   const [searchParams] = useSearchParams();
   const requestedDealerOrderRequest = searchParams.get('dealerOrderRequest');
   const createFromRequest = searchParams.get('create') === '1' && Boolean(requestedDealerOrderRequest);
+  // ?quotation=<id> opens that quotation's detail straight away, so converting a
+  // dealer order request can hand the user directly to the result.
+  const requestedQuotationId = searchParams.get('quotation');
   const { confirm, alertModal } = useConfirm();
   const [quotations, setQuotations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -182,6 +185,22 @@ const QuotationManager = () => {
   useEffect(() => {
     if (createFromRequest) setShowCreate(true);
   }, [createFromRequest, requestedDealerOrderRequest]);
+
+  // Deep link straight to one quotation's detail. Fetches by id rather than
+  // waiting for the paginated list, so it works even when the quotation is not
+  // on the first page.
+  useEffect(() => {
+    if (!requestedQuotationId) return;
+    let cancelled = false;
+    salesService.getQuotation(requestedQuotationId)
+      .then((response) => {
+        if (!cancelled && response?.success && response.data) setViewRecord(response.data);
+      })
+      .catch(() => {
+        if (!cancelled) message.error('That quotation could not be opened.');
+      });
+    return () => { cancelled = true; };
+  }, [requestedQuotationId]);
 
   const closeCreate = useCallback(() => {
     setShowCreate(false);
@@ -1714,7 +1733,6 @@ const ViewQuotationModal = ({ quotationId, refreshVersion = 0, onClose, onConver
                 <div className="flex justify-between"><span className="text-slate-500">Last updated</span><strong>{formatDate(q.updatedAt, true)}</strong></div>
                 <div className="flex justify-between"><span className="text-slate-500">Document version</span><strong>v{q.version || 1} (val v{q.validityVersion || 0} · conv v{q.conversionVersion || 0})</strong></div>
                 <div className="flex justify-between"><span className="text-slate-500">Source request</span><strong>{q.sourceDealerOrderRequest?.requestNumber || '—'}</strong></div>
-                <div className="flex justify-between"><span className="text-slate-500">Tally sync</span><Tag color={q.tallySyncStatus === 'synced' ? 'green' : q.tallySyncStatus === 'failed' ? 'red' : 'gold'} className="m-0 text-[10px]">{q.tallySyncStatus || 'not_synced'}</Tag></div>
               </div>
             </Card>
           </div>

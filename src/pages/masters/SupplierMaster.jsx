@@ -243,18 +243,6 @@ const SupplierMaster = () => {
                 </div>
               )}
 
-              {/* Tally Sync */}
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div className="bg-gray-100 rounded p-2 text-center">
-                  <span className="text-gray-500 block">Tally Status</span>
-                  <Tag color={viewSupplier.tallySyncStatus === 'synced' ? 'green' : viewSupplier.tallySyncStatus === 'pending' ? 'orange' : 'default'}>
-                    {viewSupplier.tallySyncStatus || 'not_synced'}
-                  </Tag>
-                </div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Tally Ledger</span><span className="font-medium">{viewSupplier.tallyLedgerName || '-'}</span></div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Last Sync</span><span className="font-medium">{viewSupplier.tallySyncDate ? new Date(viewSupplier.tallySyncDate).toLocaleDateString('en-IN') : '-'}</span></div>
-              </div>
-
               {/* Meta */}
               <div className="text-xs text-gray-400 flex gap-4 pt-2 border-t">
                 <span>Created: {viewSupplier.createdAt ? new Date(viewSupplier.createdAt).toLocaleDateString('en-IN') : '-'}</span>

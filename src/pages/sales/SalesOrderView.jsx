@@ -554,38 +554,22 @@ const SalesOrderView = ({ orderId, branchId, readOnlyBranch = false, onClose, on
               </DetailSection>
             )}
 
-            {/* Audit & Tally Sync Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-              <div className="lg:col-span-8">
-                <DetailSection title={<span className="font-semibold text-slate-700">Modifications / Audit Trail</span>} className="shadow-2xs border-slate-200">
-                  {order.modificationLogs?.length > 0 ? (
-                    <div className="max-h-64 overflow-y-auto pr-2">
-                      <Timeline items={order.modificationLogs.map((log, index) => ({
-                        key: log._id || index,
-                        children: (
-                          <div className="text-xs">
-                            <div><span className="font-semibold text-slate-700">{label(log.field)}</span>: <Tag className="text-[10px]">{displayValue(log.oldValue)}</Tag> → <Tag className="text-[10px]">{displayValue(log.newValue)}</Tag></div>
-                            <div className="text-slate-400 mt-0.5">{dateTimeText(log.changedAt)} · {personName(log.changedBy)}{log.reason ? ` · ${log.reason}` : ''}</div>
-                          </div>
-                        ),
-                      }))} />
-                    </div>
-                  ) : <div className="text-xs text-slate-400 py-2">No modifications recorded.</div>}
-                </DetailSection>
-              </div>
-
-              <div className="lg:col-span-4">
-                <DetailSection title={<span className="font-semibold text-slate-700">Tally Sync</span>} className="shadow-2xs border-slate-200">
-                  <Descriptions size="small" column={1} items={[
-                    { key: 'status', label: 'Status', children: <Tag color={order.tallySyncStatus === 'synced' ? 'green' : order.tallySyncStatus === 'failed' ? 'red' : order.tallySyncStatus === 'pending' ? 'orange' : 'default'}>{label(order.tallySyncStatus)}</Tag> },
-                    { key: 'voucher', label: 'Voucher', children: order.tallyVoucherNumber || '—' },
-                    { key: 'guid', label: 'GUID', children: order.tallyGUID || '—' },
-                    { key: 'date', label: 'Last sync', children: dateTimeText(order.tallySyncDate) },
-                    { key: 'error', label: 'Error', children: order.tallySyncError || '—' },
-                  ]} />
-                </DetailSection>
-              </div>
-            </div>
+            {/* Audit Trail */}
+            <DetailSection title={<span className="font-semibold text-slate-700">Modifications / Audit Trail</span>} className="shadow-2xs border-slate-200">
+              {order.modificationLogs?.length > 0 ? (
+                <div className="max-h-64 overflow-y-auto pr-2">
+                  <Timeline items={order.modificationLogs.map((log, index) => ({
+                    key: log._id || index,
+                    children: (
+                      <div className="text-xs">
+                        <div><span className="font-semibold text-slate-700">{label(log.field)}</span>: <Tag className="text-[10px]">{displayValue(log.oldValue)}</Tag> → <Tag className="text-[10px]">{displayValue(log.newValue)}</Tag></div>
+                        <div className="text-slate-400 mt-0.5">{dateTimeText(log.changedAt)} · {personName(log.changedBy)}{log.reason ? ` · ${log.reason}` : ''}</div>
+                      </div>
+                    ),
+                  }))} />
+                </div>
+              ) : <div className="text-xs text-slate-400 py-2">No modifications recorded.</div>}
+            </DetailSection>
 
             {/* Remarks */}
             <DetailSection title={<span className="font-semibold text-slate-700">Remarks & Internal Notes</span>} className="shadow-2xs border-slate-200">

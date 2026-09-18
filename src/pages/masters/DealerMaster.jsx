@@ -300,8 +300,7 @@ const DealerMaster = () => {
                 <Row gutter={16}>
                   <Col span={6}><Form.Item name="schemeEligible" label="Scheme Eligible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
                   <Col span={6}><Form.Item name="discountEligible" label="Discount Eligible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="visitFrequency" label="Visit Frequency"><Input placeholder="e.g. Weekly" /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="tallyLedgerName" label="Tally Ledger Name"><Input placeholder="Tally name" /></Form.Item></Col>
+                  <Col span={12}><Form.Item name="visitFrequency" label="Visit Frequency"><Input placeholder="e.g. Weekly" /></Form.Item></Col>
                 </Row>
               </Form>
             </div>
@@ -386,11 +385,10 @@ const DealerMaster = () => {
               )}
 
               {/* Eligibility & Other */}
-              <div className="grid grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Scheme</span><Tag color={viewDealer.schemeEligible ? 'green' : 'red'}>{viewDealer.schemeEligible ? 'Yes' : 'No'}</Tag></div>
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Discount</span><Tag color={viewDealer.discountEligible ? 'green' : 'red'}>{viewDealer.discountEligible ? 'Yes' : 'No'}</Tag></div>
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Visit Freq</span><span className="font-medium">{viewDealer.visitFrequency || '-'}</span></div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Tally Ledger</span><span className="font-medium text-[10px]">{viewDealer.tallyLedgerName || '-'}</span></div>
               </div>
 
               {/* Meta */}
