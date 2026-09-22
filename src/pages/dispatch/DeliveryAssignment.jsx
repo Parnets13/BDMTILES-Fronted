@@ -53,17 +53,21 @@ const DeliveryAssignment = () => {
     masterService.getVehicles?.({ limit: 200, isActive: true }).then(r => { if (r?.success) setVehicles(r.data || []); }).catch(() => {});
   }, []);
 
-  // Choosing the vehicle pulls its usual driver across; both stay editable.
+  // Choosing a different vehicle replaces the previous vehicle's usual driver
+  // and account context instead of accidentally retaining stale details.
   const chooseVehicle = (vehicleId) => {
     const picked = vehicles.find(v => String(v._id) === String(vehicleId));
     setAssignForm(f => ({
       ...f,
       vehicleRef: vehicleId,
       vehicle: picked?.vehicleNumber || '',
-      driverName: f.driverName || picked?.driverName || '',
-      driverPhone: f.driverPhone || picked?.driverPhone || '',
+      driverName: picked?.driverName || '',
+      driverPhone: picked?.driverPhone || '',
     }));
   };
+
+  const selectedVehicle = vehicles.find(vehicle => String(vehicle._id) === String(assignForm.vehicleRef));
+  const selectedExecutive = selectedVehicle?.deliveryExecutive;
 
   const handleAssign = async () => {
     if (!assignForm.vehicleRef) { message.error('Select a vehicle from Vehicle Master'); return; }
@@ -108,6 +112,18 @@ const DeliveryAssignment = () => {
           <div className="text-xs text-gray-400">{r.driverName || ''} {r.driverPhone ? `· ${r.driverPhone}` : ''}</div>
         </div>
       ),
+    },
+    {
+      title: 'Delivery Executive', key: 'executive', width: 150,
+      render: (_, record) => {
+        const executive = record.deliveryExecutive;
+        return (
+          <div>
+            <div className="text-xs font-medium">{record.deliveryExecutiveName || executive?.name || 'Unlinked'}</div>
+            <div className="text-[11px] text-gray-400">{executive?.phone || executive?.email || ''}</div>
+          </div>
+        );
+      },
     },
     {
       title: 'Orders', dataIndex: 'totalOrders', width: 80,
@@ -218,9 +234,28 @@ const DeliveryAssignment = () => {
               options={vehicles.map(v => ({
                 value: String(v._id),
                 label: v.vehicleNumber,
-                title: [v.vehicleType, v.capacity ? `${v.capacity} ${v.capacityUnit || ''}`.trim() : null].filter(Boolean).join(' · '),
+                title: [
+                  v.vehicleType,
+                  v.capacity ? `${v.capacity} ${v.capacityUnit || ''}`.trim() : null,
+                  v.deliveryExecutive?.name ? `Executive: ${v.deliveryExecutive.name}` : 'No executive linked',
+                ].filter(Boolean).join(' · '),
               }))}
+              optionRender={option => (
+                <div>
+                  <div className="font-medium">{option.data.label}</div>
+                  <div className="text-xs text-gray-400">{option.data.title}</div>
+                </div>
+              )}
             />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Linked Delivery Executive</label>
+            <div className={`rounded border px-3 py-2 ${selectedExecutive ? 'border-green-200 bg-green-50' : 'border-orange-200 bg-orange-50'}`}>
+              <div className="text-sm font-medium">{selectedExecutive?.name || 'No Delivery Executive linked'}</div>
+              <div className="text-xs text-gray-500">
+                {selectedExecutive ? (selectedExecutive.phone || selectedExecutive.email || 'User Management account') : 'You can link an account in Vehicle Master.'}
+              </div>
+            </div>
           </div>
           <div>
             <label className="text-xs text-gray-500 block mb-1">Driver Name *</label>
@@ -250,6 +285,8 @@ const DeliveryAssignment = () => {
               ['Vehicle', viewDispatch.vehicle || '—'],
               ['Driver', viewDispatch.driverName || '—'],
               ['Driver Phone', viewDispatch.driverPhone || '—'],
+              ['Delivery Executive', viewDispatch.deliveryExecutiveName || viewDispatch.deliveryExecutive?.name || 'Unlinked'],
+              ['Executive Phone', viewDispatch.deliveryExecutive?.phone || '—'],
               ['Total Orders', viewDispatch.totalOrders || 0],
               ['Departure', viewDispatch.departureTime ? new Date(viewDispatch.departureTime).toLocaleString('en-IN') : '—'],
               ['Remarks', viewDispatch.remarks || '—'],

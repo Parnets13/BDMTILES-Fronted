@@ -4,6 +4,10 @@ import api, { createIdempotencyKey } from '../config/api.js';
 // retrying the same action replays the committed child instead of creating one.
 const quotationConversionKeys = new Map();
 const quotationReversalKeys = new Map();
+// Keyed by quotation + planHash: re-confirming after a drift warning is a new
+// intent and must get a new key, but a lost response for the same confirmed plan
+// replays the committed split rather than splitting twice.
+const quotationSplitKeys = new Map();
 
 const salesService = {
   // Sales Orders
@@ -24,6 +28,12 @@ const salesService = {
   rejectDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/reject`, data),
   updateDealerOrderRequest: (id, data) => api.patch(`/dealer-order-requests/${id}`, data),
   getDealerOrderRequestQuotationPrefill: (id) => api.get(`/dealer-order-requests/${id}/quotation-prefill`),
+  // Stock-aware processing. The stock plan is a POST because the server has to
+  // create the request's quotation before it can allocate FIFO stock against it.
+  getDealerOrderStockPlan: (id) => api.post(`/dealer-order-requests/${id}/stock-plan`),
+  processDealerOrderRequest: (id, data) => api.post(`/dealer-order-requests/${id}/process`, data),
+  offerDealerOrderShortfall: (id, data) => api.post(`/dealer-order-requests/${id}/shortfall-offer`, data),
+  processDealerOrderPendingStock: (id, data) => api.post(`/dealer-order-requests/${id}/process-pending`, data),
 
   // Search helpers. Object arguments are preferred; positional arguments remain supported.
   searchDealers: (paramsOrQuery, page = 1, pricingTier) => {
@@ -110,6 +120,40 @@ const salesService = {
     return response;
   },
   checkQuotationStock: (id) => api.get(`/quotations/${id}/check-stock`),
+
+  // ── Quotation stock hold and split ──────────────────────────────────────────
+  // The preview returns a planHash which split-approve must echo back. If stock
+  // moved in between, the server answers 409 SPLIT_PLAN_CHANGED with a fresh plan
+  // so the approver re-confirms the new numbers instead of silently approving
+  // quantities they never saw.
+  getQuotationSplitPreview: (id) => api.get(`/quotations/${id}/split-preview`),
+  approveQuotationSplit: async (id, planHash, idempotencyKey) => {
+    const intent = `${id}:${planHash}`;
+    const key = idempotencyKey || quotationSplitKeys.get(intent) || createIdempotencyKey();
+    quotationSplitKeys.set(intent, key);
+    const response = await api.post(
+      `/quotations/${id}/split-approve`,
+      { planHash },
+      { headers: { 'Idempotency-Key': key } },
+    );
+    quotationSplitKeys.delete(intent);
+    return response;
+  },
+  confirmQuotationStock: async (id, planHash, idempotencyKey) => {
+    const intent = `confirm:${id}:${planHash}`;
+    const key = idempotencyKey || quotationSplitKeys.get(intent) || createIdempotencyKey();
+    quotationSplitKeys.set(intent, key);
+    const response = await api.post(
+      `/quotations/${id}/confirm-stock`,
+      { planHash },
+      { headers: { 'Idempotency-Key': key } },
+    );
+    quotationSplitKeys.delete(intent);
+    return response;
+  },
+  releaseQuotationHold: (id, reason) => api.post(`/quotations/${id}/hold/release`, { reason }),
+  extendQuotationHold: (id, data) => api.patch(`/quotations/${id}/hold/extend`, data),
+  getQuotationSplitFamily: (id) => api.get(`/quotations/${id}/split-family`),
   reverseQuotationConversion: async (id, conversionId, data, idempotencyKey) => {
     const intent = `${conversionId}:${data.reason}`;
     const key = idempotencyKey || quotationReversalKeys.get(intent) || createIdempotencyKey();

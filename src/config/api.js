@@ -203,7 +203,10 @@ api.interceptors.response.use(
 
     error.status = status;
     error.code = error.response?.data?.code || error.code;
-    error.details = error.response?.data?.details || error.details;
+    // Routes are inconsistent about where they put a failure payload: some send
+    // `details`, others send it as `data` alongside the message. Read both so a
+    // caller that needs the payload (a stale stock plan, say) always receives it.
+    error.details = error.response?.data?.details ?? error.response?.data?.data ?? error.details;
     error.message = error.response?.data?.message || error.message || 'Something went wrong';
 
     // Show a user-facing notification for every API error so the user always

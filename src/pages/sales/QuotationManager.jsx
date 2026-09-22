@@ -3,14 +3,15 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Alert,
-  Collapse, DatePicker
+  Collapse, DatePicker, Empty
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
   SendOutlined, CheckCircleOutlined, CloseCircleOutlined,
   SwapOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined,
   SyncOutlined, WarningOutlined, StopOutlined, FilterOutlined, CalendarOutlined,
-  HistoryOutlined, AuditOutlined, ShopOutlined, SafetyCertificateOutlined, UserOutlined
+  HistoryOutlined, AuditOutlined, ShopOutlined, SafetyCertificateOutlined, UserOutlined,
+  LockOutlined, UnlockOutlined
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
@@ -26,7 +27,15 @@ import { ProductImage } from '../../components/ImageLightbox.jsx';
 const STATUS_COLORS = {
   draft: 'default', pending_approval: 'orange', approved: 'cyan', sent: 'blue', accepted: 'green',
   converted: 'purple', expired: 'orange', cancelled: 'red',
+  // Immutable parent record of a stock split.
+  split: 'geekblue',
+  // Shortfall child of a split: no stock yet, so not a firm offer.
+  pending_stock: 'gold',
 };
+const HOLD_COLORS = {
+  held: 'green', partial: 'gold', consumed: 'purple', released: 'default', expired: 'red', none: 'default',
+};
+const SPLIT_ROLE_LABELS = { parent: 'Original request', available: 'In stock', shortfall: 'Pending stock' };
 
 const EMPTY_FILTERS = {
   search: '', status: undefined, dealer: '', dealerType: '', customer: '', customerType: undefined,
@@ -40,6 +49,7 @@ const APPROVAL_OPTIONS = ['not_required', 'pending', 'approved', 'rejected'].map
 const CONVERSION_OPTIONS = ['none', 'partial', 'full'].map(value => ({ value, label: value }));
 const VALIDITY_OPTIONS = ['active', 'expired', 'expiring_soon', 'no_expiry'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
 const STOCK_OPTIONS = ['available', 'partial', 'out_of_stock', 'fully_converted'].map(value => ({ value, label: value.replace(/_/g, ' ') }));
+
 const SORT_OPTIONS = [
   ['createdAt', 'Created'], ['updatedAt', 'Updated'], ['quotationDate', 'Quotation date'],
   ['validUntil', 'Valid until'], ['quotationNumber', 'Quotation number'], ['grandTotal', 'Grand total'],
@@ -154,6 +164,78 @@ const QuotationStockBadge = ({ quotation }) => {
   );
 };
 
+/**
+ * A hold is a real claim on stock: availableQty is moved into quotedQty, so the
+ * quantity cannot be sold to anyone else and converting this quotation can no
+ * longer fail on stock. Holds expire, so the countdown matters.
+ */
+const HoldBadge = ({ quotation }) => {
+  const status = quotation?.holdStatus || 'none';
+  if (status === 'none') return null;
+  const expiresAt = quotation?.holdExpiresAt ? dayjs(quotation.holdExpiresAt) : null;
+  const hoursLeft = expiresAt ? expiresAt.diff(dayjs(), 'hour', true) : null;
+  const label = status === 'held'
+    ? (hoursLeft !== null
+      ? `Stock held · ${hoursLeft < 1 ? '<1h' : `${Math.floor(hoursLeft)}h`} left`
+      : 'Stock held')
+    : status === 'consumed' ? 'Hold used'
+      : status === 'expired' ? 'Hold expired'
+        : status === 'released' ? 'Hold released'
+          : 'Partly held';
+  const title = status === 'held'
+    ? `This quotation holds real stock${expiresAt ? ` until ${expiresAt.format('DD MMM YYYY HH:mm')}` : ''}. Converting it cannot fail on stock.`
+    : status === 'consumed' ? 'The hold became the Sales Order reservation.'
+      : status === 'expired' ? 'The hold lapsed and the stock went back to available. The quotation is still queued.'
+        : status === 'released' ? 'The hold was released; stock returned to available.'
+          : 'Only part of this quotation is covered by a hold.';
+  return (
+    <Tooltip title={title}>
+      <Tag color={HOLD_COLORS[status] || 'default'}>{label}</Tag>
+    </Tooltip>
+  );
+};
+
+/** The available / shortfall breakdown an approver confirms before a split. */
+const SplitPlanTables = ({ plan }) => {
+  if (!plan) return null;
+  const columns = [
+    { title: 'Product', key: 'product', render: (_, row) => (
+      <div>
+        <div className="text-sm font-medium">{row.productName || '—'}</div>
+        <div className="text-xs text-gray-500">{row.productCode}</div>
+      </div>
+    ) },
+    { title: 'Qty', dataIndex: 'quantity', key: 'quantity', align: 'right', width: 110,
+      render: (value, row) => <span className="font-semibold">{formatNumber(value)} {row.unit}</span> },
+  ];
+  return (
+    <div className="space-y-4">
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <Tag color="green">Available now</Tag>
+          <span className="text-xs text-gray-500">
+            Stock will be held for these quantities, so the Sales Order cannot fail.
+          </span>
+        </div>
+        {plan.available?.length
+          ? <Table size="small" rowKey="itemId" columns={columns} dataSource={plan.available} pagination={false} />
+          : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Nothing is available to hold" />}
+      </div>
+      {plan.willSplit && (
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Tag color="gold">Pending stock</Tag>
+            <span className="text-xs text-gray-500">
+              Moves to a separate quotation, subject to availability. Not sent as a firm offer and no delivery date is promised.
+            </span>
+          </div>
+          <Table size="small" rowKey="itemId" columns={columns} dataSource={plan.shortfall} pagination={false} />
+        </div>
+      )}
+    </div>
+  );
+};
+
 const QuotationManager = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -181,6 +263,11 @@ const QuotationManager = () => {
   // Modals
   const [showCreate, setShowCreate] = useState(false);
   const [viewRecord, setViewRecord] = useState(null);
+  // Stock hold / split. `drifted` is set when the server answered
+  // SPLIT_PLAN_CHANGED, so the modal asks for a fresh confirmation instead of
+  // letting the approver commit numbers they never saw.
+  const [splitState, setSplitState] = useState(null);
+  const [splitBusy, setSplitBusy] = useState(false);
 
   useEffect(() => {
     if (createFromRequest) setShowCreate(true);
@@ -324,6 +411,94 @@ const QuotationManager = () => {
     } catch (err) { alertModal('Error', err.message, 'error'); }
   };
 
+  // ── Stock hold and split ────────────────────────────────────────────────────
+
+  /** Fetch the plan and open the confirmation modal. */
+  const openSplitPlan = async (record, intent = 'split') => {
+    setSplitBusy(true);
+    try {
+      // split-preview serves both intents: for a pending-stock child it evaluates
+      // readiness as if approved, so a planHash exists to confirm against.
+      const res = await salesService.getQuotationSplitPreview(record._id);
+      const plan = res?.data;
+      if (!plan) { alertModal('Unavailable', 'A stock plan could not be prepared for this quotation.', 'warning'); return; }
+      if (!plan.canHold) {
+        alertModal('No Stock To Hold', 'None of this quotation can be covered by stock right now.', 'warning');
+        return;
+      }
+      setSplitState({ record, plan, intent, drifted: false });
+    } catch (err) {
+      // The interceptor already surfaced the reason.
+      if (err?.code === 'QUOTATION_ALREADY_HELD') fetchQuotations();
+    } finally { setSplitBusy(false); }
+  };
+
+  /**
+   * Commit the plan. If stock moved since the preview the server answers 409
+   * SPLIT_PLAN_CHANGED with a fresh plan, which we show for re-confirmation
+   * rather than committing quantities the approver never saw.
+   */
+  const commitSplit = async () => {
+    if (!splitState) return;
+    const { record, plan, intent } = splitState;
+    setSplitBusy(true);
+    try {
+      const res = intent === 'confirm'
+        ? await salesService.confirmQuotationStock(record._id, plan.planHash)
+        : await salesService.approveQuotationSplit(record._id, plan.planHash);
+      setSplitState(null);
+      fetchQuotations();
+      loadStats();
+      setDetailRefreshVersion(version => version + 1);
+      if (intent === 'confirm') {
+        alertModal('Stock Confirmed', res.message || 'Stock is now held and the quotation can be sent.', 'success');
+        return;
+      }
+      const { available, shortfall } = res.data || {};
+      alertModal(
+        res.split ? 'Quotation Split' : 'Stock Held',
+        res.split
+          ? `${available?.quotationNumber} holds the available stock and can be converted now. `
+            + `${shortfall?.quotationNumber} carries the shortfall and stays pending until stock arrives — `
+            + 'it is not a firm offer and promises no delivery date.'
+          : `${available?.quotationNumber} now holds stock, so converting it cannot fail. No split was needed.`,
+        'success',
+      );
+    } catch (err) {
+      // The interceptor maps response.data.details onto err.details, but this
+      // endpoint returns the fresh plan as response.data.data — read both.
+      const freshPlan = err?.details || err?.response?.data?.data;
+      if (err?.code === 'SPLIT_PLAN_CHANGED' && freshPlan?.planHash) {
+        // Re-present the recalculated plan for an explicit second confirmation.
+        setSplitState({ record, plan: freshPlan, intent, drifted: true });
+        return;
+      }
+      if (err?.code === 'INSUFFICIENT_STOCK') {
+        setSplitState(null);
+        fetchQuotations();
+      }
+    } finally { setSplitBusy(false); }
+  };
+
+  const handleReleaseHold = async (record) => {
+    const ok = await confirm({
+      title: 'Release stock hold?',
+      content: `${record.quotationNumber} will stop guaranteeing its quantities and the stock returns to available. `
+        + 'The quotation keeps its place in the queue.',
+      okText: 'Release hold',
+      okButtonProps: { danger: true },
+    });
+    if (!ok) return;
+    try {
+      const res = await salesService.releaseQuotationHold(record._id, 'Released from Quotation Manager');
+      if (res.success) {
+        message.success(res.message || 'Stock hold released.');
+        fetchQuotations();
+        setDetailRefreshVersion(version => version + 1);
+      }
+    } catch { /* reported by the interceptor */ }
+  };
+
   const handleConvert = async (record, mode = 'full') => {
     if (!['approved', 'accepted'].includes(record.status) || record.conversionState === 'full') {
       alertModal('Conversion Not Available', 'Only approved or accepted quotations with remaining quantity can be converted.', 'warning');
@@ -447,13 +622,20 @@ const QuotationManager = () => {
     {
       title: 'Stock Status', key: 'stockStatus', width: 145,
       render: (_, r) => {
-        // For terminal quotations, stock status is irrelevant
-        if (['converted', 'cancelled'].includes(r.status)) {
+        // For terminal quotations, stock status is irrelevant. A split parent is
+        // terminal too: its demand now lives on its children.
+        if (['converted', 'cancelled', 'split'].includes(r.status)) {
           return <span className="text-xs text-gray-300">—</span>;
         }
         return (
           <Space direction="vertical" size={2}>
             <QuotationStockBadge quotation={r} />
+            <HoldBadge quotation={r} />
+            {r.splitRole && r.splitRole !== 'none' && (
+              <Tag color={r.splitRole === 'parent' ? 'geekblue' : r.splitRole === 'available' ? 'green' : 'gold'}>
+                {SPLIT_ROLE_LABELS[r.splitRole]}
+              </Tag>
+            )}
             <QueueModeBadge readiness={r.stockReadiness} />
           </Space>
         );
@@ -464,6 +646,10 @@ const QuotationManager = () => {
         const readiness = r.stockReadiness;
         const expired = quotationIsExpired(r);
         const canConvertNow = ['approved', 'accepted'].includes(r.status) && !expired && r.conversionState !== 'full';
+        const holding = ['held', 'partial'].includes(r.holdStatus);
+        // A hold can only be taken on a real commitment, and only once.
+        const canHold = ['approved', 'accepted'].includes(r.status) && !expired
+          && !holding && r.conversionState !== 'full' && readiness?.anyStockAvailable;
         return (
           <Space size="small">
             {/* View — always */}
@@ -471,6 +657,34 @@ const QuotationManager = () => {
               <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600"
                 onClick={() => setViewRecord(r)} />
             </Tooltip>
+
+            {/* approved / accepted → hold stock, splitting off any shortfall */}
+            {canHold && (
+              <Tooltip title={readiness?.allStockAvailable
+                ? 'Hold this stock so converting cannot fail'
+                : 'Hold what is available and split the shortfall into its own quotation'}>
+                <Button type="text" size="small" icon={<LockOutlined />} className="text-emerald-600"
+                  loading={splitBusy && splitState?.record?._id === r._id}
+                  onClick={() => openSplitPlan(r, 'split')} />
+              </Tooltip>
+            )}
+
+            {/* pending stock → confirm once a GRN has landed */}
+            {r.status === 'pending_stock' && (
+              <Tooltip title="Stock has arrived — confirm and hold it, then this becomes a real offer">
+                <Button type="text" size="small" icon={<CheckCircleOutlined />} className="text-emerald-600"
+                  loading={splitBusy && splitState?.record?._id === r._id}
+                  onClick={() => openSplitPlan(r, 'confirm')} />
+              </Tooltip>
+            )}
+
+            {/* holding → give the stock back without cancelling */}
+            {holding && (
+              <Tooltip title="Release the stock hold (the quotation keeps its queue position)">
+                <Button type="text" size="small" icon={<UnlockOutlined />} className="text-orange-500"
+                  onClick={() => handleReleaseHold(r)} />
+              </Tooltip>
+            )}
 
             {/* draft → Send to customer */}
             {r.status === 'draft' && (
@@ -690,6 +904,67 @@ const QuotationManager = () => {
           onStatusChange={(id, s) => { handleStatusChange(id, s); setViewRecord(null); }}
         />
       )}
+
+      {/* Stock hold / split confirmation. Doubles as the re-confirm dialog when
+          the server reports the plan changed under the approver. */}
+      <Modal
+        open={Boolean(splitState)}
+        title={splitState?.intent === 'confirm'
+          ? `Confirm stock — ${splitState?.record?.quotationNumber || ''}`
+          : `Hold stock — ${splitState?.record?.quotationNumber || ''}`}
+        onCancel={() => setSplitState(null)}
+        onOk={commitSplit}
+        confirmLoading={splitBusy}
+        okText={splitState?.drifted
+          ? 'Confirm the updated split'
+          : splitState?.intent === 'confirm'
+            ? 'Confirm and hold stock'
+            : splitState?.plan?.willSplit ? 'Hold stock and split' : 'Hold stock'}
+        width={720}
+        destroyOnClose
+      >
+        {splitState && (
+          <div className="space-y-4">
+            {splitState.drifted && (
+              <Alert
+                type="warning"
+                showIcon
+                message="Stock changed while you were approving"
+                description={
+                  'The split below has been recalculated from current stock. Check the quantities and confirm again — '
+                  + 'nothing has been committed yet.'
+                }
+              />
+            )}
+            {!splitState.drifted && splitState.plan.willSplit && (
+              <Alert
+                type="info"
+                showIcon
+                message="This quotation will become three records"
+                description={
+                  `${splitState.record.quotationNumber} is kept as the original request. `
+                  + 'A new quotation holds the available stock and can be converted straight away. '
+                  + 'A second one carries the shortfall and waits for stock.'
+                }
+              />
+            )}
+            {!splitState.drifted && !splitState.plan.willSplit && splitState.intent !== 'confirm' && (
+              <Alert
+                type="success"
+                showIcon
+                message="Everything is available — no split needed"
+                description="Stock will be held against this quotation so converting it cannot fail."
+              />
+            )}
+            <SplitPlanTables plan={splitState.plan} />
+            <div className="rounded-md bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              The hold expires after {splitState.plan.holdTtlHours}h, after which the stock returns to
+              available and the quotation keeps its place in the queue. Checked{' '}
+              {formatDate(splitState.plan.checkedAt, true)}.
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };

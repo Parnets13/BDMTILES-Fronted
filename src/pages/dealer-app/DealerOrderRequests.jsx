@@ -2,19 +2,44 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import {
-  Alert, Button, Card, Col, DatePicker, Divider, Empty, Input, InputNumber, Modal, Row, Select,
-  Space, Spin, Statistic, Table, Tag, Timeline, Tooltip, message,
+  Alert, Button, Card, Checkbox, Col, DatePicker, Divider, Empty, Input, InputNumber, Modal, Row,
+  Select, Space, Spin, Statistic, Table, Tag, Timeline, Tooltip, message,
 } from 'antd';
 import {
-  CheckCircleOutlined, CloseCircleOutlined, DeleteOutlined, EditOutlined, EyeOutlined,
-  FileAddOutlined, FileDoneOutlined, PlusOutlined, ReloadOutlined, SearchOutlined, ShoppingOutlined,
-  ThunderboltOutlined,
+  CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, DeleteOutlined, EditOutlined,
+  EyeOutlined, FileAddOutlined, FileDoneOutlined, LockOutlined, PlusOutlined, ReloadOutlined,
+  SearchOutlined, ShoppingOutlined, ThunderboltOutlined, TruckOutlined,
 } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const STATUS_COLORS = {
-  submitted: 'orange', approved: 'green', rejected: 'red', quotation_linked: 'blue', cancelled: 'default',
+  submitted: 'orange', approved: 'green', partially_processed: 'geekblue', awaiting_dealer: 'purple',
+  awaiting_stock: 'cyan', quotation_linked: 'blue', rejected: 'red', cancelled: 'default',
+};
+const SHORTFALL_COLORS = {
+  awaiting_dealer: 'purple', needs_reconfirmation: 'volcano', accepted: 'green',
+  rejected: 'red', closed: 'default', none: 'default',
+};
+const SHORTFALL_LABELS = {
+  awaiting_dealer: 'Waiting for dealer response',
+  needs_reconfirmation: 'Dealer changed the quantity — re-confirm the date',
+  accepted: 'Dealer accepted',
+  rejected: 'Dealer declined',
+  closed: 'Settled',
+};
+const qtyText = value => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 6 });
+// Processing a request is one action: it approves the demand, reserves everything in
+// stock as an order, and asks the dealer about the rest. A request that was approved
+// separately beforehand can still be processed from there.
+const PROCESSABLE = new Set(['submitted', 'approved']);
+// The list endpoint returns the raw rounds, so the open one can be read without a
+// second request. A superseded round is not open: it has been replaced by a newer
+// offer and must not be presented as the current one.
+const openRound = (record) => {
+  const rounds = record?.shortfallRounds || [];
+  const last = rounds[rounds.length - 1];
+  return last && last.outcome !== 'superseded' ? last : null;
 };
 const label = value => String(value || 'unknown').replace(/_/g, ' ').replace(/\b\w/g, letter => letter.toUpperCase());
 const date = value => value ? new Date(value).toLocaleDateString('en-IN') : '—';
@@ -29,6 +54,11 @@ const DealerOrderRequests = () => {
   const { hasPermission } = useAuth();
   const canApprove = hasPermission('dealer.order_request.approve');
   const canCreateQuotation = hasPermission('quotation.management');
+  // Committing stock and raising the order needs the same rights the server asks
+  // for, so the button is not offered to someone who would only get a 403.
+  const canProcessStock = canCreateQuotation
+    && hasPermission('sales.order.create')
+    && hasPermission('sales.order.approve');
   const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState(null);
@@ -40,6 +70,8 @@ const DealerOrderRequests = () => {
   const [rejectRequest, setRejectRequest] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
   const [editRequest, setEditRequest] = useState(null);
+  const [processRequest, setProcessRequest] = useState(null);
+  const [reofferRequest, setReofferRequest] = useState(null);
 
   const fetchRequests = useCallback(async () => {
     setLoading(true);
@@ -132,6 +164,29 @@ const DealerOrderRequests = () => {
     finally { setActionId(null); }
   };
 
+  // The stock the dealer agreed to wait for has arrived. The server re-checks it and
+  // only raises the order if the reservation succeeds, so a refusal here is a normal
+  // outcome rather than an error to hide.
+  const confirmPendingStock = (record) => {
+    Modal.confirm({
+      title: `Reserve the pending quantity on ${record.requestNumber}?`,
+      content: `Stock is re-checked now. If the full agreed quantity on ${record.pendingStockQuotation?.quotationNumber || 'the pending quotation'} is available it is reserved and an order is raised. If it is still short, nothing is created.`,
+      okText: 'Check stock and reserve',
+      onOk: async () => {
+        setActionId(record._id);
+        try {
+          const response = await salesService.processDealerOrderPendingStock(record._id);
+          if (!response.success) throw new Error(response.message || 'Could not process the pending stock.');
+          message.success(response.message);
+          refresh();
+        } catch (error) {
+          message.error(error.message || 'Could not process the pending stock.');
+          refresh();
+        } finally { setActionId(null); }
+      },
+    });
+  };
+
   const handleReject = async () => {
     const reason = rejectReason.trim();
     if (!reason) { message.error('Enter a rejection reason'); return; }
@@ -152,6 +207,35 @@ const DealerOrderRequests = () => {
   };
 
   const outcomeCell = (record) => {
+    const orders = (record.outcomes || []).map(entry => entry.salesOrder).filter(Boolean);
+    if (orders.length || record.sourceSalesOrder) {
+      const list = orders.length ? orders : [record.sourceSalesOrder];
+      return (
+        <div className="space-y-0.5">
+          {list.map(order => (
+            <div key={order._id} className="font-mono text-xs font-medium text-emerald-700">
+              {order.orderNumber}
+              <span className="ml-1 font-sans text-[11px] text-gray-400">{money(order.grandTotal)}</span>
+            </div>
+          ))}
+          {record.pendingStockQuotation?.quotationNumber ? (
+            <div className="font-sans text-[11px] text-amber-600">+ {record.pendingStockQuotation.quotationNumber} pending stock</div>
+          ) : null}
+        </div>
+      );
+    }
+    if (record.pendingStockQuotation?.quotationNumber) {
+      return (
+        <button
+          type="button"
+          className="text-left font-mono text-xs font-medium text-amber-600 hover:underline"
+          onClick={() => openQuotation(record.pendingStockQuotation._id)}
+        >
+          {record.pendingStockQuotation.quotationNumber}
+          <div className="font-sans text-[11px] text-gray-400">Pending stock</div>
+        </button>
+      );
+    }
     if (record.sourceQuotation?.quotationNumber) {
       return (
         <button
@@ -166,7 +250,7 @@ const DealerOrderRequests = () => {
     }
     if (record.status === 'rejected') return <span className="text-xs text-gray-400">Rejected</span>;
     if (record.status === 'cancelled') return <span className="text-xs text-gray-400">Withdrawn by dealer</span>;
-    if (record.status === 'approved') return <span className="text-xs text-green-600">Ready to quote</span>;
+    if (record.status === 'approved') return <span className="text-xs text-green-600">Ready to process</span>;
     return <span className="text-xs text-gray-400">—</span>;
   };
 
@@ -181,9 +265,20 @@ const DealerOrderRequests = () => {
     { title: 'Dealer', key: 'dealer', width: 190, render: (_, record) => <div><div className="max-w-[180px] truncate text-sm font-medium">{record.dealerSnapshot?.businessName || record.dealer?.businessName || '—'}</div><div className="text-xs text-gray-400">{record.dealerSnapshot?.dealerCode || record.dealer?.dealerCode || 'No code'}</div></div> },
     { title: 'Sales Executive', dataIndex: 'salesExecutiveName', width: 150, render: (value, record) => value || record.salesExecutive?.name || '—' },
     { title: 'Products', key: 'items', width: 75, align: 'center', render: (_, record) => record.items?.length || 0 },
-    { title: 'Status', dataIndex: 'status', width: 130, render: status => <Tag color={STATUS_COLORS[status]}>{label(status)}</Tag> },
-    { title: 'Quotation', key: 'outcome', width: 135, render: (_, record) => outcomeCell(record) },
-    { title: 'Actions', width: 190, fixed: 'right', render: (_, record) => {
+    { title: 'Status', dataIndex: 'status', width: 150, render: (status, record) => (
+      <div className="space-y-1">
+        <Tag color={STATUS_COLORS[status]}>{label(status)}</Tag>
+        {record.shortfallStatus && !['none', 'closed'].includes(record.shortfallStatus) ? (
+          <Tooltip title={SHORTFALL_LABELS[record.shortfallStatus]}>
+            <Tag color={SHORTFALL_COLORS[record.shortfallStatus]} className="text-[10px]">
+              {record.shortfallStatus === 'needs_reconfirmation' ? 're-confirm date' : label(record.shortfallStatus)}
+            </Tag>
+          </Tooltip>
+        ) : null}
+      </div>
+    ) },
+    { title: 'Order / Quotation', key: 'outcome', width: 165, render: (_, record) => outcomeCell(record) },
+    { title: 'Actions', width: 215, fixed: 'right', render: (_, record) => {
       const busy = Boolean(actionId);
       const mine = actionId === record._id;
       return (
@@ -195,19 +290,43 @@ const DealerOrderRequests = () => {
           ) : null}
 
           {canApprove && record.status === 'submitted' ? <>
-            {canCreateQuotation ? (
+            {/* Approve-and-quote skips the stock split, so it is only offered to
+                someone who cannot process stock anyway. Everyone else uses the
+                single Process action, which approves and reserves in one go. */}
+            {canCreateQuotation && !canProcessStock ? (
               <Tooltip title="Approve and create the quotation in one step">
                 <Button type="text" size="small" className="text-green-600" icon={<ThunderboltOutlined />} loading={mine} disabled={busy && !mine} onClick={() => approveAndQuote(record)} />
               </Tooltip>
             ) : null}
-            <Tooltip title="Approve only">
+            <Tooltip title="Approve only, without reserving stock yet">
               <Button type="text" size="small" className="text-green-600" icon={<CheckCircleOutlined />} loading={mine && !canCreateQuotation} disabled={busy && !mine} onClick={() => handleApproveOnly(record)} />
             </Tooltip>
             <Tooltip title="Reject"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} disabled={busy} onClick={() => { setRejectRequest(record); setRejectReason(''); }} /></Tooltip>
           </> : null}
 
-          {canCreateQuotation && record.status === 'approved' ? (
-            <Tooltip title="Create quotation"><Button type="text" size="small" className="text-blue-600" icon={<FileAddOutlined />} disabled={busy} onClick={() => openQuotationBuilder(record._id)} /></Tooltip>
+          {canProcessStock && PROCESSABLE.has(record.status) ? (
+            <Tooltip title={record.status === 'submitted'
+              ? 'Approve, reserve everything in stock as an order, and ask the dealer about the rest'
+              : 'Reserve everything in stock as an order and ask the dealer about the rest'}>
+              <Button type="text" size="small" className="text-emerald-600" icon={<LockOutlined />} disabled={busy} onClick={() => setProcessRequest(record)} />
+            </Tooltip>
+          ) : null}
+
+          {canProcessStock && record.shortfallStatus === 'closed' && record.pendingStockQuotation?._id
+            && record.pendingStockQuotation.status === 'pending_stock' ? (
+              <Tooltip title="Stock has arrived — reserve the pending quantity and raise its order">
+                <Button type="text" size="small" className="text-cyan-600" icon={<TruckOutlined />} loading={mine} disabled={busy && !mine} onClick={() => confirmPendingStock(record)} />
+              </Tooltip>
+            ) : null}
+
+          {canApprove && record.shortfallStatus === 'needs_reconfirmation' ? (
+            <Tooltip title="The dealer increased a quantity — confirm the new expected date">
+              <Button type="text" size="small" className="text-orange-600" icon={<ClockCircleOutlined />} disabled={busy} onClick={() => setReofferRequest(record)} />
+            </Tooltip>
+          ) : null}
+
+          {canCreateQuotation && !canProcessStock && record.status === 'approved' ? (
+            <Tooltip title="Create a quotation manually"><Button type="text" size="small" className="text-blue-600" icon={<FileAddOutlined />} disabled={busy} onClick={() => openQuotationBuilder(record._id)} /></Tooltip>
           ) : null}
 
           {record.status === 'quotation_linked' && record.sourceQuotation?._id ? (
@@ -226,9 +345,10 @@ const DealerOrderRequests = () => {
     <Row gutter={[12, 12]} className="mb-4">
       {[
         ['Total', stats.total, '#1890ff'], ['Submitted', stats.submitted, '#fa8c16'], ['Approved', stats.approved, '#52c41a'],
-        ['Quotation Linked', stats.quotation_linked, '#1677ff'], ['Rejected', stats.rejected, '#f5222d'],
-        ['Cancelled', stats.cancelled, '#8c8c8c'],
-      ].map(([title, value, color]) => <Col xs={24} sm={12} lg={4} key={title}><Card size="small"><Statistic title={title} value={value || 0} valueStyle={{ color }} /></Card></Col>)}
+        ['Part Ordered', stats.partially_processed, '#2f54eb'], ['With Dealer', stats.awaiting_dealer, '#722ed1'],
+        ['Awaiting Stock', stats.awaiting_stock, '#13c2c2'], ['Completed', stats.quotation_linked, '#1677ff'],
+        ['Rejected', stats.rejected, '#f5222d'], ['Cancelled', stats.cancelled, '#8c8c8c'],
+      ].map(([title, value, color]) => <Col xs={12} sm={8} lg={4} key={title}><Card size="small"><Statistic title={title} value={value || 0} valueStyle={{ color }} /></Card></Col>)}
     </Row>
 
     <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
@@ -244,6 +364,26 @@ const DealerOrderRequests = () => {
     </div>
 
     <ViewRequestModal request={viewRequest} onClose={() => setViewRequest(null)} onOpenQuotation={openQuotation} />
+
+    <ProcessStockModal
+      request={processRequest}
+      onClose={() => setProcessRequest(null)}
+      onDone={(response) => {
+        setProcessRequest(null);
+        message.success(response.message || 'Request processed.');
+        refresh();
+      }}
+    />
+
+    <ReofferShortfallModal
+      request={reofferRequest}
+      onClose={() => setReofferRequest(null)}
+      onDone={(response) => {
+        setReofferRequest(null);
+        message.success(response.message || 'New offer sent to the dealer.');
+        refresh();
+      }}
+    />
 
     <EditRequestModal
       request={editRequest}
@@ -262,6 +402,394 @@ const DealerOrderRequests = () => {
   </div>;
 };
 
+// ── Shortfall answers (shared by processing and re-offering) ─────────────────
+//
+// Every short line needs either an expected availability date or an explicit "not
+// available" with a reason. The server enforces the same rule; mirroring it here
+// means the user finds out before they submit rather than after.
+const seedAnswers = (lines, previous = {}) => Object.fromEntries(
+  lines.filter(line => Number(line.shortfallQty) > 0).map((line) => {
+    const carried = previous[line.product];
+    return [line.product, carried || { expectedDate: null, noEta: false, staffRemark: '' }];
+  }),
+);
+
+const answersIncomplete = (lines, answers) => lines
+  .filter(line => Number(line.shortfallQty) > 0)
+  .some((line) => {
+    const answer = answers[line.product] || {};
+    if (answer.noEta) return !String(answer.staffRemark || '').trim();
+    return !answer.expectedDate || answer.expectedDate.isBefore(dayjs().startOf('day'), 'day');
+  });
+
+const answersPayload = (lines, answers) => lines
+  .filter(line => Number(line.shortfallQty) > 0)
+  .map((line) => {
+    const answer = answers[line.product] || {};
+    return {
+      product: line.product,
+      noEta: Boolean(answer.noEta),
+      ...(answer.noEta ? {} : { expectedDate: answer.expectedDate.format('YYYY-MM-DD') }),
+      staffRemark: String(answer.staffRemark || '').trim(),
+    };
+  });
+
+const ShortfallAnswerTable = ({ lines, answers, onChange, showReserved = true }) => {
+  const update = (product, patch) => onChange({ ...answers, [product]: { ...answers[product], ...patch } });
+  return (
+    <Table
+      size="small"
+      pagination={false}
+      rowKey="product"
+      dataSource={lines.filter(line => Number(line.shortfallQty) > 0)}
+      columns={[
+        { title: 'Product', render: (_, line) => (
+          <div>
+            <div className="font-medium">{line.productName}</div>
+            <div className="text-xs text-gray-400">{line.productCode || 'No code'}</div>
+          </div>
+        ) },
+        { title: 'Asked', width: 80, align: 'right', render: (_, line) => <span className="text-xs">{qtyText(line.requestedQty)}</span> },
+        ...(showReserved ? [{ title: 'Reserving now', width: 105, align: 'right', render: (_, line) => (
+          <span className="text-xs font-medium text-emerald-700">{qtyText(line.allocatedQty)}</span>
+        ) }] : []),
+        { title: 'Short', width: 80, align: 'right', render: (_, line) => (
+          <span className="text-xs font-semibold text-amber-600">{qtyText(line.shortfallQty)}</span>
+        ) },
+        { title: 'Expected by', width: 190, render: (_, line) => {
+          const answer = answers[line.product] || {};
+          return (
+            <div className="space-y-1">
+              <DatePicker
+                className="w-full"
+                size="small"
+                format="DD/MM/YYYY"
+                disabled={answer.noEta}
+                value={answer.expectedDate}
+                disabledDate={current => current && current.isBefore(dayjs().startOf('day'), 'day')}
+                onChange={value => update(line.product, { expectedDate: value })}
+                status={!answer.noEta && !answer.expectedDate ? 'error' : ''}
+                placeholder="Availability date"
+              />
+              <Checkbox
+                checked={Boolean(answer.noEta)}
+                onChange={event => update(line.product, { noEta: event.target.checked, expectedDate: null })}
+              >
+                <span className="text-[11px]">No ETA / not available</span>
+              </Checkbox>
+            </div>
+          );
+        } },
+        { title: 'Note to dealer', width: 210, render: (_, line) => {
+          const answer = answers[line.product] || {};
+          return (
+            <Input
+              size="small"
+              maxLength={500}
+              value={answer.staffRemark}
+              onChange={event => update(line.product, { staffRemark: event.target.value })}
+              placeholder={answer.noEta ? 'Required — explain why' : 'Optional'}
+              status={answer.noEta && !String(answer.staffRemark || '').trim() ? 'error' : ''}
+            />
+          );
+        } },
+      ]}
+    />
+  );
+};
+
+// ── Process stock: reserve what is available, ask about the rest ─────────────
+//
+// Opening this creates the request's quotation server-side and returns the real
+// FIFO split plan with a planHash. Submitting echoes that hash back; if stock moved
+// in between, the server refuses and hands back a fresh plan instead of quietly
+// reserving a different quantity than the one on screen.
+const ProcessStockModal = ({ request, onClose, onDone }) => {
+  const [plan, setPlan] = useState(null);
+  const [answers, setAnswers] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [offerRemark, setOfferRemark] = useState('');
+  const [stale, setStale] = useState(false);
+  const [failure, setFailure] = useState('');
+
+  const load = useCallback(async (id) => {
+    setLoading(true);
+    setFailure('');
+    try {
+      const response = await salesService.getDealerOrderStockPlan(id);
+      if (!response.success) throw new Error(response.message || 'Could not read the stock position.');
+      setPlan(response.data.plan);
+      setAnswers(seedAnswers(response.data.plan.lines));
+      setStale(false);
+    } catch (error) {
+      setPlan(null);
+      setFailure(error.message || 'Could not read the stock position.');
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!request) { setPlan(null); setAnswers({}); setOfferRemark(''); setStale(false); setFailure(''); return; }
+    load(request._id);
+  }, [request, load]);
+
+  const lines = plan?.lines || [];
+  const shortLines = lines.filter(line => Number(line.shortfallQty) > 0);
+  const incomplete = answersIncomplete(lines, answers);
+
+  const submit = async () => {
+    if (incomplete) { message.error('Give an expected date, or mark the line as not available with a reason.'); return; }
+    setSubmitting(true);
+    try {
+      const response = await salesService.processDealerOrderRequest(request._id, {
+        planHash: plan.planHash,
+        shortfall: answersPayload(lines, answers),
+        offerRemark: offerRemark.trim(),
+      });
+      if (!response.success) throw new Error(response.message || 'Could not process the request.');
+      onDone(response);
+    } catch (error) {
+      // Stock moved between reading the plan and committing it. Show the new
+      // numbers and make the user confirm them; nothing was reserved.
+      const fresh = error.code === 'SPLIT_PLAN_CHANGED' ? error.details : null;
+      if (fresh?.plan) {
+        const next = {
+          planHash: fresh.plan.planHash,
+          willSplit: fresh.plan.willSplit,
+          canHold: fresh.plan.canHold,
+          totals: fresh.plan.totals,
+          lines: fresh.lines || [],
+        };
+        setPlan(next);
+        setAnswers(current => seedAnswers(next.lines, current));
+        setStale(true);
+      } else {
+        setFailure(error.message || 'Could not process the request.');
+      }
+    } finally { setSubmitting(false); }
+  };
+
+  return (
+    <Modal
+      title={request ? `Process stock for ${request.requestNumber}` : 'Process stock'}
+      open={Boolean(request)}
+      onCancel={onClose}
+      width={980}
+      destroyOnHidden
+      footer={[
+        <Button key="cancel" onClick={onClose}>Cancel</Button>,
+        <Button key="refresh" icon={<ReloadOutlined />} disabled={loading || submitting} onClick={() => load(request._id)}>
+          Re-check stock
+        </Button>,
+        <Button
+          key="go"
+          type="primary"
+          loading={submitting}
+          disabled={loading || !plan || (!plan.canHold && !shortLines.length) || incomplete}
+          onClick={submit}
+        >
+          {plan?.canHold
+            ? shortLines.length ? 'Reserve available & ask dealer' : 'Reserve & create order'
+            : 'Ask dealer about the pending quantity'}
+        </Button>,
+      ]}
+    >
+      {loading ? <div className="py-10 text-center"><Spin /></div> : null}
+
+      {!loading && failure ? <Alert type="error" showIcon message="Cannot process this request" description={failure} /> : null}
+
+      {!loading && plan ? <div className="mt-2 space-y-4">
+        {stale ? (
+          <Alert
+            type="warning"
+            showIcon
+            message="Stock changed while you were deciding"
+            description="Nothing was reserved. These are the current numbers — check them and confirm again."
+          />
+        ) : null}
+
+        <Alert
+          type={plan.canHold ? (plan.willSplit ? 'warning' : 'success') : 'error'}
+          showIcon
+          message={plan.canHold
+            ? plan.willSplit
+              ? `${qtyText(plan.totals?.availableQty)} can be reserved now; ${qtyText(plan.totals?.shortfallQty)} is short`
+              : 'Everything requested is available'
+            : 'None of the requested quantity is available'}
+          description={plan.canHold
+            ? plan.willSplit
+              ? 'Confirming reserves the available part and raises its Sales Order straight away — the dealer is not asked to confirm that again. The short quantity is put to them as a question, and only becomes a pending-stock quotation if they agree.'
+              : 'Confirming reserves the full quantity and raises its Sales Order. There is nothing to ask the dealer.'
+            : 'No Sales Order is created. The whole quantity is put to the dealer with your expected date, and only becomes a pending-stock quotation if they agree.'}
+        />
+
+        {request?.status === 'submitted' ? (
+          <Alert
+            type="info"
+            showIcon
+            message="This also approves the request"
+            description="Reviewing the demand and committing stock to it is one action. The products and quantities are frozen at the same moment they are reserved."
+          />
+        ) : null}
+
+        <Table
+          size="small"
+          pagination={false}
+          rowKey="product"
+          dataSource={lines}
+          columns={[
+            { title: 'Product', render: (_, line) => (
+              <div>
+                <div className="font-medium">{line.productName}</div>
+                <div className="text-xs text-gray-400">{line.productCode || 'No code'}</div>
+              </div>
+            ) },
+            { title: 'Requested', width: 100, align: 'right', render: (_, line) => `${qtyText(line.requestedQty)} ${line.unit || ''}` },
+            { title: 'Available now', width: 115, align: 'right', render: (_, line) => (
+              <span className={Number(line.allocatedQty) > 0 ? 'font-medium text-emerald-700' : 'text-gray-400'}>
+                {qtyText(line.allocatedQty)}
+              </span>
+            ) },
+            { title: 'Short', width: 90, align: 'right', render: (_, line) => (
+              Number(line.shortfallQty) > 0
+                ? <span className="font-semibold text-amber-600">{qtyText(line.shortfallQty)}</span>
+                : <CheckCircleOutlined className="text-emerald-600" />
+            ) },
+          ]}
+        />
+
+        {shortLines.length ? <>
+          <Divider className="my-2" orientation="left" plain>
+            When will the short quantity be available?
+          </Divider>
+          <p className="-mt-2 text-xs text-gray-500">
+            This is an expected date, not a delivery promise. The dealer can accept it, change the quantity, or decline.
+          </p>
+          <ShortfallAnswerTable lines={lines} answers={answers} onChange={setAnswers} />
+          <div>
+            <div className="mb-1 text-xs text-gray-500">Message to the dealer (optional)</div>
+            <Input.TextArea rows={2} maxLength={1000} value={offerRemark} onChange={event => setOfferRemark(event.target.value)} />
+          </div>
+        </> : null}
+      </div> : null}
+    </Modal>
+  );
+};
+
+// ── Re-confirm a date after the dealer changed the quantity ──────────────────
+//
+// The dealer asked for more than was offered, which can move the availability
+// date, so nothing is agreed until a person confirms the new date. Lines the
+// dealer declined are dropped; the rest carry forward at the quantity they asked
+// for. The already-reserved Sales Order is not involved.
+const ReofferShortfallModal = ({ request, onClose, onDone }) => {
+  const [answers, setAnswers] = useState({});
+  const [offerRemark, setOfferRemark] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const round = request ? openRound(request) : null;
+  const lines = useMemo(() => (round?.lines || [])
+    .filter(line => line.dealerResponse !== 'rejected')
+    .map(line => ({
+      product: String(line.product?._id || line.product),
+      productName: line.productName,
+      productCode: line.productCode,
+      unit: line.unit,
+      requestedQty: Number(line.requestedQty || 0),
+      allocatedQty: Number(line.processedQty || 0),
+      shortfallQty: line.dealerResponse === 'changed' && Number(line.dealerQty) > 0
+        ? Number(line.dealerQty)
+        : Number(line.shortfallQty || 0),
+      previousQty: Number(line.shortfallQty || 0),
+      previousDate: line.expectedDate,
+      dealerRemark: line.dealerRemark || '',
+      dealerResponse: line.dealerResponse,
+    }))
+    .filter(line => line.shortfallQty > 0), [round]);
+
+  useEffect(() => {
+    if (!request) { setAnswers({}); setOfferRemark(''); return; }
+    setAnswers(seedAnswers(lines));
+    setOfferRemark('');
+    // lines is derived from request, so request alone is the right trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [request]);
+
+  const incomplete = answersIncomplete(lines, answers);
+
+  const submit = async () => {
+    if (incomplete) { message.error('Give an expected date, or mark the line as not available with a reason.'); return; }
+    setSubmitting(true);
+    try {
+      const response = await salesService.offerDealerOrderShortfall(request._id, {
+        shortfall: answersPayload(lines, answers),
+        offerRemark: offerRemark.trim(),
+      });
+      if (!response.success) throw new Error(response.message || 'Could not send the new offer.');
+      onDone(response);
+    } catch (error) { message.error(error.message || 'Could not send the new offer.'); }
+    finally { setSubmitting(false); }
+  };
+
+  return (
+    <Modal
+      title={request ? `Re-confirm availability for ${request.requestNumber}` : 'Re-confirm availability'}
+      open={Boolean(request)}
+      onCancel={onClose}
+      onOk={submit}
+      okText="Send new offer"
+      okButtonProps={{ loading: submitting, disabled: incomplete || !lines.length }}
+      width={920}
+      destroyOnHidden
+    >
+      {request ? <div className="mt-4 space-y-4">
+        <Alert
+          type="info"
+          showIcon
+          message="The dealer changed what they want from the pending quantity"
+          description="Confirm when you can supply the new quantity. The Sales Order already raised for the available stock is unaffected — this only covers what is still pending."
+        />
+
+        {round?.dealerRemark ? (
+          <div className="rounded bg-gray-50 p-3 text-sm"><span className="text-gray-400">Dealer said: </span>{round.dealerRemark}</div>
+        ) : null}
+
+        {!lines.length ? (
+          <Empty description="The dealer declined every pending line, so there is nothing left to offer." image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ) : <>
+          <Table
+            size="small"
+            pagination={false}
+            rowKey="product"
+            dataSource={lines}
+            columns={[
+              { title: 'Product', render: (_, line) => <div className="font-medium">{line.productName}</div> },
+              { title: 'Previously offered', width: 130, align: 'right', render: (_, line) => (
+                <div className="text-xs text-gray-500">
+                  {qtyText(line.previousQty)}
+                  <div className="text-[11px] text-gray-400">{line.previousDate ? date(line.previousDate) : 'no date'}</div>
+                </div>
+              ) },
+              { title: 'Dealer now wants', width: 130, align: 'right', render: (_, line) => (
+                <span className="font-semibold text-orange-600">{qtyText(line.shortfallQty)} {line.unit}</span>
+              ) },
+              { title: 'Their note', render: (_, line) => <span className="text-xs text-gray-500">{line.dealerRemark || '—'}</span> },
+            ]}
+          />
+
+          <Divider className="my-2" orientation="left" plain>New expected availability</Divider>
+          <ShortfallAnswerTable lines={lines} answers={answers} onChange={setAnswers} showReserved={false} />
+
+          <div>
+            <div className="mb-1 text-xs text-gray-500">Message to the dealer (optional)</div>
+            <Input.TextArea rows={2} maxLength={1000} value={offerRemark} onChange={event => setOfferRemark(event.target.value)} />
+          </div>
+        </>}
+      </div> : null}
+    </Modal>
+  );
+};
+
 // ── Read-only detail ─────────────────────────────────────────────────────────
 const ViewRequestModal = ({ request, onClose, onOpenQuotation }) => (
   <Modal title={request ? `Request: ${request.requestNumber}` : 'Request'} open={Boolean(request)} onCancel={onClose} footer={<Button onClick={onClose}>Close</Button>} width={780}>
@@ -271,11 +799,14 @@ const ViewRequestModal = ({ request, onClose, onOpenQuotation }) => (
         showIcon
         message={label(request.status)}
         description={
-          request.status === 'submitted' ? 'Waiting for review. Approving does not create a Sales Order.'
-            : request.status === 'approved' ? 'Ready to create a quotation. Products and quantities are now frozen.'
-              : request.status === 'quotation_linked' ? `Linked to ${request.sourceQuotation?.quotationNumber || 'a quotation'}.`
-                : request.status === 'cancelled' ? request.cancellationReason || 'The dealer withdrew this request.'
-                  : request.rejectionReason || undefined
+          request.status === 'submitted' ? 'Waiting for review. Processing it approves the demand, reserves everything in stock as an order, and asks the dealer about the rest.'
+            : request.status === 'approved' ? 'Approved but nothing is reserved yet. Process stock to reserve what is available.'
+              : request.status === 'partially_processed' ? 'Part of this request is reserved and ordered. The rest is with the dealer or queued for stock.'
+                : request.status === 'awaiting_dealer' ? 'Nothing could be reserved. The dealer has been asked whether they still want it.'
+                  : request.status === 'awaiting_stock' ? 'Agreed with the dealer and queued for the next stock arrival. No order exists yet.'
+                    : request.status === 'quotation_linked' ? `Linked to ${request.sourceQuotation?.quotationNumber || 'a quotation'}.`
+                      : request.status === 'cancelled' ? request.cancellationReason || 'The dealer withdrew this request.'
+                        : request.rejectionReason || undefined
         }
       />
 
@@ -298,6 +829,50 @@ const ViewRequestModal = ({ request, onClose, onOpenQuotation }) => (
 
       {request.remarks ? <div className="rounded bg-gray-50 p-3"><span className="text-gray-400">Dealer remarks: </span>{request.remarks}</div> : null}
       {request.approvalRemarks ? <div className="rounded bg-green-50 p-3"><span className="text-gray-400">Approval note: </span>{request.approvalRemarks}</div> : null}
+
+      {request.stockPlan?.lines?.length ? <>
+        <Divider className="my-3" orientation="left" plain>Stock decision · {dateTime(request.processedAt)}</Divider>
+        <Table size="small" pagination={false} rowKey={(line, index) => `${line.product}-${index}`} dataSource={request.stockPlan.lines} columns={[
+          { title: 'Product', dataIndex: 'productName' },
+          { title: 'Requested', width: 100, align: 'right', render: (_, line) => `${qtyText(line.requestedQty)} ${line.unit || ''}` },
+          { title: 'Reserved', width: 95, align: 'right', render: (_, line) => (
+            <span className={Number(line.allocatedQty) > 0 ? 'font-medium text-emerald-700' : 'text-gray-400'}>{qtyText(line.allocatedQty)}</span>
+          ) },
+          { title: 'Short', width: 90, align: 'right', render: (_, line) => (
+            Number(line.shortfallQty) > 0
+              ? <span className="font-semibold text-amber-600">{qtyText(line.shortfallQty)}</span>
+              : <CheckCircleOutlined className="text-emerald-600" />
+          ) },
+        ]} />
+      </> : null}
+
+      {(request.outcomes || []).length ? <>
+        <Divider className="my-3" orientation="left" plain>Orders raised</Divider>
+        <div className="space-y-1 text-sm">
+          {request.outcomes.map((entry, index) => (
+            <div key={index} className="flex items-center justify-between rounded bg-emerald-50 px-3 py-2">
+              <span>
+                <span className="font-mono font-medium text-emerald-800">{entry.salesOrder?.orderNumber || '—'}</span>
+                <span className="ml-2 text-xs text-gray-500">from {entry.quotation?.quotationNumber || 'quotation'}</span>
+              </span>
+              <span className="text-xs">{money(entry.salesOrder?.grandTotal)} · {label(entry.salesOrder?.status)}</span>
+            </div>
+          ))}
+          {request.pendingStockQuotation?.quotationNumber ? (
+            <div className="flex items-center justify-between rounded bg-amber-50 px-3 py-2">
+              <span>
+                <span className="font-mono font-medium text-amber-800">{request.pendingStockQuotation.quotationNumber}</span>
+                <span className="ml-2 text-xs text-gray-500">pending stock — not an order yet</span>
+              </span>
+              <span className="text-xs">{money(request.pendingStockQuotation.grandTotal)}</span>
+            </div>
+          ) : null}
+        </div>
+      </> : null}
+
+      {request.shortfallStatus && request.shortfallStatus !== 'none' ? (
+        <ShortfallDetail request={request} />
+      ) : null}
 
       {request.editHistory?.length ? <>
         <Divider className="my-3" orientation="left" plain>Changes after submission</Divider>
@@ -328,6 +903,77 @@ const ViewRequestModal = ({ request, onClose, onOpenQuotation }) => (
     </div> : null}
   </Modal>
 );
+
+// ── Shortfall conversation, read-only ────────────────────────────────────────
+const DEALER_RESPONSE_TAGS = {
+  pending: ['default', 'Waiting'],
+  accepted: ['green', 'Accepted'],
+  changed: ['orange', 'Changed'],
+  rejected: ['red', 'Declined'],
+};
+
+const ShortfallDetail = ({ request }) => {
+  const round = openRound(request)
+    || (request.shortfallRounds || [])[(request.shortfallRounds || []).length - 1];
+  if (!round) return null;
+  return <>
+    <Divider className="my-3" orientation="left" plain>
+      Pending quantity · round {round.round} of {(request.shortfallRounds || []).length}
+    </Divider>
+    <Alert
+      className="mb-3"
+      type={request.shortfallStatus === 'needs_reconfirmation' ? 'warning'
+        : request.shortfallStatus === 'rejected' ? 'error'
+          : request.shortfallStatus === 'closed' ? 'success' : 'info'}
+      showIcon
+      message={SHORTFALL_LABELS[request.shortfallStatus] || label(request.shortfallStatus)}
+      description={round.offerRemark || round.dealerRemark || undefined}
+    />
+    <Table size="small" pagination={false} rowKey={(line, index) => `${line.product}-${index}`} dataSource={round.lines || []} columns={[
+      { title: 'Product', render: (_, line) => (
+        <div>
+          <div className="font-medium">{line.productName}</div>
+          <div className="text-xs text-gray-400">already reserved: {qtyText(line.processedQty)} of {qtyText(line.requestedQty)}</div>
+        </div>
+      ) },
+      { title: 'Pending', width: 85, align: 'right', render: (_, line) => (
+        <span className="font-semibold text-amber-600">{qtyText(line.shortfallQty)}</span>
+      ) },
+      { title: 'Expected', width: 110, render: (_, line) => (
+        line.noEta
+          ? <Tag color="red" className="text-[10px]">No ETA</Tag>
+          : <span className="text-xs">{line.expectedDate ? date(line.expectedDate) : '—'}</span>
+      ) },
+      { title: 'Our note', render: (_, line) => <span className="text-xs text-gray-500">{line.staffRemark || '—'}</span> },
+      { title: 'Dealer', width: 120, render: (_, line) => {
+        const [color, text] = DEALER_RESPONSE_TAGS[line.dealerResponse] || DEALER_RESPONSE_TAGS.pending;
+        return (
+          <div>
+            <Tag color={color} className="text-[10px]">{text}</Tag>
+            {line.dealerResponse === 'changed' ? <div className="text-xs font-medium text-orange-600">wants {qtyText(line.dealerQty)}</div> : null}
+            {Number(line.settledQty) > 0 ? <div className="text-[11px] text-emerald-700">agreed {qtyText(line.settledQty)}</div> : null}
+            {line.dealerRemark ? <div className="text-[11px] text-gray-400">{line.dealerRemark}</div> : null}
+          </div>
+        );
+      } },
+    ]} />
+    {(request.shortfallRounds || []).length > 1 ? (
+      <Timeline
+        className="mt-3"
+        items={(request.shortfallRounds || []).map((entry, index) => ({
+          key: index,
+          color: entry.outcome === 'superseded' ? 'gray' : entry.outcome === 'rejected' ? 'red' : entry.outcome === 'pending' ? 'blue' : 'green',
+          children: (
+            <div className="text-xs">
+              <span className="text-gray-400">Round {entry.round} · {dateTime(entry.offeredAt)} · {entry.offeredByName || 'Staff'}</span>
+              <div>{label(entry.outcome)}{entry.respondedAt ? ` · dealer answered ${dateTime(entry.respondedAt)}` : ''}</div>
+            </div>
+          ),
+        }))}
+      />
+    ) : null}
+  </>;
+};
 
 // ── Edit requested lines ─────────────────────────────────────────────────────
 //

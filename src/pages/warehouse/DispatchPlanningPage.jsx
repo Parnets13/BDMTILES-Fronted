@@ -77,6 +77,7 @@ const DispatchPlanningPage = () => {
     { title: 'Date', dataIndex: 'tripDate', width: 90, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
     { title: 'Vehicle', dataIndex: 'vehicleNumber', width: 110, render: v => <span className="text-xs font-medium">{v || '—'}</span> },
     { title: 'Driver', dataIndex: 'driverName', width: 120 },
+    { title: 'Executive', width: 130, render: (_, trip) => trip.deliveryExecutiveName || trip.deliveryExecutive?.name || 'Unlinked' },
     { title: 'Route', dataIndex: 'routeName', width: 120 },
     { title: 'Orders', dataIndex: 'totalOrders', width: 60 },
     { title: 'Boxes', dataIndex: 'totalBoxes', width: 60 },
@@ -133,9 +134,10 @@ const DispatchPlanningPage = () => {
       {viewRecord && (
         <Modal open title={`Trip ${viewRecord.tripNumber}`} onCancel={() => setViewRecord(null)} width={1050} footer={<Button onClick={() => setViewRecord(null)}>Close</Button>}>
           <div className="space-y-3 text-sm mt-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div className="bg-gray-50 p-3 rounded border"><div className="text-[10px] text-gray-400 uppercase font-semibold">Vehicle</div><div className="font-bold">{viewRecord.vehicleNumber || '—'}</div><div className="text-xs text-gray-500">{viewRecord.vehicleType}</div></div>
               <div className="bg-blue-50 p-3 rounded border border-blue-100"><div className="text-[10px] text-gray-400 uppercase font-semibold">Driver</div><div className="font-bold">{viewRecord.driverName || '—'}</div><div className="text-xs text-gray-500">{viewRecord.driverPhone}</div></div>
+              <div className="bg-purple-50 p-3 rounded border border-purple-100"><div className="text-[10px] text-gray-400 uppercase font-semibold">Delivery Executive</div><div className="font-bold">{viewRecord.deliveryExecutiveName || viewRecord.deliveryExecutive?.name || 'Unlinked'}</div><div className="text-xs text-gray-500">{viewRecord.deliveryExecutive?.phone || ''}</div></div>
               <div className="bg-green-50 p-3 rounded border border-green-100"><div className="text-[10px] text-gray-400 uppercase font-semibold">Summary</div><div className="font-bold">{viewRecord.totalOrders} orders · {viewRecord.totalBoxes} boxes</div><Tag color={STATUS_COLORS[viewRecord.status]}>{viewRecord.status.replace('_', ' ')}</Tag></div>
             </div>
             <div className="font-semibold text-gray-700">Final Dispatch Verification</div>
@@ -272,8 +274,8 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
       vehicle: vehicleId,
       vehicleNumber: picked?.vehicleNumber || '',
       vehicleType: picked?.vehicleType || '',
-      driverName: picked?.driverName || f.driverName,
-      driverPhone: picked?.driverPhone || f.driverPhone,
+      driverName: picked?.driverName || '',
+      driverPhone: picked?.driverPhone || '',
     }));
   };
 
@@ -362,6 +364,7 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
             <b className="text-gray-700">{selectedVehicle.vehicleNumber}</b>
             {selectedVehicle.capacity ? ` · rated ${selectedVehicle.capacity} ${selectedVehicle.capacityUnit || ''}` : ''}
             {selectedVehicle.make || selectedVehicle.model ? ` · ${[selectedVehicle.make, selectedVehicle.model].filter(Boolean).join(' ')}` : ''}
+            {selectedVehicle.deliveryExecutive?.name ? ` · Executive: ${selectedVehicle.deliveryExecutive.name}${selectedVehicle.deliveryExecutive.phone ? ` (${selectedVehicle.deliveryExecutive.phone})` : ''}` : ' · No Delivery Executive linked'}
             {expiryNote(selectedVehicle)}
             {selectedOrders.length ? ` · this trip: ${tripBoxes} box(es)` : ''}
           </div>

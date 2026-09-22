@@ -1,0 +1,18 @@
+# Netlify build + SPA routing configuration for the BDMTILES web admin.
+#
+# The app is a Vite + React single-page app using BrowserRouter, so the server
+# must return index.html for every route and let the client router take over.
+# Without the redirect below, reloading any page other than "/" (or opening a
+# deep link) returns Netlify's 404.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA fallback. This mirrors public/_redirects; either alone is sufficient, both
+# are kept so the rule survives whether Netlify reads the toml or the generated
+# _redirects file. 200 keeps the requested URL in the address bar (unlike a 301/302).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

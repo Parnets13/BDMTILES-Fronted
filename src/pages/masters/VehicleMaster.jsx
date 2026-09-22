@@ -8,10 +8,12 @@ import {
   ReloadOutlined, CarOutlined
 } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
 
 const vehicleService = {
   getAll: (params) => api.get('/masters/vehicles', { params }),
+  getDeliveryExecutives: (params) => api.get('/masters/vehicles/delivery-executives', { params }),
   create: (data) => api.post('/masters/vehicles', data),
   update: (id, data) => api.put(`/masters/vehicles/${id}`, data),
   remove: (id) => api.delete(`/masters/vehicles/${id}`),
@@ -36,7 +38,10 @@ const CAPACITY_UNIT_LABELS = Object.fromEntries(CAPACITY_UNITS.map(unit => [unit
 const toDateInput = value => value ? new Date(value).toISOString().slice(0, 10) : undefined;
 
 const VehicleMaster = () => {
+  const { activeBranchId } = useAuth();
   const [vehicles, setVehicles] = useState([]);
+  const [deliveryExecutives, setDeliveryExecutives] = useState([]);
+  const [executivesLoading, setExecutivesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
@@ -55,13 +60,29 @@ const VehicleMaster = () => {
 
   useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
 
+  const fetchDeliveryExecutives = useCallback(async () => {
+    if (!activeBranchId) {
+      setDeliveryExecutives([]);
+      return;
+    }
+    setExecutivesLoading(true);
+    try {
+      const res = await vehicleService.getDeliveryExecutives();
+      if (res.success) setDeliveryExecutives(res.data || []);
+    } catch (err) { message.error(err.message); }
+    finally { setExecutivesLoading(false); }
+  }, [activeBranchId]);
+
+  useEffect(() => { fetchDeliveryExecutives(); }, [fetchDeliveryExecutives]);
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const payload = { ...values, deliveryExecutive: values.deliveryExecutive || null };
       setFormLoading(true);
       const res = editRecord
-        ? await vehicleService.update(editRecord._id, values)
-        : await vehicleService.create(values);
+        ? await vehicleService.update(editRecord._id, payload)
+        : await vehicleService.create(payload);
       if (res.success) {
         message.success(editRecord ? 'Vehicle updated' : 'Vehicle added');
         setShowForm(false); setEditRecord(null); form.resetFields();
@@ -75,6 +96,7 @@ const VehicleMaster = () => {
     setEditRecord(record);
     form.setFieldsValue({
       ...record,
+      deliveryExecutive: record.deliveryExecutive?._id || record.deliveryExecutive || undefined,
       insuranceExpiry: toDateInput(record.insuranceExpiry),
       fitnessExpiry: toDateInput(record.fitnessExpiry),
       isActive: record.isActive ?? true,
@@ -109,6 +131,14 @@ const VehicleMaster = () => {
     { title: 'Driver', dataIndex: 'driverName', width: 130, render: value => value || '—' },
     { title: 'Driver Phone', dataIndex: 'driverPhone', width: 120,
       render: value => <span className="text-xs">{value || '—'}</span> },
+    { title: 'Delivery Executive', dataIndex: 'deliveryExecutive', width: 170,
+      render: executive => executive ? (
+        <div>
+          <div className="text-xs font-medium">{executive.name || 'Linked account'}</div>
+          <div className="text-[11px] text-gray-400">{executive.phone || executive.email || ''}</div>
+          {executive.status && executive.status !== 'Active' ? <Tag color="red" className="mt-1">{executive.status}</Tag> : null}
+        </div>
+      ) : <span className="text-xs text-gray-400">Unlinked</span> },
     { title: 'Capacity', width: 100,
       render: (_, record) => record.capacity ? `${record.capacity} ${CAPACITY_UNIT_LABELS[record.capacityUnit] || record.capacityUnit || ''}` : '—' },
     { title: 'Insurance Exp', dataIndex: 'insuranceExpiry', width: 110, render: renderExpiry },
@@ -166,7 +196,7 @@ const VehicleMaster = () => {
 
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={vehicles} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1250 }} pagination={{ pageSize: 20 }} />
+          size="middle" scroll={{ x: 1420 }} pagination={{ pageSize: 20 }} />
       </div>
 
       <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
@@ -186,14 +216,40 @@ const VehicleMaster = () => {
             <Col span={8}><Form.Item name="year" label="Year"><Input placeholder="e.g. 2024" /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
+            <Col span={8}><Form.Item name="deliveryExecutive" label="Delivery Executive Account" extra="Optional · all active Delivery Executive accounts from User Management">
+              <Select
+                allowClear
+                showSearch
+                loading={executivesLoading}
+                placeholder="Link a Delivery Executive"
+                optionFilterProp="label"
+                options={deliveryExecutives.map(executive => {
+                  const branches = (executive.assignedBranches || [])
+                    .map(branch => branch.branchCode || branch.name)
+                    .filter(Boolean)
+                    .join(', ');
+                  return {
+                    value: String(executive._id),
+                    label: [
+                      executive.name,
+                      executive.phone || executive.email,
+                      branches ? `Branches: ${branches}` : 'No branch assigned',
+                    ].filter(Boolean).join(' · '),
+                  };
+                })}
+                notFoundContent={executivesLoading ? 'Loading…' : 'No active Delivery Executive accounts found'}
+              />
+            </Form.Item></Col>
             <Col span={8}><Form.Item name="driverName" label="Driver Name"><Input placeholder="Full name" /></Form.Item></Col>
             <Col span={8}><Form.Item name="driverPhone" label="Driver Phone"><Input placeholder="10-digit number" /></Form.Item></Col>
-            <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>
-            <Col span={4}><Form.Item name="capacityUnit" label="Unit"><Select options={CAPACITY_UNITS} /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
+            <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>
+            <Col span={4}><Form.Item name="capacityUnit" label="Unit"><Select options={CAPACITY_UNITS} /></Form.Item></Col>
             <Col span={8}><Form.Item name="insuranceExpiry" label="Insurance Expiry"><Input type="date" /></Form.Item></Col>
             <Col span={8}><Form.Item name="fitnessExpiry" label="Fitness Expiry"><Input type="date" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={8}><Form.Item name="isActive" label="Status">
               <Select options={[{ value: true, label: 'Active' }, { value: false, label: 'Inactive' }]} /></Form.Item></Col>
           </Row>

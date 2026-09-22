@@ -3,7 +3,10 @@ import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, Divider, Tabs, Badge, Alert
 } from 'antd';
-import { SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, CheckSquareOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import {
+  SearchOutlined, ReloadOutlined, CheckCircleOutlined, CloseCircleOutlined, CheckSquareOutlined,
+  ClockCircleOutlined, EyeOutlined, ExclamationCircleOutlined, UserOutlined,
+} from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
 
 const TYPE_COLORS = {
@@ -31,6 +34,11 @@ const ApprovalWorkflow = () => {
   const [rejectRemarks, setRejectRemarks] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
 
+  const [detailId, setDetailId] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState('');
+
   const loadStats = () => {
     crmService.getApprovalStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
   };
@@ -55,6 +63,25 @@ const ApprovalWorkflow = () => {
   }, [pagination.current, pagination.pageSize, search, typeFilter, activeTab]);
 
   useEffect(() => { fetchApprovals(); }, [fetchApprovals]);
+
+  // Everything the reviewer needs to see is fetched on demand, when the modal
+  // opens — the list itself stays light. The reference document (Sales Order,
+  // Quotation, ...) and the dealer's live credit exposure come back together so
+  // there's nothing left to click through to elsewhere.
+  useEffect(() => {
+    if (!detailId) { setDetail(null); setDetailError(''); return; }
+    let cancelled = false;
+    setDetailLoading(true);
+    setDetailError('');
+    crmService.getApprovalDetail(detailId)
+      .then((res) => { if (!cancelled && res.success) setDetail(res.data); })
+      .catch((err) => { if (!cancelled) setDetailError(err.message || 'Could not load this request.'); })
+      .finally(() => { if (!cancelled) setDetailLoading(false); });
+    return () => { cancelled = true; };
+  }, [detailId]);
+
+  const openApproveFromDetail = () => { setApproveModal(detail); setApproveRemarks(''); setDetailId(null); };
+  const openRejectFromDetail = () => { setRejectModal(detail); setRejectRemarks(''); setDetailId(null); };
 
   const handleApprove = async () => {
     if (!approveModal) return;
@@ -115,21 +142,28 @@ const ApprovalWorkflow = () => {
       render: v => <Tag color={PRIORITY_COLORS[v] || 'default'}>{v || '—'}</Tag> },
     { title: 'Status', dataIndex: 'status', width: 100,
       render: s => <Tag color={STATUS_COLORS[s] || 'default'}>{s}</Tag> },
-    { title: 'Actions', width: 100,
-      render: (_, r) => r.status === 'pending' ? (
+    { title: 'Actions', width: 140,
+      render: (_, r) => (
         <Space size="small">
-          <Button type="text" size="small" className="text-green-600"
-            icon={<CheckCircleOutlined />}
-            onClick={() => { setApproveModal(r); setApproveRemarks(''); }}
-            title="Approve" />
-          <Button type="text" size="small" className="text-red-500"
-            icon={<CloseCircleOutlined />}
-            onClick={() => { setRejectModal(r); setRejectRemarks(''); }}
-            title="Reject" />
+          <Button type="text" size="small" className="text-blue-600"
+            icon={<EyeOutlined />}
+            onClick={() => setDetailId(r._id)}
+            title="View detail" />
+          {r.status === 'pending' ? <>
+            <Button type="text" size="small" className="text-green-600"
+              icon={<CheckCircleOutlined />}
+              onClick={() => { setApproveModal(r); setApproveRemarks(''); }}
+              title="Approve" />
+            <Button type="text" size="small" className="text-red-500"
+              icon={<CloseCircleOutlined />}
+              onClick={() => { setRejectModal(r); setRejectRemarks(''); }}
+              title="Reject" />
+          </> : null}
         </Space>
-      ) : null,
+      ),
     },
   ];
+  const detailOnlyColumn = columns[columns.length - 1];
 
   const tabItems = [
     { key: 'pending',
@@ -143,15 +177,15 @@ const ApprovalWorkflow = () => {
       )},
     { key: 'approved', label: 'Approved',
       children: (
-        <Table columns={columns.filter(c => c.title !== 'Actions')} dataSource={approvals} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1200 }}
+        <Table columns={[...columns.slice(0, -1), detailOnlyColumn]} dataSource={approvals} rowKey="_id" loading={loading}
+          size="middle" scroll={{ x: 1240 }}
           pagination={{ ...pagination, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }}
           onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       )},
     { key: 'rejected', label: 'Rejected',
       children: (
-        <Table columns={columns.filter(c => c.title !== 'Actions')} dataSource={approvals} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1200 }}
+        <Table columns={[...columns.slice(0, -1), detailOnlyColumn]} dataSource={approvals} rowKey="_id" loading={loading}
+          size="middle" scroll={{ x: 1240 }}
           pagination={{ ...pagination, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }}
           onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       )},
@@ -163,6 +197,9 @@ const ApprovalWorkflow = () => {
           onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       )},
   ];
+
+  const money = (v) => typeof v === 'number' ? `₹${v.toLocaleString('en-IN')}` : (v ?? '—');
+  const date = (v) => v ? new Date(v).toLocaleString('en-IN') : '—';
 
   return (
     <div>
@@ -237,6 +274,153 @@ const ApprovalWorkflow = () => {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Detail Modal — everything about what is being asked, in one place */}
+      <Modal
+        title={<span>Request detail {detail ? <span className="font-mono text-sm text-gray-400 ml-2">{detail.requestNumber}</span> : null}</span>}
+        open={Boolean(detailId)}
+        onCancel={() => setDetailId(null)}
+        width={780}
+        footer={detail?.status === 'pending' ? [
+          <Button key="close" onClick={() => setDetailId(null)}>Close</Button>,
+          <Button key="reject" danger onClick={openRejectFromDetail}>Reject</Button>,
+          <Button key="approve" type="primary" style={{ background: '#52c41a', borderColor: '#52c41a' }} onClick={openApproveFromDetail}>Approve</Button>,
+        ] : [<Button key="close" onClick={() => setDetailId(null)}>Close</Button>]}
+      >
+        {detailLoading ? (
+          <div className="py-10 text-center text-gray-400">Loading…</div>
+        ) : detailError ? (
+          <Alert type="error" showIcon message={detailError} />
+        ) : detail ? (
+          <div className="space-y-4 mt-2 text-sm">
+            <div className="grid grid-cols-2 gap-3 bg-gray-50 rounded p-3 border">
+              <div><span className="text-gray-400">Type: </span><Tag color={TYPE_COLORS[detail.type]}>{detail.type?.replace(/_/g, ' ')}</Tag></div>
+              <div><span className="text-gray-400">Status: </span><Tag color={STATUS_COLORS[detail.status]}>{detail.status}</Tag></div>
+              <div><span className="text-gray-400">Priority: </span><Tag color={PRIORITY_COLORS[detail.priority]}>{detail.priority || '—'}</Tag></div>
+              <div><span className="text-gray-400">Raised: </span>{date(detail.createdAt)}</div>
+              <div className="col-span-2"><span className="text-gray-400">Title: </span><strong>{detail.title}</strong></div>
+              {detail.description ? (
+                <div className="col-span-2"><span className="text-gray-400">Description: </span>{detail.description}</div>
+              ) : null}
+              {detail.reason ? (
+                <div className="col-span-2"><span className="text-gray-400">Reason given: </span>{detail.reason}</div>
+              ) : null}
+              <div>
+                <span className="text-gray-400">Requested by: </span>
+                <UserOutlined className="mr-1" />{detail.requestedBy?.name || detail.requestedByName || '—'}
+                {detail.requestedBy?.email ? <span className="text-gray-400 text-xs ml-1">({detail.requestedBy.email})</span> : null}
+              </div>
+              {detail.referenceNumber ? (
+                <div><span className="text-gray-400">Reference: </span><span className="font-mono">{detail.referenceNumber}</span></div>
+              ) : null}
+              {detail.requestedValue !== undefined && detail.requestedValue !== null ? (
+                <div><span className="text-gray-400">Requested value: </span><strong>{money(detail.requestedValue)}</strong></div>
+              ) : null}
+              {detail.currentValue !== undefined && detail.currentValue !== null ? (
+                <div><span className="text-gray-400">Current / threshold: </span><span className="text-orange-600 font-medium">{money(detail.currentValue)}</span></div>
+              ) : null}
+              {detail.status !== 'pending' ? (
+                <>
+                  <div><span className="text-gray-400">Actioned by: </span>{detail.approvedBy?.name || '—'}</div>
+                  <div><span className="text-gray-400">Actioned at: </span>{date(detail.approvedAt)}</div>
+                  {detail.approvalRemarks ? (
+                    <div className="col-span-2"><span className="text-gray-400">Remarks: </span>{detail.approvalRemarks}</div>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+
+            {!detail.reference && detail.referenceId ? (
+              <Alert type="warning" showIcon message="The underlying document could not be found. It may have been removed." />
+            ) : null}
+
+            {detail.reference?.document ? (
+              <>
+                <Divider className="my-2" orientation="left" plain>
+                  {detail.reference.model} · {detail.reference.document.orderNumber || detail.reference.document.quotationNumber
+                    || detail.reference.document.poNumber || detail.reference.document.adjustmentNumber
+                    || detail.reference.document.auditNumber || detail.reference.document.debitNoteNumber
+                    || detail.reference.document.returnNumber}
+                </Divider>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {detail.reference.document.dealer ? (
+                    <div className="col-span-2 bg-blue-50 rounded p-3 border border-blue-100">
+                      <div className="font-medium">{detail.reference.document.dealer.businessName}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {detail.reference.document.dealer.dealerCode} · {detail.reference.document.dealer.ownerName || ''} · {detail.reference.document.dealer.mobile || ''}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        Credit limit: {money(detail.reference.document.dealer.creditLimit)} · Credit days: {detail.reference.document.dealer.creditDays ?? '—'}
+                      </div>
+                      {detail.reference.creditExposure ? (
+                        <div className="mt-2 flex items-center gap-2 text-xs">
+                          <ExclamationCircleOutlined className={detail.reference.creditExposure.overdueAmount > 0 ? 'text-red-500' : 'text-green-600'} />
+                          <span>
+                            Overdue exposure: <strong className={detail.reference.creditExposure.overdueAmount > 0 ? 'text-red-600' : 'text-green-700'}>
+                              {money(detail.reference.creditExposure.overdueAmount)}
+                            </strong> across {detail.reference.creditExposure.overdueCount} invoice/order(s)
+                          </span>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {detail.reference.document.customerName && !detail.reference.document.dealer ? (
+                    <div className="col-span-2"><span className="text-gray-400">Customer: </span>{detail.reference.document.customerName} {detail.reference.document.customerPhone ? `· ${detail.reference.document.customerPhone}` : ''}</div>
+                  ) : null}
+                  {detail.reference.document.deliveryAddress ? (
+                    <div className="col-span-2 text-xs text-gray-500"><span className="text-gray-400">Delivery: </span>{detail.reference.document.deliveryAddress}</div>
+                  ) : null}
+                </div>
+
+                {detail.reference.document.items?.length ? (
+                  <Table
+                    size="small" pagination={false}
+                    rowKey={(row, idx) => row._id || idx}
+                    dataSource={detail.reference.document.items}
+                    columns={[
+                      { title: 'Product', dataIndex: 'productName', render: (v, row) => v || row.product },
+                      { title: 'Qty', dataIndex: 'quantity', width: 70 },
+                      { title: 'Rate', dataIndex: 'rate', width: 90, render: v => money(v) },
+                      { title: 'Discount', dataIndex: 'discount', width: 90, render: v => v ? money(v) : '—' },
+                      { title: 'Tax', dataIndex: 'gstAmount', width: 90, render: v => money(v) },
+                      { title: 'Total', dataIndex: 'totalAmount', width: 100, render: v => <strong>{money(v)}</strong> },
+                    ]}
+                  />
+                ) : null}
+
+                <div className="flex justify-end">
+                  <div className="w-64 text-xs space-y-1">
+                    <div className="flex justify-between"><span className="text-gray-400">Subtotal</span><span>{money(detail.reference.document.subtotal)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-400">Discount</span><span>{money(detail.reference.document.totalDiscount)}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-400">Tax</span><span>{money(detail.reference.document.totalTax)}</span></div>
+                    <div className="flex justify-between font-semibold border-t pt-1"><span>Grand Total</span><span>{money(detail.reference.document.grandTotal)}</span></div>
+                    {detail.reference.document.balanceAmount !== undefined ? (
+                      <div className="flex justify-between text-orange-600"><span>Balance due</span><span>{money(detail.reference.document.balanceAmount)}</span></div>
+                    ) : null}
+                  </div>
+                </div>
+
+                {detail.reference.document.approvalReasons?.length ? (
+                  <div className="bg-orange-50 border border-orange-100 rounded p-3 text-xs space-y-1">
+                    <div className="font-medium text-orange-700">Why this needs approval</div>
+                    {detail.reference.document.approvalReasons.map((reason, idx) => (
+                      <div key={idx}>
+                        {reason.type.replace(/_/g, ' ')} — requested {money(reason.requestedValue)}, threshold {money(reason.thresholdValue)}
+                        {reason.status !== 'pending' ? <Tag className="ml-2" color={reason.status === 'approved' ? 'green' : 'red'}>{reason.status}</Tag> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                {detail.reference.document.remarks ? (
+                  <div className="text-xs text-gray-500"><span className="text-gray-400">Remarks: </span>{detail.reference.document.remarks}</div>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+        ) : null}
       </Modal>
 
       {/* Reject Modal */}
