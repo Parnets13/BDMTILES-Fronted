@@ -303,6 +303,37 @@ const ProductMaster = () => {
       render: (s) => <Tag color={s === 'active' ? 'green' : s === 'draft' ? 'orange' : 'red'}>{s}</Tag>,
     },
     {
+      title: (
+        <Tooltip title="Visual search index — whether this product's image has been embedded for image-based search">
+          <span>AI Index <span className="text-gray-400 font-normal text-[10px]">(?)</span></span>
+        </Tooltip>
+      ),
+      key: 'imageIndex', width: 90,
+      render: (_, r) => {
+        if (!r.images || r.images.length === 0) {
+          return <span className="text-[10px] text-gray-300">No image</span>;
+        }
+        if (r.imageEmbeddingUpdatedAt) {
+          return (
+            <Tooltip title={`Indexed: ${new Date(r.imageEmbeddingUpdatedAt).toLocaleString()}`}>
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200 cursor-default">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                Indexed
+              </span>
+            </Tooltip>
+          );
+        }
+        return (
+          <Tooltip title="Not yet indexed for visual search. Will index automatically on next save.">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-default">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+              Pending
+            </span>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: 'Actions', key: 'actions', width: 110, fixed: 'right',
       render: (_, r) => (
         <Space size="small">
@@ -609,7 +640,30 @@ const ProductMaster = () => {
 
               {/* Image Upload */}
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">Product Images</label>
+                <div className="flex items-center gap-3 mb-2">
+                  <label className="block text-sm font-medium text-gray-700">Product Images</label>
+                  {/* Image embedding index status badge */}
+                  {editingProduct && (
+                    editingProduct.imageEmbeddingUpdatedAt
+                      ? (
+                        <span
+                          title={`Visual search index updated: ${new Date(editingProduct.imageEmbeddingUpdatedAt).toLocaleString()}`}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-green-50 text-green-700 border border-green-200 cursor-default select-none"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" />
+                          Indexed for visual search
+                        </span>
+                      ) : (
+                        <span
+                          title="Image not yet indexed for visual search. Embedding will be generated automatically after save."
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 cursor-default select-none"
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 inline-block" />
+                          Not indexed yet
+                        </span>
+                      )
+                  )}
+                </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {imagePreviews.map((src, i) => (
                     <div key={i} className="relative w-20 h-20 rounded-lg border border-gray-200 overflow-hidden group">
@@ -625,7 +679,14 @@ const ProductMaster = () => {
                     <input type="file" accept="image/*" multiple style={{ display: 'none' }} onChange={handleImageChange} />
                   </label>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">Upload product images (JPG, PNG, WEBP). Max 5MB each, up to 10 images.</p>
+                <p className="text-xs text-gray-400 mt-2">
+                  Upload product images (JPG, PNG, WEBP). Max 5MB each, up to 10 images.
+                  {imageFiles.length > 0 && (
+                    <span className="ml-2 text-[#FF5F03] font-medium">
+                      Visual search index will update automatically after save.
+                    </span>
+                  )}
+                </p>
               </div>
 
               {/* Videos & Catalogue */}
