@@ -35,6 +35,15 @@ const masterService = {
   getSalesExecutives: () => api.get('/masters/dealers/sales-executives'),
   getDealerAssignmentSummary: () => api.get('/masters/dealers/assignment-summary'),
   bulkAssignDealers: (data) => api.post('/masters/dealers/bulk-assign', data),
+  // The dealer's own app users — employees the dealer created from the Dealer App.
+  // Read-only for staff: BDMTILES can see who a dealer has given access to, but
+  // managing them stays with the dealer.
+  getDealerEmployees: (dealerId) => api.get(`/masters/dealers/${dealerId}/employees`),
+  // Warn before a save fails when a mobile is already used by another dealer,
+  // a dealer employee, a staff user or an HRMS employee.
+  checkDealerMobile: (mobile, excludeId) => api.get('/masters/dealers/mobile-availability', {
+    params: { mobile, ...(excludeId ? { excludeId } : {}) },
+  }),
 
   // Suppliers
   getSuppliers: (params) => api.get('/masters/suppliers', { params }),

@@ -21,8 +21,10 @@ import {
   Tooltip,
 } from 'antd';
 import {
+  DownloadOutlined,
   EditOutlined,
   EyeOutlined,
+  FileTextOutlined,
   LogoutOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -203,6 +205,22 @@ const EmployeeRegistration = () => {
       message.error(error.message || 'Failed to deactivate employee');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDocumentDownload = async (employee, doc) => {
+    try {
+      const blob = await hrmsService.downloadEmployeeDocument(employee._id, doc.url);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = doc.name || doc.url;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+    } catch (error) {
+      message.error(error.message || 'Failed to download document');
     }
   };
 
@@ -496,6 +514,24 @@ const EmployeeRegistration = () => {
                 <p className="mt-1 text-gray-700">{viewEmployee.exitReason || '-'}</p>
               </div>
             )}
+
+            <div>
+              <strong className="mb-2 block">Documents</strong>
+              {(viewEmployee.documents || []).length ? (
+                <div className="space-y-2">
+                  {viewEmployee.documents.map((doc, idx) => (
+                    <div key={doc._id || idx} className="flex items-center justify-between rounded border border-gray-200 p-2">
+                      <div className="flex items-center gap-2">
+                        <FileTextOutlined className="text-gray-400" />
+                        <span>{doc.name || doc.url}</span>
+                        {doc.uploadDate && <span className="text-xs text-gray-400">{dayjs(doc.uploadDate).format('DD/MM/YYYY')}</span>}
+                      </div>
+                      <Button size="small" icon={<DownloadOutlined />} onClick={() => handleDocumentDownload(viewEmployee, doc)}>Download</Button>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-gray-400">No documents on file (resumes carried over on conversion or HR-generated letters will appear here).</p>}
+            </div>
           </div>
         )}
       </Modal>

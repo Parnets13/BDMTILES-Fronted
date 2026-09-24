@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Card, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
-import { EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Alert, Button, Card, Input, Modal, Select, Space, Switch, Table, Tabs, Tag, Tooltip, message } from 'antd';
+import { EditOutlined, PlusOutlined, ReloadOutlined, WarningOutlined } from '@ant-design/icons';
 import notificationService from '../../services/notificationService.js';
 import userService from '../../services/userService.js';
 
@@ -15,18 +15,24 @@ const NotificationSettingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState(null);
   const [events, setEvents] = useState([]);
+  // Which channels can actually be delivered. Read from the server rather than
+  // hardcoded here, so this warning disappears by itself the day a provider is
+  // wired in instead of becoming a stale lie.
+  const [capabilities, setCapabilities] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [settingsResponse, auditResponse, usersResponse] = await Promise.all([
+      const [settingsResponse, auditResponse, usersResponse, capabilityResponse] = await Promise.all([
         notificationService.getSettings(),
         notificationService.getDeliveryAudit({ limit: 100 }),
         userService.getUsers({ limit: 100 }),
+        notificationService.getChannelCapabilities().catch(() => null),
       ]);
       setSettings(settingsResponse.data || []);
       setAudit(auditResponse.data || []);
       setUsers(usersResponse.data || []);
+      if (capabilityResponse?.success) setCapabilities(capabilityResponse.data);
     } catch (error) {
       message.error(error.message || 'Unable to load notification controls');
     } finally {
@@ -102,6 +108,31 @@ const NotificationSettingsPage = () => {
         <div><h1 className="text-2xl font-bold text-gray-800">Notification Controls</h1><p className="mt-0.5 text-sm text-gray-500">Owner-only event recipients, channels, and delivery audit</p></div>
         <Space><Button icon={<ReloadOutlined />} onClick={load}>Refresh</Button><Button type="primary" onClick={initialize}>Initialize Modules</Button></Space>
       </div>
+
+      {capabilities && capabilities.skippedChannels?.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          icon={<WarningOutlined />}
+          className="mb-4"
+          message={`Only ${capabilities.deliverableChannels.join(', ')} is actually delivered`}
+          description={
+            <div>
+              <p className="mb-2">{capabilities.summary}</p>
+              <Space wrap>
+                {capabilities.channels.map((channel) => (
+                  <Tooltip key={channel.channel} title={channel.note}>
+                    <Tag color={channel.available ? 'green' : 'red'}>
+                      {channel.label}: {channel.available ? 'sends' : 'skipped'}
+                    </Tag>
+                  </Tooltip>
+                ))}
+              </Space>
+            </div>
+          }
+        />
+      )}
+
       <Tabs items={[
         { key: 'settings', label: 'Module Settings', children: <Table loading={loading} rowKey="_id" dataSource={settings} columns={settingsColumns} pagination={false} /> },
         { key: 'audit', label: 'Delivery Audit', children: <Table loading={loading} rowKey="_id" dataSource={audit} columns={auditColumns} scroll={{ x: 1000 }} pagination={{ pageSize: 25 }} /> },
@@ -117,7 +148,23 @@ const NotificationSettingsPage = () => {
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 <Input placeholder="Event code" value={event.eventCode} onChange={(e) => updateEvent(index, { eventCode: e.target.value })} />
                 <Input placeholder="Event name" value={event.eventName} onChange={(e) => updateEvent(index, { eventName: e.target.value })} />
-                <Select mode="multiple" placeholder="Channels" value={event.channels} options={CHANNELS.map((channel) => ({ value: channel, label: channel }))} onChange={(channels) => updateEvent(index, { channels })} />
+                <Select
+                  mode="multiple"
+                  placeholder="Channels"
+                  value={event.channels}
+                  // Undeliverable channels stay selectable — the preference is
+                  // stored and will start working once a provider exists — but
+                  // they are labelled so nobody expects a message to go out.
+                  options={CHANNELS.map((channel) => {
+                    const capability = capabilities?.channels?.find((entry) => entry.channel === channel);
+                    const skipped = capability && !capability.available;
+                    return {
+                      value: channel,
+                      label: skipped ? `${channel} (not delivered)` : channel,
+                    };
+                  })}
+                  onChange={(channels) => updateEvent(index, { channels })}
+                />
                 <Select mode="multiple" placeholder="Recipient roles" value={event.recipientRoles} options={ROLES.map((role) => ({ value: role, label: role.replace(/_/g, ' ') }))} onChange={(recipientRoles) => updateEvent(index, { recipientRoles })} />
                 <Select className="md:col-span-2" mode="multiple" showSearch optionFilterProp="label" placeholder="Explicit recipient users" value={event.recipientUserIds} options={users.map((user) => ({ value: user._id, label: `${user.name} (${user.role})` }))} onChange={(recipientUserIds) => updateEvent(index, { recipientUserIds })} />
                 <div className="flex items-center gap-2"><Switch checked={event.isEnabled} onChange={(isEnabled) => updateEvent(index, { isEnabled })} /><span>Event enabled</span></div>

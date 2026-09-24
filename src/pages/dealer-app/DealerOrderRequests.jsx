@@ -11,6 +11,7 @@ import {
   SearchOutlined, ShoppingOutlined, ThunderboltOutlined, TruckOutlined,
 } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
+import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const STATUS_COLORS = {
@@ -64,7 +65,15 @@ const DealerOrderRequests = () => {
   const [actionId, setActionId] = useState(null);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('submitted');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [shortfallFilter, setShortfallFilter] = useState('');
+  const [dealerFilter, setDealerFilter] = useState(undefined);
+  const [executiveFilter, setExecutiveFilter] = useState(undefined);
+  const [dateRange, setDateRange] = useState(null);
+  const [editedFilter, setEditedFilter] = useState(undefined);
+  const [dealerOptions, setDealerOptions] = useState([]);
+  const [dealerSearching, setDealerSearching] = useState(false);
+  const [executiveOptions, setExecutiveOptions] = useState([]);
   const [stats, setStats] = useState({});
   const [viewRequest, setViewRequest] = useState(null);
   const [rejectRequest, setRejectRequest] = useState(null);
@@ -81,6 +90,12 @@ const DealerOrderRequests = () => {
         limit: pagination.pageSize,
         search: search.trim() || undefined,
         status: statusFilter || undefined,
+        shortfallStatus: shortfallFilter || undefined,
+        dealer: dealerFilter || undefined,
+        salesExecutive: executiveFilter || undefined,
+        dateFrom: dateRange?.[0] ? dateRange[0].format('YYYY-MM-DD') : undefined,
+        dateTo: dateRange?.[1] ? dateRange[1].format('YYYY-MM-DD') : undefined,
+        edited: editedFilter,
       });
       if (response.success) {
         setRequests(response.data || []);
@@ -88,7 +103,10 @@ const DealerOrderRequests = () => {
       }
     } catch (error) { message.error(error.message); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, statusFilter]);
+  }, [
+    pagination.current, pagination.pageSize, search, statusFilter, shortfallFilter,
+    dealerFilter, executiveFilter, dateRange, editedFilter,
+  ]);
 
   const fetchStats = useCallback(() => {
     salesService.getDealerOrderRequestStats()
@@ -98,6 +116,22 @@ const DealerOrderRequests = () => {
 
   useEffect(() => { fetchRequests(); }, [fetchRequests]);
   useEffect(() => { fetchStats(); }, [fetchStats]);
+
+  // Dealers matching what the user types, and every sales executive up front —
+  // the executive list is small enough to load once rather than search.
+  useEffect(() => {
+    masterService.getSalesExecutives()
+      .then(response => { if (response.success) setExecutiveOptions(response.data || []); })
+      .catch(() => {});
+  }, []);
+  const searchDealerOptions = (query) => {
+    if (!query?.trim()) { setDealerOptions([]); return; }
+    setDealerSearching(true);
+    masterService.getDealers({ search: query, limit: 20 })
+      .then(response => setDealerOptions(response?.data || []))
+      .catch(() => setDealerOptions([]))
+      .finally(() => setDealerSearching(false));
+  };
 
   const refresh = () => { fetchRequests(); fetchStats(); };
 
@@ -344,18 +378,101 @@ const DealerOrderRequests = () => {
 
     <Row gutter={[12, 12]} className="mb-4">
       {[
-        ['Total', stats.total, '#1890ff'], ['Submitted', stats.submitted, '#fa8c16'], ['Approved', stats.approved, '#52c41a'],
-        ['Part Ordered', stats.partially_processed, '#2f54eb'], ['With Dealer', stats.awaiting_dealer, '#722ed1'],
-        ['Awaiting Stock', stats.awaiting_stock, '#13c2c2'], ['Completed', stats.quotation_linked, '#1677ff'],
-        ['Rejected', stats.rejected, '#f5222d'], ['Cancelled', stats.cancelled, '#8c8c8c'],
-      ].map(([title, value, color]) => <Col xs={12} sm={8} lg={4} key={title}><Card size="small"><Statistic title={title} value={value || 0} valueStyle={{ color }} /></Card></Col>)}
+        ['Total', stats.total, '#1890ff', ''], ['Submitted', stats.submitted, '#fa8c16', 'submitted'],
+        ['Approved', stats.approved, '#52c41a', 'approved'],
+        ['Part Ordered', stats.partially_processed, '#2f54eb', 'partially_processed'],
+        ['With Dealer', stats.awaiting_dealer, '#722ed1', 'awaiting_dealer'],
+        ['Awaiting Stock', stats.awaiting_stock, '#13c2c2', 'awaiting_stock'],
+        ['Completed', stats.quotation_linked, '#1677ff', 'quotation_linked'],
+        ['Rejected', stats.rejected, '#f5222d', 'rejected'], ['Cancelled', stats.cancelled, '#8c8c8c', 'cancelled'],
+      ].map(([title, value, color, statusValue]) => (
+        <Col xs={12} sm={8} lg={4} key={title}>
+          <Card
+            size="small"
+            hoverable
+            className={statusFilter === statusValue ? 'border-2' : ''}
+            style={statusFilter === statusValue ? { borderColor: color } : undefined}
+            onClick={() => { setStatusFilter(statusValue); setPagination(current => ({ ...current, current: 1 })); }}
+          >
+            <Statistic title={title} value={value || 0} valueStyle={{ color }} />
+          </Card>
+        </Col>
+      ))}
     </Row>
 
     <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
       <div className="flex flex-wrap gap-3">
-        <Input placeholder="Search request, dealer or executive" prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }} className="w-72" allowClear />
-        <Select placeholder="Status" allowClear value={statusFilter || undefined} onChange={value => { setStatusFilter(value || ''); setPagination(current => ({ ...current, current: 1 })); }} className="w-44" options={Object.keys(STATUS_COLORS).map(status => ({ value: status, label: label(status) }))} />
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter('submitted'); setPagination(current => ({ ...current, current: 1 })); fetchStats(); }}>Reset</Button>
+        <Input
+          placeholder="Search request, dealer or executive"
+          prefix={<SearchOutlined className="text-gray-400" />}
+          value={search}
+          onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-64"
+          allowClear
+        />
+        <Select
+          placeholder="Status"
+          allowClear
+          value={statusFilter || undefined}
+          onChange={value => { setStatusFilter(value || ''); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-40"
+          options={Object.keys(STATUS_COLORS).map(status => ({ value: status, label: label(status) }))}
+        />
+        <Select
+          placeholder="Dealer response"
+          allowClear
+          value={shortfallFilter || undefined}
+          onChange={value => { setShortfallFilter(value || ''); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-48"
+          options={Object.keys(SHORTFALL_COLORS).map(status => ({ value: status, label: SHORTFALL_LABELS[status] || label(status) }))}
+        />
+        <Select
+          placeholder="Dealer"
+          allowClear
+          showSearch
+          filterOption={false}
+          value={dealerFilter}
+          notFoundContent={dealerSearching ? <Spin size="small" /> : null}
+          onSearch={searchDealerOptions}
+          onChange={value => { setDealerFilter(value); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-52"
+          options={dealerOptions.map(dealer => ({ value: dealer._id, label: `${dealer.businessName}${dealer.dealerCode ? ` (${dealer.dealerCode})` : ''}` }))}
+        />
+        <Select
+          placeholder="Sales executive"
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          value={executiveFilter}
+          onChange={value => { setExecutiveFilter(value); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-48"
+          options={executiveOptions.map(exec => ({ value: exec._id, label: exec.name }))}
+        />
+        <DatePicker.RangePicker
+          value={dateRange}
+          onChange={value => { setDateRange(value); setPagination(current => ({ ...current, current: 1 })); }}
+          format="DD/MM/YYYY"
+          className="w-56"
+          placeholder={['Submitted from', 'Submitted to']}
+        />
+        <Select
+          placeholder="Edited by staff"
+          allowClear
+          value={editedFilter}
+          onChange={value => { setEditedFilter(value); setPagination(current => ({ ...current, current: 1 })); }}
+          className="w-40"
+          options={[{ value: 'true', label: 'Edited' }, { value: 'false', label: 'Not edited' }]}
+        />
+        <Button
+          icon={<ReloadOutlined />}
+          onClick={() => {
+            setSearch(''); setStatusFilter(''); setShortfallFilter(''); setDealerFilter(undefined);
+            setExecutiveFilter(undefined); setDateRange(null); setEditedFilter(undefined);
+            setPagination(current => ({ ...current, current: 1 })); fetchStats();
+          }}
+        >
+          Reset
+        </Button>
       </div>
     </div>
 
@@ -999,6 +1116,8 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
       productCode: item.productCode,
       quantity: Number(item.quantity),
       unit: item.unit || 'Box',
+      sqftPerBox: Number(item.sqftPerBox) || 0,
+      sqft: Number(item.sqft) || undefined,
     })));
     setRemarks(request.remarks || '');
     setDeliveryAddress(request.deliveryAddress || '');
@@ -1030,18 +1149,31 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
     return () => { cancelled = true; clearTimeout(timer); };
   }, [productQuery, dealerId, request]);
 
-  const setQuantity = (product, quantity) =>
-    setLines(current => current.map(line => line.product === product ? { ...line, quantity } : line));
+  // Editing boxes recalculates sqft from the product's sqftPerBox master value;
+  // editing sqft recalculates boxes the same way the Quotation builder does, so a
+  // dealer's request can be corrected in whichever unit is easier for the moment.
+  const setQuantity = (product, quantity) => setLines(current => current.map(line => {
+    if (line.product !== product) return line;
+    const sqft = line.sqftPerBox ? Math.round((quantity || 0) * line.sqftPerBox * 100) / 100 : line.sqft;
+    return { ...line, quantity, ...(line.sqftPerBox ? { sqft } : {}) };
+  }));
+  const setSqft = (product, sqft) => setLines(current => current.map(line => {
+    if (line.product !== product || !line.sqftPerBox) return line;
+    return { ...line, sqft, quantity: Math.ceil((sqft || 0) / line.sqftPerBox) };
+  }));
   const removeLine = product => setLines(current => current.filter(line => line.product !== product));
   const addProduct = (option) => {
     const id = String(option._id);
     if (lines.some(line => line.product === id)) { message.info('That product is already on the request.'); return; }
+    const sqftPerBox = Number(option.sqftPerBox) || 0;
     setLines(current => [...current, {
       product: id,
       productName: option.itemName,
       productCode: option.productCode,
       quantity: 1,
       unit: option.unit || 'Box',
+      sqftPerBox,
+      sqft: sqftPerBox ? Math.round(1 * sqftPerBox * 100) / 100 : undefined,
     }]);
     setProductQuery('');
     setProductOptions([]);
@@ -1055,7 +1187,13 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
     try {
       const response = await salesService.updateDealerOrderRequest(request._id, {
         revision: request.revision,
-        items: lines.map(line => ({ product: line.product, quantity: Number(line.quantity) })),
+        // Send both quantity (boxes) and sqft — the server derives boxes from
+        // whichever is more precise and cross-checks them against each other.
+        items: lines.map(line => ({
+          product: line.product,
+          quantity: Number(line.quantity),
+          ...(line.sqftPerBox && line.sqft != null ? { sqft: Number(line.sqft) } : {}),
+        })),
         remarks,
         deliveryAddress,
         expectedDeliveryDate: expectedDeliveryDate ? expectedDeliveryDate.format('YYYY-MM-DD') : null,
@@ -1074,7 +1212,7 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
       onOk={save}
       okText="Save Changes"
       okButtonProps={{ loading: saving, disabled: invalid }}
-      width={720}
+      width={840}
       destroyOnHidden
     >
       {request ? <div className="mt-4 space-y-4">
@@ -1094,23 +1232,51 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
           dataSource={lines}
           locale={{ emptyText: <Empty description="No products left. Add at least one." image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
           columns={[
-            { title: 'Product', render: (_, line) => <div><div className="font-medium">{line.productName}</div><div className="text-xs text-gray-400">{line.productCode || 'No code'}</div></div> },
-            { title: 'Quantity', width: 150, render: (_, line) => (
-              <InputNumber
-                min={0.000001}
-                step={1}
-                value={line.quantity}
-                onChange={value => setQuantity(line.product, value)}
-                addonAfter={line.unit}
-                className="w-full"
-                status={Number(line.quantity) > 0 ? '' : 'error'}
-              />
-            ) },
-            { title: '', width: 50, render: (_, line) => (
-              <Tooltip title="Remove from request">
-                <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => removeLine(line.product)} />
-              </Tooltip>
-            ) },
+            {
+              title: 'Product', render: (_, line) => (
+                <div>
+                  <div className="font-medium">{line.productName}</div>
+                  <div className="text-xs text-gray-400">
+                    {line.productCode || 'No code'}
+                    {line.sqftPerBox ? <span className="ml-1 font-medium text-emerald-600">· {line.sqftPerBox} sqft/box</span> : ''}
+                  </div>
+                </div>
+              ),
+            },
+            {
+              title: 'Boxes', width: 130, render: (_, line) => (
+                <InputNumber
+                  min={0.000001}
+                  step={1}
+                  value={line.quantity}
+                  onChange={value => setQuantity(line.product, value)}
+                  addonAfter={line.unit}
+                  className="w-full"
+                  status={Number(line.quantity) > 0 ? '' : 'error'}
+                />
+              ),
+            },
+            {
+              title: 'Sq.ft', width: 130, render: (_, line) => (
+                line.sqftPerBox ? (
+                  <InputNumber
+                    min={0.01}
+                    step={0.5}
+                    value={line.sqft ?? Math.round(line.quantity * line.sqftPerBox * 100) / 100}
+                    onChange={value => setSqft(line.product, value)}
+                    className="w-full"
+                    placeholder="enter sqft"
+                  />
+                ) : <span className="text-xs text-gray-400">—</span>
+              ),
+            },
+            {
+              title: '', width: 50, render: (_, line) => (
+                <Tooltip title="Remove from request">
+                  <Button type="text" size="small" danger icon={<DeleteOutlined />} onClick={() => removeLine(line.product)} />
+                </Tooltip>
+              ),
+            },
           ]}
         />
 

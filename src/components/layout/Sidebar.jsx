@@ -6,33 +6,38 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
+  Search,
   UserCheck,
+  X,
 } from 'lucide-react';
 
 const Sidebar = ({ onClose }) => {
   const { user, logout, hasPermission } = useAuth();
-  const [expandedSections, setExpandedSections] = useState({});
+  // Accordion: only one top-level module stays open at a time, so the sidebar
+  // never turns into a long scroll of every expanded section. Nested submenus
+  // (e.g. Profit Analysis inside Reports) toggle independently of that rule.
+  const [expandedSection, setExpandedSection] = useState(null);
+  const [expandedSubs, setExpandedSubs] = useState({});
   const [activeItem, setActiveItem] = useState('dashboard');
+  const [search, setSearch] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
+  const query = search.trim().toLowerCase();
 
-  // Update active item based on current route
+  // Update active item based on current route, and open the module that contains
+  // it so a deep link or refresh doesn't land the user on a fully collapsed menu.
   useEffect(() => {
     const path = location.pathname;
     const sections = getFilteredSections();
 
-    const findActive = (items) => {
+    // Returns { itemId, sectionId } for the entry matching the current path.
+    const findActive = (items, sectionId = null) => {
       for (const item of items) {
-        if (item.path === path) return item.id;
+        const ownSection = sectionId || item.id;
+        if (item.path === path) return { itemId: item.id, sectionId };
         if (item.hasSubmenu && item.items) {
-          for (const sub of item.items) {
-            if (sub.path === path) return sub.id;
-            if (sub.hasSubmenu && sub.items) {
-              for (const nested of sub.items) {
-                if (nested.path === path) return nested.id;
-              }
-            }
-          }
+          const hit = findActive(item.items, ownSection);
+          if (hit) return hit;
         }
       }
       return null;
@@ -40,7 +45,8 @@ const Sidebar = ({ onClose }) => {
 
     const found = findActive(sections);
     if (found) {
-      setActiveItem(found);
+      setActiveItem(found.itemId);
+      if (found.sectionId) setExpandedSection(found.sectionId);
     } else if (path === '/dashboard') {
       setActiveItem('dashboard');
     }
@@ -78,15 +84,32 @@ const Sidebar = ({ onClose }) => {
   // at least one permitted child remains, regardless of role labels or parent hints.
   const getFilteredSections = () => filterMenuItems(getRoleMenuSections(user?.role));
 
-  const toggleSection = (sectionId) => {
-    setExpandedSections((prev) => ({
-      ...prev,
-      [sectionId]: !prev[sectionId],
-    }));
+  // Top-level modules behave as an accordion; nested submenus toggle on their own.
+  const toggleSection = (sectionId, level) => {
+    if (level === 0) {
+      setExpandedSection((prev) => (prev === sectionId ? null : sectionId));
+      return;
+    }
+    setExpandedSubs((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
   };
+
+  // Keeps any branch that matches the query itself or contains a matching child,
+  // so a search for "ledger" surfaces Finance & Accounts → Dealer Ledger.
+  const searchMenuItems = (items) => items.reduce((kept, item) => {
+    const selfMatch = String(item.title || '').toLowerCase().includes(query);
+    if (item.hasSubmenu && item.items) {
+      const children = searchMenuItems(item.items);
+      if (children.length) kept.push({ ...item, items: children });
+      else if (selfMatch) kept.push(item);
+    } else if (selfMatch) {
+      kept.push(item);
+    }
+    return kept;
+  }, []);
 
   const handleItemClick = (itemId, path) => {
     setActiveItem(itemId);
+    setSearch(''); // jumping to a result returns the menu to its normal tree
     navigate(path);
     if (onClose) onClose(); // Close mobile sidebar
   };
@@ -98,7 +121,13 @@ const Sidebar = ({ onClose }) => {
 
   const MenuItem = ({ item, level = 0 }) => {
     const isActive = activeItem === item.id;
-    const isExpanded = expandedSections[item.id];
+    // While searching, every surviving branch is shown open so matches are visible
+    // without the user having to expand anything.
+    const isExpanded = query
+      ? true
+      : level === 0
+        ? expandedSection === item.id
+        : Boolean(expandedSubs[item.id]);
     const Icon = item.icon;
 
     return (
@@ -115,7 +144,7 @@ const Sidebar = ({ onClose }) => {
           `}
           onClick={() => {
             if (item.hasSubmenu) {
-              toggleSection(item.id);
+              toggleSection(item.id, level);
             } else if (item.path) {
               handleItemClick(item.id, item.path);
             }
@@ -153,7 +182,8 @@ const Sidebar = ({ onClose }) => {
     );
   };
 
-  const filteredSections = getFilteredSections();
+  const permittedSections = getFilteredSections();
+  const visibleSections = query ? searchMenuItems(permittedSections) : permittedSections;
 
   return (
     <div className="flex flex-col w-64 h-screen bg-white border-r border-gray-200">
@@ -182,12 +212,41 @@ const Sidebar = ({ onClose }) => {
         )}
       </div>
 
+      {/* Module search */}
+      <div className="px-3 pt-3">
+        <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg focus-within:border-[#FF5F03]">
+          <Search size={15} className="text-gray-400 shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search modules…"
+            aria-label="Search modules and pages"
+            className="w-full text-sm bg-transparent border-0 outline-none text-gray-700 placeholder:text-gray-400"
+          />
+          {search && (
+            <button
+              type="button"
+              onClick={() => setSearch('')}
+              aria-label="Clear search"
+              className="text-gray-400 hover:text-gray-600 border-0 bg-transparent p-0 cursor-pointer shrink-0"
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Navigation Menu */}
       <div className="flex-1 py-4 overflow-y-auto">
         <nav className="space-y-1">
-          {filteredSections.map((section) => (
-            <MenuItem key={section.id} item={section} />
-          ))}
+          {visibleSections.length === 0 ? (
+            <p className="px-5 text-sm text-gray-400">No modules match “{search.trim()}”.</p>
+          ) : (
+            visibleSections.map((section) => (
+              <MenuItem key={section.id} item={section} />
+            ))
+          )}
         </nav>
       </div>
 

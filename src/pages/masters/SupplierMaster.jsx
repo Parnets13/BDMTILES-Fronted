@@ -82,7 +82,9 @@ const SupplierMaster = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search by name, code, mobile, city..." prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }} className="w-72" allowClear />
           <Select placeholder="Status" options={[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'}]} value={statusFilter} onChange={setStatusFilter} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Clear Filters</Button>
+          {/* Re-fetches the current view. Distinct from Clear Filters, which only resets the inputs. */}
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchSuppliers}>Refresh</Button>
         </div>
       </div>
 

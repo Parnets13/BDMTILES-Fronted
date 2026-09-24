@@ -4,9 +4,10 @@ import {
   Space, Statistic, Table, Tag, message,
 } from 'antd';
 import {
-  BankOutlined, DeleteOutlined, EditOutlined, PlusOutlined,
+  BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined,
   ReloadOutlined, SearchOutlined,
 } from '@ant-design/icons';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -34,6 +35,7 @@ const BranchPage = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(undefined);
   const [editing, setEditing] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [open, setOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
@@ -152,9 +154,10 @@ const BranchPage = () => {
       render: (value) => <Tag color={value === 'active' ? 'green' : 'default'}>{value?.toUpperCase()}</Tag>,
     },
     {
-      title: 'Actions', width: 110,
+      title: 'Actions', width: 140,
       render: (_, record) => (
         <Space>
+          <Button type="text" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(record)} />
           <Button type="text" icon={<EditOutlined />} onClick={() => showEdit(record)} />
           <Popconfirm title="Delete this branch?" description="Referenced branches must be deactivated instead." onConfirm={() => remove(record._id)}>
             <Button type="text" danger icon={<DeleteOutlined />} />
@@ -200,6 +203,53 @@ const BranchPage = () => {
           onChange={(next) => load(next.current, next.pageSize)}
         />
       </div>
+
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Branch — ${viewRecord?.name || ''}`}
+        subtitle={viewRecord?.branchCode}
+        sections={viewRecord ? [
+          {
+            title: 'Identification',
+            fields: [
+              { label: 'Branch Code', value: viewRecord.branchCode, type: 'code' },
+              { label: 'Name', value: viewRecord.name },
+              { label: 'Status', value: viewRecord.status, type: 'tag', tagColor: viewRecord.status === 'active' ? 'green' : 'default', alwaysShow: true },
+              { label: 'Legal Name', value: viewRecord.legalName, span: 3 },
+            ],
+          },
+          {
+            title: 'Statutory',
+            fields: [
+              { label: 'GSTIN', value: viewRecord.gstin, type: 'code' },
+              { label: 'PAN', value: viewRecord.pan, type: 'code' },
+              { label: 'State Code', value: viewRecord.stateCode },
+            ],
+          },
+          {
+            title: 'Address & Contact',
+            fields: [
+              { label: 'Address', value: viewRecord.address, span: 3 },
+              { label: 'City', value: viewRecord.city },
+              { label: 'State', value: viewRecord.state },
+              { label: 'PIN Code', value: viewRecord.pinCode },
+              { label: 'Phone', value: viewRecord.phone },
+              { label: 'Email', value: viewRecord.email },
+            ],
+          },
+          {
+            title: 'Defaults',
+            fields: [
+              {
+                label: 'Default Warehouse',
+                value: viewRecord.defaultWarehouse?.name || viewRecord.defaultWarehouse?.warehouseCode,
+                span: 3,
+              },
+            ],
+          },
+        ] : []}
+      />
 
       <Modal title={editing ? 'Edit Branch' : 'Add Branch'} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} width={900} destroyOnHidden>
         <Form form={form} layout="vertical" initialValues={initialValues} className="mt-4">

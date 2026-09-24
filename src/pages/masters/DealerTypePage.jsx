@@ -145,8 +145,18 @@ const DealerTypePage = () => {
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
+        {/* Client-side pagination: the backend returns the full list for this
+            master and it is small, but an unpaginated table becomes unusable
+            once a client adds a few dozen custom types. */}
         <Table columns={columns} dataSource={types} rowKey="_id" loading={loading}
-          size="middle" pagination={false} />
+          size="middle"
+          pagination={{
+            pageSize: 20,
+            showSizeChanger: true,
+            pageSizeOptions: ['10', '20', '50'],
+            hideOnSinglePage: true,
+            showTotal: (t) => `${t} dealer type(s)`,
+          }} />
       </div>
 
       {/* Add/Edit Modal */}

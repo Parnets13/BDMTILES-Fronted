@@ -109,7 +109,7 @@ const DeliveryHistory = () => {
           <h1 className="text-2xl font-bold text-gray-800">Delivery History</h1>
           <p className="text-sm text-gray-500 mt-0.5">Past deliveries — search, filter and print delivery notes</p>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading} />
+        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading}>Refresh</Button>
       </div>
 
       <Row gutter={16} className="mb-5">

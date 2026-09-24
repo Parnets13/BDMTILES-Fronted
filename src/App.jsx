@@ -69,6 +69,9 @@ import NotificationTemplatePage from './pages/system/NotificationTemplatePage.js
 import NotificationSettingsPage from './pages/system/NotificationSettingsPage.jsx';
 import NotificationInboxPage from './pages/system/NotificationInboxPage.jsx';
 import AccessPolicyPage from './pages/system/AccessPolicyPage.jsx';
+import DealerAppAccess from './pages/system/DealerAppAccess.jsx';
+import SystemHealth from './pages/system/SystemHealth.jsx';
+import RolesPermissions from './pages/system/RolesPermissions.jsx';
 
 // Finance Pages
 import DealerLedger from './pages/finance/DealerLedger.jsx';
@@ -101,6 +104,12 @@ import FinanceStatements from './pages/reports/FinanceStatements.jsx';
 import HRReports from './pages/reports/HRReports.jsx';
 import ActivityLogs from './pages/reports/ActivityLogs.jsx';
 import SEPerformance from './pages/reports/SEPerformance.jsx';
+import SupplierPerformance from './pages/reports/SupplierPerformance.jsx';
+import BranchPerformance from './pages/reports/BranchPerformance.jsx';
+import WarehousePerformance from './pages/reports/WarehousePerformance.jsx';
+import CollectionReport from './pages/reports/CollectionReport.jsx';
+import ExpenseReport from './pages/reports/ExpenseReport.jsx';
+import OutstandingReport from './pages/reports/OutstandingReport.jsx';
 import SupplierSchemeEntry from './pages/schemes/SupplierSchemeEntry.jsx';
 import SupplierSchemeAnalysis from './pages/schemes/SupplierSchemeAnalysis.jsx';
 import SupplierClaimManagement from './pages/schemes/SupplierClaimManagement.jsx';
@@ -115,6 +124,8 @@ import Reconciliation from './pages/finance/Reconciliation.jsx';
 
 // Masters extra
 import VehicleMaster from './pages/masters/VehicleMaster.jsx';
+import ShadeBatchRegistry from './pages/masters/ShadeBatchRegistry.jsx';
+import DealerEmployeeTargets from './pages/masters/DealerEmployeeTargets.jsx';
 
 // CRM extra
 import FollowUpManager from './pages/crm/FollowUpManager.jsx';
@@ -146,6 +157,11 @@ import LoansAdvances from './pages/hrms/LoansAdvances.jsx';
 import HRMSSettings from './pages/hrms/HRMSSettings.jsx';
 import OvertimeCalculation from './pages/hrms/OvertimeCalculation.jsx';
 import DailyWageWorkers from './pages/hrms/DailyWageWorkers.jsx';
+import JobOpenings from './pages/hrms/JobOpenings.jsx';
+import CandidatePipeline from './pages/hrms/CandidatePipeline.jsx';
+import HRDocumentTemplates from './pages/hrms/HRDocumentTemplates.jsx';
+import PerformanceAppraisal from './pages/hrms/PerformanceAppraisal.jsx';
+import EmployeeExitManagement from './pages/hrms/EmployeeExitManagement.jsx';
 import ExpenseManagement from './pages/finance/ExpenseManagement.jsx';
 
 // Dealer App
@@ -156,6 +172,7 @@ import DealerSupportChat from './pages/dealer-app/DealerSupportChat.jsx';
 import AssetMaster from './pages/assets/AssetMaster.jsx';
 import AssetAssignment from './pages/assets/AssetAssignment.jsx';
 import AssetMaintenance from './pages/assets/AssetMaintenance.jsx';
+import EmployeeAssetHistory from './pages/assets/EmployeeAssetHistory.jsx';
 
 // SE App Admin Views
 import SEAttendanceViewer from './pages/se-app/SEAttendanceViewer.jsx';
@@ -266,6 +283,9 @@ const App = () => {
         <Route path="/system/notification-templates" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="notification.manage"><NotificationTemplatePage /></ProtectedRoute>} />
         <Route path="/system/notification-settings" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="notification.manage"><NotificationSettingsPage /></ProtectedRoute>} />
         <Route path="/system/access-policies" element={<ProtectedRoute requiredRoles={['super_admin', 'owner']} requiredPermission="access.policy.manage"><AccessPolicyPage /></ProtectedRoute>} />
+        <Route path="/system/roles" element={<ProtectedRoute requiredPermission="users.manage"><RolesPermissions /></ProtectedRoute>} />
+        <Route path="/system/dealer-app-access" element={<ProtectedRoute requiredPermission="dealer.app.manage"><DealerAppAccess /></ProtectedRoute>} />
+        <Route path="/system/health" element={<ProtectedRoute requiredPermission="system.management"><SystemHealth /></ProtectedRoute>} />
 
         {/* Web Management (Storefront CMS) */}
         <Route path="/web-management/site-settings" element={<ProtectedRoute requiredPermission="webmanagement.manage"><SiteSettingsPage /></ProtectedRoute>} />
@@ -388,6 +408,15 @@ const App = () => {
         <Route path="/masters/customers" element={<ProtectedRoute requiredPermission="customer.master"><CustomerMaster /></ProtectedRoute>} />
         <Route path="/masters/wallets" element={<ProtectedRoute requiredPermission="wallet.manage"><WalletManagementPage /></ProtectedRoute>} />
         <Route path="/masters/vehicles" element={<ProtectedRoute requiredPermission="vehicle.master"><VehicleMaster /></ProtectedRoute>} />
+        <Route path="/masters/shade-batch-registry" element={<ProtectedRoute requiredPermission="stock.view"><ShadeBatchRegistry /></ProtectedRoute>} />
+        <Route
+          path="/masters/dealer-employee-targets"
+          element={
+            <ProtectedRoute requiredPermission="dealer.master">
+              <DealerEmployeeTargets />
+            </ProtectedRoute>
+          }
+        />
 
         {/* Sales & Purchase */}
         <Route
@@ -672,12 +701,18 @@ const App = () => {
         {/* Assets */}
         <Route path="/assets/master" element={<ProtectedRoute requiredPermission="asset.management"><AssetMaster /></ProtectedRoute>} />
         <Route path="/assets/assignment" element={<ProtectedRoute requiredPermission="asset.management"><AssetAssignment /></ProtectedRoute>} />
+        <Route path="/assets/employee-history" element={<ProtectedRoute requiredPermission="asset.management"><EmployeeAssetHistory /></ProtectedRoute>} />
         <Route path="/assets/maintenance" element={<ProtectedRoute requiredPermission="asset.management"><AssetMaintenance /></ProtectedRoute>} />
 
         {/* HRMS — additional */}
         <Route path="/hrms/overtime-calculation" element={<ProtectedRoute requiredPermission="attendance.master"><OvertimeCalculation /></ProtectedRoute>} />
         <Route path="/hrms/daily-wage-workers" element={<ProtectedRoute requiredPermission="attendance.master"><DailyWageWorkers /></ProtectedRoute>} />
         <Route path="/hrms/settings" element={<ProtectedRoute requiredPermission="hrms.management"><HRMSSettings /></ProtectedRoute>} />
+        <Route path="/hrms/job-openings" element={<ProtectedRoute requiredPermission="job.opening.manage"><JobOpenings /></ProtectedRoute>} />
+        <Route path="/hrms/candidate-pipeline" element={<ProtectedRoute requiredPermission="candidate.manage"><CandidatePipeline /></ProtectedRoute>} />
+        <Route path="/hrms/document-templates" element={<ProtectedRoute requiredPermission="hr.template.manage"><HRDocumentTemplates /></ProtectedRoute>} />
+        <Route path="/hrms/performance" element={<ProtectedRoute requiredPermission="performance.appraisal"><PerformanceAppraisal /></ProtectedRoute>} />
+        <Route path="/hrms/employee-exit" element={<ProtectedRoute requiredPermission="employee.exit"><EmployeeExitManagement /></ProtectedRoute>} />
 
         {/* Finance — additional */}
         <Route path="/finance/credit-days-monitor" element={<ProtectedRoute requiredPermission="finance.management"><CreditDaysMonitor /></ProtectedRoute>} />
@@ -711,10 +746,49 @@ const App = () => {
         <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="reports.finance"><PlaceholderPage title="Bank Reconciliation" /></ProtectedRoute>} />
         <Route path="/reports/gst-reports" element={<ProtectedRoute requiredPermission="reports.gst"><GSTReports /></ProtectedRoute>} />
         <Route path="/reports/aging-report" element={<ProtectedRoute requiredPermission="reports.finance"><AgingReport /></ProtectedRoute>} />
-        <Route path="/reports/audit-trail" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs /></ProtectedRoute>} />
-        <Route path="/reports/activity-logs" element={<ProtectedRoute requiredPermission="activity.logs"><ActivityLogs /></ProtectedRoute>} />
-        <Route path="/reports/download-logs" element={<ProtectedRoute requiredPermission="download.logs"><ActivityLogs /></ProtectedRoute>} />
+        {/* Audit & Activity Logs — one component, different slices of the ActivityLog action enum */}
+        <Route path="/reports/audit-trail" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs
+          title="Audit Trail"
+          subtitle="Every recorded action with field-level before and after values. Expand a row to see what changed."
+          showChanges
+        /></ProtectedRoute>} />
+        <Route path="/reports/activity-logs" element={<ProtectedRoute requiredPermission="activity.logs"><ActivityLogs
+          title="Activity Logs"
+          subtitle="Complete activity feed — who did what, when, from where. Auto-deletes after 60 days."
+          allowCleanup
+        /></ProtectedRoute>} />
+        <Route path="/reports/login-history" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs
+          title="Login History"
+          subtitle="Sign-in and sign-out events, with IP address and device."
+          actions={['login', 'logout']}
+        /></ProtectedRoute>} />
+        <Route path="/reports/user-activity" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs
+          title="User Activity"
+          subtitle="Activity per user — search by name to see everything one person did."
+        /></ProtectedRoute>} />
+        <Route path="/reports/data-modification" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs
+          title="Data Modification History"
+          subtitle="Create, update and delete events only. Expand a row for field-level old and new values."
+          actions={['create', 'update', 'delete', 'restore', 'permanent_delete', 'bulk_update']}
+          showChanges
+        /></ProtectedRoute>} />
+        <Route path="/reports/approval-history" element={<ProtectedRoute requiredPermission="audit.trail"><ActivityLogs
+          title="Approval History"
+          subtitle="Approve and reject decisions across every module."
+          actions={['approve', 'reject']}
+        /></ProtectedRoute>} />
+        <Route path="/reports/download-logs" element={<ProtectedRoute requiredPermission="download.logs"><ActivityLogs
+          title="Download Logs"
+          subtitle="Documents and reports downloaded out of the system."
+          actions={['download']}
+        /></ProtectedRoute>} />
         <Route path="/reports/dealer-performance" element={<ProtectedRoute requiredPermission="reports.sales"><DealerPerformance /></ProtectedRoute>} />
+        <Route path="/reports/supplier-performance" element={<ProtectedRoute requiredPermission="reports.purchase"><SupplierPerformance /></ProtectedRoute>} />
+        <Route path="/reports/branch-performance" element={<ProtectedRoute requiredPermission="reports.sales"><BranchPerformance /></ProtectedRoute>} />
+        <Route path="/reports/warehouse-performance" element={<ProtectedRoute requiredPermission="reports.inventory"><WarehousePerformance /></ProtectedRoute>} />
+        <Route path="/reports/collection-report" element={<ProtectedRoute requiredPermission="reports.finance"><CollectionReport /></ProtectedRoute>} />
+        <Route path="/reports/expense-report" element={<ProtectedRoute requiredAnyPermissions={['reports.finance', 'expense.management']}><ExpenseReport /></ProtectedRoute>} />
+        <Route path="/reports/outstanding-report" element={<ProtectedRoute requiredPermission="reports.finance"><OutstandingReport /></ProtectedRoute>} />
         <Route path="/reports/balance-sheet" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
         <Route path="/reports/trial-balance" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
         <Route path="/reports/profit-loss" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />

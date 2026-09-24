@@ -4,10 +4,11 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, Popconfirm, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   ReloadOutlined, EnvironmentOutlined, HomeOutlined,
 } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 
 const WAREHOUSE_TYPES = [
   { value: 'main',    label: 'Main Warehouse',  color: 'blue'    },
@@ -46,6 +47,7 @@ const WarehousePage = () => {
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [form, setForm] = useState(empty());
   const [saving, setSaving] = useState(false);
 
@@ -158,8 +160,11 @@ const WarehousePage = () => {
       },
     },
     {
-      title: 'Actions', width: 90, render: (_, r) => (
+      title: 'Actions', width: 120, render: (_, r) => (
         <Space>
+          <Tooltip title="View">
+            <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(r)} />
+          </Tooltip>
           <Tooltip title="Edit">
             <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
           </Tooltip>
@@ -235,6 +240,47 @@ const WarehousePage = () => {
           locale={{ emptyText: 'No warehouses found. Click "Add Warehouse" to create one.' }}
         />
       </div>
+
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Warehouse — ${viewRecord?.name || ''}`}
+        subtitle={viewRecord?.warehouseCode}
+        sections={viewRecord ? [
+          {
+            title: 'Identification',
+            fields: [
+              { label: 'Code', value: viewRecord.warehouseCode, type: 'code' },
+              { label: 'Name', value: viewRecord.name },
+              { label: 'Type', value: viewRecord.type, type: 'tag' },
+              { label: 'Status', value: viewRecord.status, type: 'tag', tagColor: viewRecord.status === 'active' ? 'green' : viewRecord.status === 'maintenance' ? 'orange' : 'default', alwaysShow: true },
+              { label: 'Branch', value: viewRecord.branch?.name || viewRecord.branch?.branchCode },
+              { label: 'Region', value: viewRecord.region?.name },
+            ],
+          },
+          {
+            title: 'Location',
+            fields: [
+              { label: 'Address', value: viewRecord.address, span: 3 },
+              { label: 'City', value: viewRecord.city },
+              { label: 'State', value: viewRecord.state },
+              { label: 'PIN Code', value: viewRecord.pinCode },
+            ],
+          },
+          {
+            title: 'Contact & Capacity',
+            fields: [
+              { label: 'Manager', value: viewRecord.managerName },
+              { label: 'Manager Phone', value: viewRecord.managerPhone },
+              { label: 'Email', value: viewRecord.email },
+              { label: 'Capacity', value: viewRecord.capacity },
+              // Zones are the only warehouse sub-structure that exists; there is no
+              // rack or bin master, so rack/bin live as free text on each stock row.
+              { label: 'Zones', value: viewRecord.zones, type: 'list', span: 2 },
+            ],
+          },
+        ] : []}
+      />
 
       {/* Add / Edit Modal */}
       <Modal

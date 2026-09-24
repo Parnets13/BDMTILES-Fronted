@@ -8,12 +8,19 @@ import {
   PhoneOutlined, CustomerServiceOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import api from '../../config/api';
+import { subscribeToMessages } from '../../lib/realtime';
 import dayjs from 'dayjs';
 
 const { Title, Text, Paragraph } = Typography;
 
 const BRAND = '#FF5F03';
-const POLL_MS = 20000;
+/**
+ * Safety net only — realtime is the primary path. The desk used to poll every 20s,
+ * which was the slowest of the three chat surfaces: a dealer's reply could take
+ * twenty seconds to appear here. This interval now only matters when the socket
+ * cannot connect, so the screen still self-heals instead of sitting stale.
+ */
+const FALLBACK_POLL_MS = 60000;
 
 /**
  * Admin support desk for the dealer <-> sales executive conversation (SOW 17.8).
@@ -77,12 +84,23 @@ export default function DealerSupportChat() {
 
   useEffect(() => { loadThreads(); }, [loadThreads]);
 
-  // Chat is pull-based — no socket layer is assumed anywhere in this stack.
+  // Realtime: a message from any dealer refreshes the list, and refreshes the open
+  // thread when it belongs to that conversation. `quiet` keeps the spinner away —
+  // a push should not make the screen look like it is loading.
+  useEffect(() => subscribeToMessages((incoming) => {
+    loadThreads({ quiet: true });
+    const openId = activeIdRef.current;
+    if (openId && String(incoming?.dealer) === String(openId)) {
+      openThread(openId, { quiet: true });
+    }
+  }), [loadThreads, openThread]);
+
+  // Fallback for a dropped socket.
   useEffect(() => {
     const timer = setInterval(() => {
       loadThreads({ quiet: true });
       if (activeIdRef.current) openThread(activeIdRef.current, { quiet: true });
-    }, POLL_MS);
+    }, FALLBACK_POLL_MS);
     return () => clearInterval(timer);
   }, [loadThreads, openThread]);
 

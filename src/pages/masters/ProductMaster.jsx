@@ -425,7 +425,18 @@ const ProductMaster = () => {
             value={filters.tileType} onChange={v => setFilters(f => ({...f, tileType: v}))} allowClear className="w-36" showSearch />
           <Select placeholder="Application" options={APPLICATION_AREAS.map(a => ({value:a,label:a}))}
             value={filters.applicationArea} onChange={v => setFilters(f => ({...f, applicationArea: v}))} allowClear className="w-36" showSearch />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({brand:undefined,category:undefined,subcategory:undefined,status:undefined,tileSize:undefined,finish:undefined,tileType:undefined,applicationArea:undefined}); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({brand:undefined,category:undefined,subcategory:undefined,status:undefined,tileSize:undefined,finish:undefined,tileType:undefined,applicationArea:undefined}); }}>Clear Filters</Button>
+          {/* Re-fetches the current view. Distinct from Clear Filters, which only resets the inputs. */}
+          <Button
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => {
+              fetchProducts();
+              productService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+            }}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
 

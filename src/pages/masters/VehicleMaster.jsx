@@ -4,12 +4,13 @@ import {
   Modal, Form, Row, Col, Card, Statistic
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   ReloadOutlined, CarOutlined
 } from '@ant-design/icons';
 import api from '../../config/api.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 
 const vehicleService = {
   getAll: (params) => api.get('/masters/vehicles', { params }),
@@ -46,6 +47,7 @@ const VehicleMaster = () => {
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
   const [form] = Form.useForm();
 
@@ -75,6 +77,17 @@ const VehicleMaster = () => {
 
   useEffect(() => { fetchDeliveryExecutives(); }, [fetchDeliveryExecutives]);
 
+  // Linking an executive makes that account's contact details authoritative,
+  // so the driver fields are filled from it and locked to avoid disagreement.
+  const chooseDeliveryExecutive = (executiveId) => {
+    const picked = deliveryExecutives.find(executive => String(executive._id) === String(executiveId));
+    form.setFieldsValue({
+      deliveryExecutive: executiveId,
+      driverName: picked?.name || '',
+      driverPhone: picked?.phone || '',
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
@@ -94,9 +107,12 @@ const VehicleMaster = () => {
 
   const handleEdit = (record) => {
     setEditRecord(record);
+    const linkedExecutive = record.deliveryExecutive;
     form.setFieldsValue({
       ...record,
-      deliveryExecutive: record.deliveryExecutive?._id || record.deliveryExecutive || undefined,
+      deliveryExecutive: linkedExecutive?._id || linkedExecutive || undefined,
+      driverName: linkedExecutive?.name ?? record.driverName,
+      driverPhone: linkedExecutive?.phone ?? record.driverPhone,
       insuranceExpiry: toDateInput(record.insuranceExpiry),
       fitnessExpiry: toDateInput(record.fitnessExpiry),
       isActive: record.isActive ?? true,
@@ -145,9 +161,10 @@ const VehicleMaster = () => {
     { title: 'Fitness Exp', dataIndex: 'fitnessExpiry', width: 110, render: renderExpiry },
     { title: 'Status', dataIndex: 'isActive', width: 90,
       render: value => <Tag color={value ? 'green' : 'default'}>{value ? 'Active' : 'Inactive'}</Tag> },
-    { title: 'Actions', width: 90,
+    { title: 'Actions', width: 120,
       render: (_, record) => (
         <Space size="small">
+          <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(record)} />
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           <DoubleConfirmDelete
             title="Delete Vehicle"
@@ -199,6 +216,64 @@ const VehicleMaster = () => {
           size="middle" scroll={{ x: 1420 }} pagination={{ pageSize: 20 }} />
       </div>
 
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Vehicle — ${viewRecord?.vehicleNumber || ''}`}
+        subtitle={VEHICLE_TYPE_LABELS[viewRecord?.vehicleType] || viewRecord?.vehicleType}
+        sections={viewRecord ? [
+          {
+            title: 'Identification',
+            fields: [
+              { label: 'Vehicle Number', value: viewRecord.vehicleNumber, type: 'code' },
+              { label: 'Type', value: VEHICLE_TYPE_LABELS[viewRecord.vehicleType] || viewRecord.vehicleType },
+              { label: 'Status', value: viewRecord.isActive, type: 'boolean', alwaysShow: true },
+              { label: 'Make', value: viewRecord.make },
+              { label: 'Model', value: viewRecord.model },
+              { label: 'Year', value: viewRecord.year },
+            ],
+          },
+          {
+            title: 'Capacity',
+            fields: [
+              { label: 'Capacity', value: viewRecord.capacity },
+              { label: 'Unit', value: CAPACITY_UNIT_LABELS[viewRecord.capacityUnit] || viewRecord.capacityUnit },
+            ],
+          },
+          {
+            title: 'Driver & Linked Account',
+            fields: [
+              { label: 'Driver Name', value: viewRecord.driverName },
+              { label: 'Driver Phone', value: viewRecord.driverPhone },
+              { label: 'Licence Number', value: viewRecord.driverLicenseNumber },
+              {
+                label: 'Delivery Executive',
+                value: viewRecord.deliveryExecutive?.name || viewRecord.deliveryExecutiveName,
+                span: 2,
+              },
+            ],
+          },
+          {
+            title: 'Documents',
+            fields: [
+              { label: 'Insurance Expiry', value: viewRecord.insuranceExpiry, type: 'date' },
+              { label: 'Fitness Expiry', value: viewRecord.fitnessExpiry, type: 'date' },
+              { label: 'Permit Expiry', value: viewRecord.permitExpiry, type: 'date' },
+              { label: 'PUC Expiry', value: viewRecord.pucExpiry, type: 'date' },
+              { label: 'RC Number', value: viewRecord.rcNumber },
+            ],
+          },
+          {
+            title: 'Other',
+            fields: [
+              { label: 'Remarks', value: viewRecord.remarks, span: 3 },
+              { label: 'Created', value: viewRecord.createdAt, type: 'datetime' },
+              { label: 'Last Updated', value: viewRecord.updatedAt, type: 'datetime' },
+            ],
+          },
+        ] : []}
+      />
+
       <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
         onCancel={() => { setShowForm(false); setEditRecord(null); form.resetFields(); }}
         onOk={handleSubmit} confirmLoading={formLoading} width={900} destroyOnHidden>
@@ -216,13 +291,15 @@ const VehicleMaster = () => {
             <Col span={8}><Form.Item name="year" label="Year"><Input placeholder="e.g. 2024" /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}><Form.Item name="deliveryExecutive" label="Delivery Executive Account" extra="Optional · all active Delivery Executive accounts from User Management">
+            <Col span={8}><Form.Item name="deliveryExecutive" label="Delivery Executive Account" extra="Optional · selecting one fills Driver Name/Phone automatically">
               <Select
                 allowClear
                 showSearch
                 loading={executivesLoading}
                 placeholder="Link a Delivery Executive"
                 optionFilterProp="label"
+                onChange={chooseDeliveryExecutive}
+                onClear={() => chooseDeliveryExecutive(undefined)}
                 options={deliveryExecutives.map(executive => {
                   const branches = (executive.assignedBranches || [])
                     .map(branch => branch.branchCode || branch.name)
@@ -240,8 +317,20 @@ const VehicleMaster = () => {
                 notFoundContent={executivesLoading ? 'Loading…' : 'No active Delivery Executive accounts found'}
               />
             </Form.Item></Col>
-            <Col span={8}><Form.Item name="driverName" label="Driver Name"><Input placeholder="Full name" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="driverPhone" label="Driver Phone"><Input placeholder="10-digit number" /></Form.Item></Col>
+            <Col span={8}><Form.Item noStyle shouldUpdate={(prev, curr) => prev.deliveryExecutive !== curr.deliveryExecutive}>
+              {({ getFieldValue }) => (
+                <Form.Item name="driverName" label="Driver Name" extra={getFieldValue('deliveryExecutive') ? 'From linked account' : undefined}>
+                  <Input placeholder="Full name" readOnly={!!getFieldValue('deliveryExecutive')} />
+                </Form.Item>
+              )}
+            </Form.Item></Col>
+            <Col span={8}><Form.Item noStyle shouldUpdate={(prev, curr) => prev.deliveryExecutive !== curr.deliveryExecutive}>
+              {({ getFieldValue }) => (
+                <Form.Item name="driverPhone" label="Driver Phone" extra={getFieldValue('deliveryExecutive') ? 'From linked account' : undefined}>
+                  <Input placeholder="10-digit number" readOnly={!!getFieldValue('deliveryExecutive')} />
+                </Form.Item>
+              )}
+            </Form.Item></Col>
           </Row>
           <Row gutter={16}>
             <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>

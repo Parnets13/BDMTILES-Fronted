@@ -4,8 +4,9 @@ import {
   Row, Col, Card, Statistic, Modal, Divider, Popconfirm, Tooltip,
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, EnvironmentOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, EnvironmentOutlined,
 } from '@ant-design/icons';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 import masterService from '../../services/masterService.js';
 import userService from '../../services/userService.js';
 
@@ -47,6 +48,7 @@ const RoutePage = () => {
   // Modal
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [form, setForm] = useState(empty());
   const [saving, setSaving] = useState(false);
 
@@ -173,9 +175,12 @@ const RoutePage = () => {
       render: v => <Tag color={v === 'active' ? 'green' : 'default'} className="capitalize">{v}</Tag>,
     },
     {
-      title: 'Actions', width: 90,
+      title: 'Actions', width: 120,
       render: (_, r) => (
         <Space>
+          <Tooltip title="View">
+            <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(r)} />
+          </Tooltip>
           <Tooltip title="Edit">
             <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openEdit(r)} />
           </Tooltip>
@@ -251,6 +256,39 @@ const RoutePage = () => {
           locale={{ emptyText: 'No routes found. Click "Add Route" to create one.' }}
         />
       </div>
+
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Route — ${viewRecord?.name || ''}`}
+        subtitle={viewRecord?.region?.name}
+        sections={viewRecord ? [
+          {
+            title: 'Route',
+            fields: [
+              { label: 'Name', value: viewRecord.name },
+              { label: 'Region', value: viewRecord.region?.name },
+              { label: 'Status', value: viewRecord.status, type: 'tag', tagColor: viewRecord.status === 'active' ? 'green' : 'default', alwaysShow: true },
+              { label: 'Description', value: viewRecord.description, span: 3 },
+            ],
+          },
+          {
+            title: 'Coverage & Schedule',
+            fields: [
+              { label: 'Cities Covered', value: viewRecord.citiesCovered, type: 'list', span: 3 },
+              { label: 'Visit Frequency', value: viewRecord.visitFrequency, type: 'tag' },
+              { label: 'Day Of Week', value: viewRecord.dayOfWeek },
+            ],
+          },
+          {
+            title: 'Assignment',
+            fields: [
+              { label: 'Sales Executive', value: viewRecord.assignedSE?.name },
+              { label: 'Contact', value: viewRecord.assignedSE?.phone || viewRecord.assignedSE?.email },
+            ],
+          },
+        ] : []}
+      />
 
       {/* Add / Edit Modal */}
       <Modal

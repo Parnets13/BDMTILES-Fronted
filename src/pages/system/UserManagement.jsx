@@ -20,6 +20,7 @@ import {
 import {
   DeleteOutlined,
   EditOutlined,
+  ExclamationCircleOutlined,
   KeyOutlined,
   LockOutlined,
   PlusOutlined,
@@ -253,6 +254,9 @@ const UserManagement = () => {
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
   const [permissionsConfig, setPermissionsConfig] = useState({});
   const [rolePermissions, setRolePermissions] = useState({});
+  // Grants that carry approval authority or administrative control, from the backend
+  // so the warning list stays in one place.
+  const [sensitivePermissions, setSensitivePermissions] = useState({});
   const [roleInfo, setRoleInfo] = useState({});
   const [assignmentOptions, setAssignmentOptions] = useState(EMPTY_OPTIONS);
   const [assignmentAvailability, setAssignmentAvailability] = useState(EMPTY_AVAILABILITY);
@@ -326,6 +330,7 @@ const UserManagement = () => {
         if (configResponse.success) {
           setPermissionsConfig(configResponse.permissions || {});
           setRolePermissions(configResponse.rolePermissions || {});
+          setSensitivePermissions(configResponse.sensitivePermissions || {});
           setRoleInfo(configResponse.roleInfo || {});
         }
         if (optionsResponse.success) {
@@ -456,16 +461,94 @@ const UserManagement = () => {
     }
   };
 
-  const handleDelete = async (userId) => {
+  // Deactivation, not deletion — the backend never removes a user record. A Sales
+  // Executive who still holds dealers is refused with 409 and the dealer list,
+  // because a dealer's branch is derived from their executive; that response has to
+  // be handled or the account simply cannot be deactivated from this screen.
+  const handleDelete = async (userId, options = {}) => {
     try {
-      const response = await userService.deleteUser(userId);
+      const response = await userService.deactivateUser(userId, {
+        reason: options.reason || 'Administrative deactivation',
+        ...(options.reassignDealersTo ? { reassignDealersTo: options.reassignDealersTo } : {}),
+        ...(options.unassignDealers ? { unassignDealers: true } : {}),
+      });
       if (response.success) {
-        message.success('User deleted');
+        message.success(response.message || 'User deactivated');
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      message.error(error.message || 'Failed to delete user');
+      if (error.code === 'DEALERS_STILL_ASSIGNED' || error.details?.dealers?.length) {
+        promptDealerHandover(userId, error);
+        return;
+      }
+      message.error(error.message || 'Failed to deactivate user');
     }
+  };
+
+  const promptDealerHandover = (userId, error) => {
+    const dealers = error.details?.dealers || [];
+    // Only executives who can actually own dealers are offered as a destination.
+    const candidates = users.filter((candidate) => candidate._id !== userId
+      && candidate.status === 'Active'
+      && candidate.role === 'sales_executive');
+    let selectedTarget;
+    let handoverChoice = candidates.length ? 'reassign' : 'unassign';
+
+    Modal.confirm({
+      title: 'This user still holds dealers',
+      icon: <ExclamationCircleOutlined style={{ color: '#d46b08' }} />,
+      width: 640,
+      okText: 'Deactivate',
+      okButtonProps: { danger: true },
+      content: (
+        <div>
+          <p className="mb-2 text-sm">
+            {dealers.length} dealer{dealers.length === 1 ? ' is' : 's are'} assigned to this account. Decide where
+            they go before the account is deactivated.
+          </p>
+          {dealers.length > 0 && (
+            <div className="mb-3 max-h-32 overflow-auto rounded bg-gray-50 p-2 text-xs">
+              {dealers.map((dealer) => (
+                <div key={dealer._id || dealer.dealerCode}>
+                  {dealer.dealerCode ? `${dealer.dealerCode} — ` : ''}{dealer.businessName || dealer.name}
+                </div>
+              ))}
+            </div>
+          )}
+          <Select
+            className="mb-2 w-full"
+            defaultValue={handoverChoice}
+            onChange={(value) => { handoverChoice = value; }}
+            options={[
+              { value: 'reassign', label: 'Reassign to another sales executive', disabled: candidates.length === 0 },
+              { value: 'unassign', label: 'Leave the dealers unassigned' },
+            ]}
+          />
+          <Select
+            className="w-full"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={candidates.length ? 'Select the receiving sales executive' : 'No other active sales executive available'}
+            disabled={candidates.length === 0}
+            onChange={(value) => { selectedTarget = value; }}
+            options={candidates.map((candidate) => ({
+              value: candidate._id,
+              label: `${candidate.name} (${candidate.username})`,
+            }))}
+          />
+        </div>
+      ),
+      onOk: async () => {
+        if (handoverChoice === 'reassign' && !selectedTarget) {
+          message.warning('Select the sales executive who will take over these dealers.');
+          return Promise.reject(new Error('handover target required'));
+        }
+        return handleDelete(userId, handoverChoice === 'reassign'
+          ? { reassignDealersTo: selectedTarget }
+          : { unassignDealers: true });
+      },
+    });
   };
 
   const handleAdminResetPassword = async () => {
@@ -605,12 +688,40 @@ const UserManagement = () => {
     {
       title: 'Permissions',
       key: 'permissions',
-      render: (_, record) => (
-        <div className="text-xs text-gray-500">
-          <div>{record.permissions?.includes('*') ? 'All access' : `${record.permissions?.length || 0} permissions`}</div>
-          <div>{record.permissionMode === 'role_default' ? 'Role defaults' : 'Custom'}</div>
-        </div>
-      ),
+      render: (_, record) => {
+        const granted = record.permissions || [];
+        const unrestricted = granted.includes('*');
+        const preset = rolePermissions?.[record.role] || [];
+        const presetSet = new Set(preset);
+        const extra = unrestricted || presetSet.has('*')
+          ? []
+          : granted.filter((permission) => !presetSet.has(permission));
+        const sensitiveExtra = extra.filter((permission) => sensitivePermissions[permission]);
+
+        return (
+          <div className="text-xs text-gray-500">
+            <div>{unrestricted ? 'All access' : `${granted.length} permissions`}</div>
+            <div>{record.permissionMode === 'role_default' ? 'Role defaults' : 'Custom'}</div>
+            {/* An account holding far more than its role intends is the thing a
+                reviewer needs to spot from the list, not from a drawer. */}
+            {extra.length > 0 && (
+              <Tooltip
+                title={sensitiveExtra.length
+                  ? `${extra.length} permission(s) beyond the ${roleInfo[record.role]?.name || record.role} preset, including ${sensitiveExtra.length} high-authority one(s).`
+                  : `${extra.length} permission(s) beyond the ${roleInfo[record.role]?.name || record.role} preset.`}
+              >
+                <Tag
+                  color={sensitiveExtra.length ? 'red' : 'orange'}
+                  className="mt-1 cursor-help"
+                  icon={sensitiveExtra.length ? <ExclamationCircleOutlined /> : undefined}
+                >
+                  +{extra.length} beyond role
+                </Tag>
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Status',
@@ -663,8 +774,15 @@ const UserManagement = () => {
             </Tooltip>
           )}
           {record._id !== currentUser?._id && (
-            <Popconfirm title="Delete this user?" onConfirm={() => handleDelete(record._id)} okText="Yes" cancelText="No">
-              <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
+            <Popconfirm
+              title="Deactivate this user?"
+              description="The account is disabled and signed out everywhere. No records are deleted."
+              onConfirm={() => handleDelete(record._id)}
+              okText="Deactivate"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+            >
+              <Tooltip title="Deactivate"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
             </Popconfirm>
           )}
         </Space>
@@ -713,6 +831,9 @@ const UserManagement = () => {
           />
           <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setRoleFilter(undefined); setStatusFilter(undefined); setBranchFilter(undefined); }}>
             Reset
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchUsers(pagination.current, pagination.pageSize)} loading={loading}>
+            Refresh
           </Button>
         </div>
       </div>
@@ -780,8 +901,25 @@ const UserManagement = () => {
             <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Select a role' }]}>
               <Select options={manageableRoleOptions} optionFilterProp="label" showSearch />
             </Form.Item>
-            <Form.Item name="status" label="Status">
-              <Select options={[{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }]} />
+            <Form.Item
+              name="status"
+              label="Status"
+              extra={selectedUser?.status === 'Active'
+                ? 'Use the deactivate action in the row menu to switch an active user off — it captures a reason and handles dependent records.'
+                : undefined}
+            >
+              <Select
+                options={[
+                  { value: 'Active', label: 'Active' },
+                  {
+                    value: 'Inactive',
+                    label: 'Inactive',
+                    // The server rejects Active → Inactive here on purpose; offering
+                    // it would only produce a confusing 422.
+                    disabled: selectedUser?.status === 'Active',
+                  },
+                ]}
+              />
             </Form.Item>
           </div>
 
@@ -978,6 +1116,8 @@ const UserManagement = () => {
         user={selectedUser}
         roleInfo={roleInfo}
         permissionsConfig={permissionsConfig}
+        rolePermissions={rolePermissions}
+        sensitivePermissions={sensitivePermissions}
         onSave={handleSavePermissions}
         onReset={handleResetPermissions}
       />
@@ -985,23 +1125,103 @@ const UserManagement = () => {
   );
 };
 
-const PermissionDrawer = ({ open, onClose, user, roleInfo, permissionsConfig, onSave, onReset }) => {
+/**
+ * Permission editor.
+ *
+ * There are 164 permissions across 15 groups. The previous version rendered all of
+ * them as flat checkboxes with no search and no way to tell a grant apart from what
+ * the role already gives, which made granting or auditing anything impractical.
+ *
+ * This version adds search, group and global bulk actions, a live diff against the
+ * role preset, and a confirmation step for grants that carry approval authority.
+ */
+const PermissionDrawer = ({
+  open, onClose, user, roleInfo, permissionsConfig, rolePermissions, sensitivePermissions = {}, onSave, onReset,
+}) => {
   const screens = Grid.useBreakpoint();
   const [selectedPermissions, setSelectedPermissions] = useState([]);
+  const [search, setSearch] = useState('');
+  const [onlyChanged, setOnlyChanged] = useState(false);
 
   useEffect(() => {
     setSelectedPermissions((user?.permissions || []).filter((permission) => permission !== '*'));
+    setSearch('');
+    setOnlyChanged(false);
   }, [user]);
 
   if (!user) return null;
   const unrestricted = (user.permissions || []).includes('*');
+
+  const rolePreset = new Set(rolePermissions?.[user.role] || []);
+  const roleGrantsAll = rolePreset.has('*');
+  const selectedSet = new Set(selectedPermissions);
+
+  const allPermissions = Object.entries(permissionsConfig || {})
+    .flatMap(([category, permissions]) => (permissions || [])
+      .filter((permission) => permission.id !== '*')
+      .map((permission) => ({ ...permission, category })));
+
+  const extraBeyondRole = roleGrantsAll
+    ? []
+    : selectedPermissions.filter((permission) => !rolePreset.has(permission));
+  const missingFromRole = roleGrantsAll
+    ? []
+    : [...rolePreset].filter((permission) => !selectedSet.has(permission));
+  const sensitiveSelected = selectedPermissions.filter((permission) => sensitivePermissions[permission]);
+
+  const matchesFilters = (permission) => {
+    const text = search.trim().toLowerCase();
+    if (text && !permission.name.toLowerCase().includes(text) && !permission.id.toLowerCase().includes(text)) {
+      return false;
+    }
+    if (onlyChanged) {
+      const inRole = roleGrantsAll || rolePreset.has(permission.id);
+      const isSelected = selectedSet.has(permission.id);
+      if (inRole === isSelected) return false;
+    }
+    return true;
+  };
+
+  const toggle = (permission) => {
+    const isAdding = !selectedSet.has(permission.id);
+    const warning = sensitivePermissions[permission.id];
+    const apply = () => setSelectedPermissions((previous) => (previous.includes(permission.id)
+      ? previous.filter((item) => item !== permission.id)
+      : [...previous, permission.id]));
+
+    // Approval authority and administrative control get a deliberate second step.
+    if (isAdding && warning) {
+      Modal.confirm({
+        title: `Grant "${permission.name}"?`,
+        icon: <ExclamationCircleOutlined style={{ color: '#d46b08' }} />,
+        content: (
+          <div>
+            <p className="mb-2">{warning}</p>
+            <p className="text-xs text-gray-500">
+              Granting this to {user.name} ({roleInfo[user.role]?.name || user.role}) is not reversible from an audit
+              point of view — the change is recorded either way.
+            </p>
+          </div>
+        ),
+        okText: 'Grant',
+        okButtonProps: { danger: true },
+        onOk: apply,
+      });
+      return;
+    }
+    apply();
+  };
+
+  const setMany = (ids, shouldSelect) => setSelectedPermissions((previous) => (shouldSelect
+    ? [...new Set([...previous, ...ids])]
+    : previous.filter((permission) => !ids.includes(permission))));
 
   return (
     <Drawer
       title={`Permissions — ${user.name}`}
       open={open}
       onClose={onClose}
-      width={screens.md ? 520 : '100%'}
+      width={screens.lg ? 720 : screens.md ? 560 : '100%'}
       extra={unrestricted ? (
         user.permissionMode === 'custom' ? <Button onClick={onReset}>Use Role Defaults</Button> : null
       ) : (
@@ -1018,47 +1238,134 @@ const PermissionDrawer = ({ open, onClose, user, roleInfo, permissionsConfig, on
           <p className="text-sm">This role has unrestricted server-defined access. The UI never grants the wildcard permission.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Alert
             type={user.permissionMode === 'role_default' ? 'info' : 'warning'}
             showIcon
-            message={user.permissionMode === 'role_default' ? 'Using backend role defaults' : 'Using custom permissions'}
-            description="Saving selections switches this user to custom mode. Use Role Defaults to discard custom grants."
+            message={user.permissionMode === 'role_default' ? 'Using role defaults' : 'Using custom permissions'}
+            description={user.permissionMode === 'role_default'
+              ? `This account follows the ${roleInfo[user.role]?.name || user.role} preset. Saving any change switches it to custom, and it will then stop following the preset.`
+              : `This account no longer follows the ${roleInfo[user.role]?.name || user.role} preset. Use Role Defaults to put it back.`}
           />
-          <div className="text-sm text-gray-500">Selected: <strong className="text-gray-800">{selectedPermissions.length}</strong> permissions</div>
-          {Object.entries(permissionsConfig).map(([category, permissions]) => {
-            const safePermissions = permissions.filter((permission) => permission.id !== '*');
-            const allSelected = safePermissions.length > 0
-              && safePermissions.every((permission) => selectedPermissions.includes(permission.id));
+
+          {/* Live comparison against the role preset — the thing that makes an
+              over-permissioned account obvious instead of invisible. */}
+          <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-50 p-3 text-center">
+            <div>
+              <div className="text-lg font-semibold text-gray-800">{selectedPermissions.length}</div>
+              <div className="text-[11px] text-gray-500">selected of {allPermissions.length}</div>
+            </div>
+            <div>
+              <div className={`text-lg font-semibold ${extraBeyondRole.length ? 'text-orange-600' : 'text-gray-800'}`}>
+                {extraBeyondRole.length}
+              </div>
+              <div className="text-[11px] text-gray-500">beyond the role</div>
+            </div>
+            <div>
+              <div className={`text-lg font-semibold ${missingFromRole.length ? 'text-amber-600' : 'text-gray-800'}`}>
+                {missingFromRole.length}
+              </div>
+              <div className="text-[11px] text-gray-500">role grants, not given</div>
+            </div>
+          </div>
+
+          {sensitiveSelected.length > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`${sensitiveSelected.length} high-authority permission(s) selected`}
+              description={
+                <div className="flex flex-wrap gap-1">
+                  {sensitiveSelected.map((permission) => (
+                    <Tooltip key={permission} title={sensitivePermissions[permission]}>
+                      <Tag color="orange">
+                        {allPermissions.find((item) => item.id === permission)?.name || permission}
+                      </Tag>
+                    </Tooltip>
+                  ))}
+                </div>
+              }
+            />
+          )}
+
+          <Space wrap>
+            <Input
+              allowClear
+              size="small"
+              prefix={<SearchOutlined />}
+              placeholder="Search permissions"
+              style={{ width: 240 }}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Button size="small" onClick={() => setMany(allPermissions.map((p) => p.id), true)}>Select All</Button>
+            <Button size="small" onClick={() => setSelectedPermissions([])}>Clear All</Button>
+            <Button
+              size="small"
+              onClick={() => setSelectedPermissions(roleGrantsAll ? [] : [...rolePreset])}
+              disabled={roleGrantsAll}
+            >
+              Match Role Preset
+            </Button>
+            <Button
+              size="small"
+              type={onlyChanged ? 'primary' : 'default'}
+              onClick={() => setOnlyChanged((previous) => !previous)}
+            >
+              {onlyChanged ? 'Showing differences' : 'Show differences only'}
+            </Button>
+          </Space>
+
+          {Object.entries(permissionsConfig || {}).map(([category, permissions]) => {
+            const safePermissions = (permissions || []).filter((permission) => permission.id !== '*');
+            const visible = safePermissions
+              .map((permission) => ({ ...permission, category }))
+              .filter(matchesFilters);
+            if (!visible.length) return null;
+
+            const ids = safePermissions.map((permission) => permission.id);
+            const selectedInGroup = ids.filter((id) => selectedSet.has(id)).length;
+            const allSelected = selectedInGroup === ids.length;
+
             return (
               <div key={category} className="rounded-lg border border-gray-100 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-gray-800">{category}</h4>
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => {
-                      const ids = safePermissions.map((permission) => permission.id);
-                      setSelectedPermissions((previous) => allSelected
-                        ? previous.filter((permission) => !ids.includes(permission))
-                        : [...new Set([...previous, ...ids])]);
-                    }}
-                  >
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    {category}
+                    <span className="ml-2 text-xs font-normal text-gray-400">{selectedInGroup}/{ids.length}</span>
+                  </h4>
+                  <Button type="link" size="small" onClick={() => setMany(ids, !allSelected)}>
                     {allSelected ? 'Deselect All' : 'Select All'}
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  {safePermissions.map((permission) => (
-                    <Checkbox
-                      key={permission.id}
-                      checked={selectedPermissions.includes(permission.id)}
-                      onChange={() => setSelectedPermissions((previous) => previous.includes(permission.id)
-                        ? previous.filter((item) => item !== permission.id)
-                        : [...previous, permission.id])}
-                    >
-                      <span className="text-sm text-gray-700">{permission.name}</span>
-                    </Checkbox>
-                  ))}
+                  {visible.map((permission) => {
+                    const inRole = roleGrantsAll || rolePreset.has(permission.id);
+                    const isSelected = selectedSet.has(permission.id);
+                    const isSensitive = Boolean(sensitivePermissions[permission.id]);
+                    return (
+                      <div key={permission.id} className="flex items-start gap-2">
+                        <Checkbox checked={isSelected} onChange={() => toggle(permission)}>
+                          <span className="text-sm text-gray-700">{permission.name}</span>
+                        </Checkbox>
+                        {isSensitive && (
+                          <Tooltip title={sensitivePermissions[permission.id]}>
+                            <Tag color="orange" className="mt-0.5 cursor-help">high authority</Tag>
+                          </Tooltip>
+                        )}
+                        {isSelected && !inRole && (
+                          <Tooltip title={`Not part of the ${roleInfo[user.role]?.name || user.role} preset.`}>
+                            <Tag className="mt-0.5">extra</Tag>
+                          </Tooltip>
+                        )}
+                        {!isSelected && inRole && (
+                          <Tooltip title={`The ${roleInfo[user.role]?.name || user.role} preset includes this, but it is not granted here.`}>
+                            <Tag color="gold" className="mt-0.5">role has it</Tag>
+                          </Tooltip>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

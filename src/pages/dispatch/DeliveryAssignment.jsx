@@ -173,7 +173,7 @@ const DeliveryAssignment = () => {
           <h1 className="text-2xl font-bold text-gray-800">Delivery Assignment</h1>
           <p className="text-sm text-gray-500 mt-0.5">Assign drivers and vehicles to dispatch batches</p>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading} />
+        <Button icon={<ReloadOutlined />} onClick={() => load(1)} loading={loading}>Refresh</Button>
       </div>
 
       <Row gutter={16} className="mb-5">

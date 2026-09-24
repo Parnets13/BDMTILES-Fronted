@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Card, DatePicker, Input, InputNumber, Modal, Select, Space, Switch, Table, Tag, message } from 'antd';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import notificationService from '../../services/notificationService.js';
 
@@ -83,7 +83,10 @@ const AccessPolicyPage = () => {
     <div>
       <div className="mb-5 flex items-center justify-between">
         <div><h1 className="text-2xl font-bold text-gray-800">Historical Access Policies</h1><p className="mt-0.5 text-sm text-gray-500">Owner-only branch scopes for module and resource history</p></div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing({ ...emptyPolicy, rolePolicies: [] })}>New Policy</Button>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditing({ ...emptyPolicy, rolePolicies: [] })}>New Policy</Button>
+        </Space>
       </div>
       <Table rowKey="_id" loading={loading} dataSource={policies} columns={columns} pagination={false} />
 

@@ -1,6 +1,7 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { message } from 'antd';
 import api from '../config/api.js';
+import { stopRealtime } from '../lib/realtime.js';
 
 const AuthContext = createContext();
 const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
@@ -50,6 +51,9 @@ export const AuthProvider = ({ children }) => {
   }, [applyUser]);
 
   const clearAuth = useCallback(() => {
+    // Close the realtime connection with the session, so a signed-out browser is
+    // not still subscribed to the support room.
+    stopRealtime();
     setUser(null);
     setToken(null);
     setActiveBranchState(null);

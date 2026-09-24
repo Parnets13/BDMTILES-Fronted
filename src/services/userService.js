@@ -11,6 +11,14 @@ const userService = {
   resetPermissions: (id) => api.put(`/users/${id}/permissions/reset`),
   getPermissionsConfig: () => api.get('/users/permissions-config'),
   getAssignmentOptions: () => api.get('/users/assignment-options'),
+  // Deactivation needs a reason, and returns 409 with a dealer list when the target
+  // still holds dealers — the caller must pass a handover decision to proceed.
+  deactivateUser: (id, data) => api.delete(`/users/${id}`, { data }),
+
+  // Role & permission insight (read-only analysis over the permission model)
+  getRoleCatalogue: () => api.get('/users/roles'),
+  getPermissionHolders: (permissionId) => api.get(`/users/permission-holders/${encodeURIComponent(permissionId)}`),
+  getPermissionDrift: () => api.get('/users/permission-drift'),
 };
 
 export default userService;

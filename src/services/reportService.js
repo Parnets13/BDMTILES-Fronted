@@ -12,6 +12,12 @@ const reportService = {
   getDealerPerformance: (params) => api.get('/reports/dealer-performance', { params }),
   getSEPerformance: (params) => api.get('/reports/se-performance', { params }),
   getFinanceSummary: (params) => api.get('/reports/finance-summary', { params }),
+  getSupplierPerformance: (params) => api.get('/reports/supplier-performance', { params }),
+  getBranchPerformance: (params) => api.get('/reports/branch-performance', { params }),
+  getWarehousePerformance: (params) => api.get('/reports/warehouse-performance', { params }),
+  getCollectionReport: (params) => api.get('/reports/collection-report', { params }),
+  getExpenseReport: (params) => api.get('/reports/expense-report', { params }),
+  getOutstandingReport: (params) => api.get('/reports/outstanding-report', { params }),
 
   // Supplier Schemes — server-calculated rules and claims
   getSupplierSchemes: (params) => api.get('/schemes/supplier', { params }),

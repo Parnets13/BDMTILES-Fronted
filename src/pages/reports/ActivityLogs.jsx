@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, InputNumber
+  Row, Col, Card, Statistic, Modal, InputNumber, Alert
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, ClearOutlined,
@@ -28,7 +28,32 @@ const ACTION_OPTIONS = [
   'approve', 'reject', 'status_change', 'bulk_update', 'login', 'logout', 'download',
 ];
 
-const ActivityLogs = () => {
+// changes[].oldValue / newValue are Mixed, so they can be objects or arrays.
+const renderValue = (value) => {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+};
+
+/**
+ * One component backs every log view. A preset narrows it to a slice of the
+ * ActivityLog action enum (login history, approval history, …) instead of
+ * duplicating the filtering, paging and stats machinery per page.
+ *
+ * - actions:      locks the view to these action values (and limits the dropdown)
+ * - showChanges:  expands rows to show field-level old -> new values
+ * - allowCleanup: only the main Activity Logs view exposes the destructive purge
+ */
+const ActivityLogs = ({
+  title = 'Activity Logs',
+  subtitle = 'Complete audit trail — who did what, when, from where. Auto-deletes after 60 days.',
+  actions = null,
+  showChanges = false,
+  allowCleanup = false,
+}) => {
+  // Joined to a string so it is stable by value as a useCallback dependency;
+  // an inline array prop would be a fresh reference on every render.
+  const presetActions = actions?.length ? actions.join(',') : undefined;
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState({ total: 0, todayCount: 0, byAction: [], byModule: [] });
@@ -55,7 +80,11 @@ const ActivityLogs = () => {
       const res = await api.get('/system/activity-logs', {
         params: {
           page: pagination.current, limit: pagination.pageSize,
-          search, action: actionFilter, module: moduleFilter, dateFrom, dateTo,
+          search,
+          // A chosen action narrows within the preset; with none chosen the preset
+          // itself is the filter. The backend accepts a comma-separated list.
+          action: actionFilter || presetActions,
+          module: moduleFilter, dateFrom, dateTo,
         },
       });
       if (res.success) {
@@ -64,7 +93,7 @@ const ActivityLogs = () => {
       }
     } catch (err) { message.error(err.message); }
     finally { setLoading(false); }
-  }, [pagination.current, pagination.pageSize, search, actionFilter, moduleFilter, dateFrom, dateTo]);
+  }, [pagination.current, pagination.pageSize, search, actionFilter, moduleFilter, dateFrom, dateTo, presetActions]);
 
   useEffect(() => { fetchLogs(); }, [fetchLogs]);
 
@@ -115,11 +144,13 @@ const ActivityLogs = () => {
     <div>
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Activity Logs</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Complete audit trail — who did what, when, from where. Auto-deletes after 60 days.</p>
+          <h1 className="text-2xl font-bold text-gray-800">{title}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">{subtitle}</p>
         </div>
         <Space>
-          <Button icon={<ClearOutlined />} danger onClick={() => setCleanupModal(true)}>Manual Cleanup</Button>
+          {allowCleanup && (
+            <Button icon={<ClearOutlined />} danger onClick={() => setCleanupModal(true)}>Manual Cleanup</Button>
+          )}
           <Button icon={<ReloadOutlined />} onClick={() => { fetchLogs(); loadStats(); }}>Refresh</Button>
         </Space>
       </div>
@@ -142,13 +173,27 @@ const ActivityLogs = () => {
         </Col>
       </Row>
 
+      {/* The audit schema and this view both support field-level diffs, but no
+          write path populates changes[] yet, so say so rather than leaving an
+          expander that silently opens onto nothing. Disappears automatically
+          once any row on the page carries changes. */}
+      {showChanges && logs.length > 0 && !logs.some(l => Array.isArray(l.changes) && l.changes.length) && (
+        <Alert
+          className="mb-4"
+          type="info"
+          showIcon
+          message="Old and new values are not being captured yet"
+          description="These entries record who, what and when. Field-level before/after values are supported by the audit log and by this screen, but the application does not write them yet, so rows have no expandable detail."
+        />
+      )}
+
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
         <div className="flex flex-wrap gap-3 items-end">
           <Input placeholder="Search user, description, record..." prefix={<SearchOutlined className="text-gray-400" />}
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }}
             className="w-56" allowClear />
           <Select placeholder="Action" allowClear value={actionFilter} onChange={v => setActionFilter(v)} className="w-36"
-            options={ACTION_OPTIONS.map(a => ({value:a, label:a.replace(/_/g,' ')}))} />
+            options={(actions?.length ? actions : ACTION_OPTIONS).map(a => ({value:a, label:a.replace(/_/g,' ')}))} />
           <Select placeholder="Module" allowClear value={moduleFilter} onChange={v => setModuleFilter(v)} className="w-40"
             options={MODULE_OPTIONS.map(m => ({value:m, label:m.replace(/_/g,' ')}))} />
           <div><label className="text-[10px] text-gray-400 block">From</label>
@@ -162,6 +207,25 @@ const ActivityLogs = () => {
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={logs} rowKey="_id" loading={loading}
           size="small" scroll={{ x: 1200 }}
+          expandable={showChanges ? {
+            rowExpandable: row => Array.isArray(row.changes) && row.changes.length > 0,
+            expandedRowRender: row => (
+              <Table
+                size="small"
+                pagination={false}
+                rowKey={(change, index) => `${change.field}-${index}`}
+                dataSource={row.changes || []}
+                columns={[
+                  { title: 'Field', dataIndex: 'field', width: 200,
+                    render: v => <span className="font-mono text-xs">{v || '—'}</span> },
+                  { title: 'Old value', dataIndex: 'oldValue',
+                    render: v => <span className="text-xs text-red-600 break-all">{renderValue(v)}</span> },
+                  { title: 'New value', dataIndex: 'newValue',
+                    render: v => <span className="text-xs text-green-700 break-all">{renderValue(v)}</span> },
+                ]}
+              />
+            ),
+          } : undefined}
           pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t} logs` }}
           onChange={pag => setPagination(p => ({...p, current: pag.current, pageSize: pag.pageSize}))} />
       </div>
