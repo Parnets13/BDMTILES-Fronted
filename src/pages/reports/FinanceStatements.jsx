@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Button, Input, Tabs, Divider, message, Statistic } from 'antd';
-import { SearchOutlined, PrinterOutlined, ArrowUpOutlined, ArrowDownOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, ArrowUpOutlined, ArrowDownOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 
 const KV = ({ label, value, color }) => (
@@ -150,6 +150,7 @@ const FinanceStatements = () => {
           <h1 className="text-2xl font-bold text-gray-800">Finance Statements</h1>
           <p className="text-sm text-gray-500 mt-0.5">Profit & Loss, Cash Flow, Balance Sheet</p>
         </div>
+        <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

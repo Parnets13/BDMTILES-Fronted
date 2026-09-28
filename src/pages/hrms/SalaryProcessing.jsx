@@ -124,7 +124,8 @@ const SalaryProcessing = () => {
             { value: 'Draft', label: 'Draft' }, { value: 'Approved', label: 'Approved' },
             { value: 'Paid', label: 'Paid' }, { value: 'Cancelled', label: 'Cancelled' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchSlips(); }}>Refresh</Button>
         </div>
       </div>
 

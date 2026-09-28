@@ -20,3 +20,13 @@
 .ant-modal-wrap {
   overflow: auto !important;
 }
+
+/* antd renders message and notification into containers appended to <body>, and their
+   default z-index (1010) sits barely above a Modal's (1000). An error raised by an
+   action INSIDE an open modal could therefore be painted underneath it — the user saw
+   the dialog sit there doing nothing and had no idea why. Pinning both well clear of
+   antd's modal range makes an action failure impossible to miss. */
+.ant-message,
+.ant-notification {
+  z-index: 4000 !important;
+}

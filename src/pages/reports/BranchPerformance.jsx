@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Table, Alert, message } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 
@@ -76,6 +76,7 @@ const BranchPerformance = () => {
           <h1 className="text-2xl font-bold text-gray-800">Branch Performance</h1>
           <p className="text-sm text-gray-500 mt-0.5">Sales, collection efficiency and outstanding compared across branches</p>
         </div>
+        <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
 
       <Alert

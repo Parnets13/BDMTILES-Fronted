@@ -197,7 +197,8 @@ const VoucherEntry = () => {
                 options={VOUCHER_TYPES.map(t => ({ value: t.value, label: t.value }))} />
               <Select placeholder="Status" allowClear value={statusFilter} onChange={v => setStatusFilter(v)} className="w-32"
                 options={['draft','posted','cancelled'].map(s => ({ value: s, label: s }))} />
-              <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+              <Button onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { fetchVouchers(); loadStats(); }}>Refresh</Button>
             </div>
           </div>
 

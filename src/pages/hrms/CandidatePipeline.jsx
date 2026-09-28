@@ -346,7 +346,8 @@ const CandidatePipeline = () => {
             </>
           )}
           {talentPoolView && <Tag color="gold" className="text-sm py-1 px-3">Viewing Talent Pool — click the star card again to return to the full pipeline</Tag>}
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, jobOpening: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ status: undefined, jobOpening: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchCandidates(); fetchStats(); }}>Refresh</Button>
           <Button icon={<ReloadOutlined />} onClick={() => { fetchCandidates(); fetchStats(); }} loading={loading}>Refresh</Button>
         </div>
       </div>

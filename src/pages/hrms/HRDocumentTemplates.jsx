@@ -188,7 +188,8 @@ const HRDocumentTemplates = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search template name or code..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-72" allowClear />
           <Select placeholder="Document Type" options={DOCUMENT_TYPES.map(v => ({ value: v, label: v }))} value={documentType} onChange={setDocumentType} allowClear className="w-48" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setDocumentType(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setDocumentType(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchTemplates(); }}>Refresh</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchTemplates} loading={loading}>Refresh</Button>
         </div>
       </div>

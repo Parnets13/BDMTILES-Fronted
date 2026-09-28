@@ -77,7 +77,8 @@ const InvoiceManager = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32"
             options={[{ value: 'generated', label: 'Generated' }, { value: 'sent', label: 'Sent' }, { value: 'cancelled', label: 'Cancelled' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchInvoices(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

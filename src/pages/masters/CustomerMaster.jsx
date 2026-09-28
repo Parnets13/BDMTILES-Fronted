@@ -246,7 +246,8 @@ const CustomerMaster = () => {
         >
           {STATUS_OPTIONS.map(s => <Option key={s.value} value={s.value}>{s.label}</Option>)}
         </Select>
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ customerType: undefined, status: undefined }); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setFilters({ customerType: undefined, status: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>Refresh</Button>
         <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }} loading={loading}>Refresh</Button>
       </div>
 

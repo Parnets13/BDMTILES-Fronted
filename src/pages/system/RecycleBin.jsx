@@ -187,7 +187,8 @@ const RecycleBin = () => {
             className="w-64" allowClear />
           <Select placeholder="Module" allowClear value={moduleFilter} onChange={v => setModuleFilter(v)} className="w-40"
             options={['product','sales_order','purchase','dealer','supplier','quotation','payment','hrms','stock'].map(m => ({value:m, label:m.replace(/_/g,' ')}))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setModuleFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setModuleFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchItems(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

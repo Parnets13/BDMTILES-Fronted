@@ -379,7 +379,8 @@ const ChequeManagement = () => {
           <Select placeholder="Type" allowClear value={typeFilter}
             onChange={value => { setTypeFilter(value); setPagination(current => ({ ...current, current: 1 })); }} className="w-40"
             options={[{ value: 'received', label: 'Received' }, { value: 'issued', label: 'Issued' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setTypeFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); setTypeFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchCheques(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

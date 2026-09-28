@@ -146,7 +146,8 @@ const GRNEntryPage = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" options={[{ value: 'draft', label: 'Draft' }, { value: 'verified', label: 'Verified' }, { value: 'approved', label: 'Approved' }, { value: 'posted', label: 'Posted' }]}
             value={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} allowClear className="w-36" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ status: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchGRNs(); fetchStats(); }}>Refresh</Button>
         </div>
       </div>
 

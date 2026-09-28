@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Select, Table, message, Divider } from 'antd';
-import { SearchOutlined, PrinterOutlined, BarChartOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined, BarChartOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 
@@ -59,7 +59,10 @@ const SalesReports = () => {
           <h1 className="text-2xl font-bold text-gray-800">Sales Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">Daily / Monthly / Category-wise sales analysis</p>
         </div>
-        {data && <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Report</Button>}
+        <div className="flex gap-2">
+          <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
+          {data && <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print Report</Button>}
+        </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

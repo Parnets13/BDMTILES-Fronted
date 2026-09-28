@@ -177,7 +177,16 @@ const EmployeeExitManagement = () => {
       createForm.resetFields();
       await refreshAll();
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message);
     } finally { setSaving(false); }
   };
@@ -198,7 +207,16 @@ const EmployeeExitManagement = () => {
       decisionForm.resetFields();
       await refreshAll(detail?.exit?._id);
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message);
     } finally { setSaving(false); }
   };
@@ -247,7 +265,16 @@ const EmployeeExitManagement = () => {
       setSettlementOpen(false);
       await refreshAll(detail.exit._id);
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message);
     } finally { setSaving(false); }
   };
@@ -281,7 +308,16 @@ const EmployeeExitManagement = () => {
       interviewForm.resetFields();
       await refreshAll(detail.exit._id);
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message);
     } finally { setSaving(false); }
   };
@@ -458,7 +494,8 @@ const EmployeeExitManagement = () => {
               ...Object.keys(STATUS_COLOR).map(s => ({ value: s, label: titleCase(s) })),
             ]}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchExits(); fetchStats(); }}>Refresh</Button>
         </Space>
       </Card>
 

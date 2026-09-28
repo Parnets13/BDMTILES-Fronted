@@ -326,7 +326,8 @@ const EmployeeRegistration = () => {
           />
           <Select placeholder="Department" options={DEPARTMENTS.map((value) => ({ value, label: value }))} value={filters.department} onChange={(value) => setFilters((current) => ({ ...current, department: value }))} allowClear className="w-40" />
           <Select placeholder="Status" options={[...EMPLOYEE_STATUSES, 'Terminated'].map((value) => ({ value, label: value }))} value={filters.status} onChange={(value) => setFilters((current) => ({ ...current, status: value }))} allowClear className="w-36" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ department: undefined, status: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ department: undefined, status: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchEmployees(); fetchStats(); }}>Refresh</Button>
         </div>
       </div>
 

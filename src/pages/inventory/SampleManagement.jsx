@@ -223,7 +223,8 @@ const SampleManagement = () => {
         >
           {STATUS_OPTIONS.map(s => <Option key={s.value} value={s.value}>{s.label}</Option>)}
         </Select>
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchSamples(); fetchStats(); }}>Refresh</Button>
       </div>
 
       {/* Table */}

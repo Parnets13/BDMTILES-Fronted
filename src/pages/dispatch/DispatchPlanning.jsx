@@ -150,7 +150,8 @@ const DispatchPlanning = () => {
             className="w-64" allowClear />
           <Select placeholder="Filter Status" allowClear value={statusFilter} onChange={v => setStatusFilter(v)} className="w-40"
             options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchDispatches(); }}>Refresh</Button>
         </div>
       </div>
 

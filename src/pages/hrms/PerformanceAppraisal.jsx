@@ -198,7 +198,16 @@ const PerformanceAppraisal = () => {
       setEditing(null);
       await Promise.all([fetchReviews(pagination.current), fetchStats()]);
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message);
     } finally { setSaving(false); }
   };
@@ -431,7 +440,8 @@ const PerformanceAppraisal = () => {
             onChange={setGradeFilter}
             options={Object.keys(GRADE_COLOR).map(g => ({ value: g, label: g }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setGradeFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); setGradeFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchReviews(); fetchStats(); }}>Refresh</Button>
         </Space>
       </Card>
 

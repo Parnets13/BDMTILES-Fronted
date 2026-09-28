@@ -256,7 +256,8 @@ const DealerAppAccess = () => {
             onChange={setStatusFilter}
             options={['active', 'inactive', 'blocked'].map(s => ({ value: s, label: s.toUpperCase() }))}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setAccessFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setAccessFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { load(); }}>Refresh</Button>
         </Space>
       </Card>
 

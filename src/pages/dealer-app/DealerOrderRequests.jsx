@@ -6,7 +6,7 @@ import {
   Select, Space, Spin, Statistic, Table, Tag, Timeline, Tooltip, message,
 } from 'antd';
 import {
-  CheckCircleOutlined, ClockCircleOutlined, CloseCircleOutlined, DeleteOutlined, EditOutlined,
+  CheckCircleOutlined, ClearOutlined, ClockCircleOutlined, CloseCircleOutlined, DeleteOutlined, EditOutlined,
   EyeOutlined, FileAddOutlined, FileDoneOutlined, LockOutlined, PlusOutlined, ReloadOutlined,
   SearchOutlined, ShoppingOutlined, ThunderboltOutlined, TruckOutlined,
 } from '@ant-design/icons';
@@ -463,8 +463,12 @@ const DealerOrderRequests = () => {
           className="w-40"
           options={[{ value: 'true', label: 'Edited' }, { value: 'false', label: 'Not edited' }]}
         />
+        {/* Reset wears a clear icon, not a refresh one.
+            It used to use ReloadOutlined, which made "clear every filter" look like
+            "reload" — and it is also why a grep for that icon reported this page as
+            already having a refresh when it had none. */}
         <Button
-          icon={<ReloadOutlined />}
+          icon={<ClearOutlined />}
           onClick={() => {
             setSearch(''); setStatusFilter(''); setShortfallFilter(''); setDealerFilter(undefined);
             setExecutiveFilter(undefined); setDateRange(null); setEditedFilter(undefined);
@@ -472,6 +476,15 @@ const DealerOrderRequests = () => {
           }}
         >
           Reset
+        </Button>
+        {/* Separate from Reset, and deliberately so: this reloads what is on screen
+            without throwing away the filters the user has just set up. */}
+        <Button
+          icon={<ReloadOutlined />}
+          loading={loading}
+          onClick={() => { fetchRequests(); fetchStats(); }}
+        >
+          Refresh
         </Button>
       </div>
     </div>

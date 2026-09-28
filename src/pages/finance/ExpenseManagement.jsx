@@ -269,7 +269,8 @@ const ExpenseManagement = () => {
           onChange={v => { setDateRange(v); setPagination(p => ({ ...p, current: 1 })); }}
           format="DD/MM/YYYY"
         />
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, category: undefined }); setDateRange(null); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setFilters({ status: undefined, category: undefined }); setDateRange(null); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchExpenses(); fetchStats(); }}>Refresh</Button>
       </div>
 
       {/* Table */}

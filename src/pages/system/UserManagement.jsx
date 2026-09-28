@@ -448,7 +448,16 @@ const UserManagement = () => {
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       if (error.code === 'PHONE_ALREADY_USED') {
         const duplicateMessage = error.message || 'This phone number is already used by another user.';
         form.setFields([{ name: 'phone', errors: [duplicateMessage] }]);
@@ -564,7 +573,16 @@ const UserManagement = () => {
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message || 'Failed to reset password');
     } finally {
       setLoading(false);
@@ -829,7 +847,9 @@ const UserManagement = () => {
             allowClear
             className="sm:w-36"
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setRoleFilter(undefined); setStatusFilter(undefined); setBranchFilter(undefined); }}>
+          {/* No icon on Reset. It used to wear ReloadOutlined, which made "clear every
+              filter" look like the Refresh button sitting right beside it. */}
+          <Button onClick={() => { setSearch(''); setRoleFilter(undefined); setStatusFilter(undefined); setBranchFilter(undefined); }}>
             Reset
           </Button>
           <Button icon={<ReloadOutlined />} onClick={() => fetchUsers(pagination.current, pagination.pageSize)} loading={loading}>

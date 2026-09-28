@@ -154,7 +154,8 @@ const JobOpenings = () => {
           />
           <Select placeholder="Status" options={STATUS_OPTIONS} value={filters.status} onChange={(v) => setFilters((c) => ({ ...c, status: v }))} allowClear className="w-36" />
           <Select placeholder="Department" options={DEPARTMENTS.map(v => ({ value: v, label: v }))} value={filters.department} onChange={(v) => setFilters((c) => ({ ...c, department: v }))} allowClear className="w-40" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, department: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ status: undefined, department: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchOpenings(); fetchStats(); }}>Refresh</Button>
           <Button icon={<ReloadOutlined />} onClick={() => { fetchOpenings(); fetchStats(); }} loading={loading}>Refresh</Button>
         </div>
       </div>

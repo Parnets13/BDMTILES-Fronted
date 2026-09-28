@@ -185,7 +185,8 @@ const LeaveManagement = () => {
           <Select placeholder="Status" options={[
             { value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchLeaves(); }}>Refresh</Button>
         </div>
       </div>
 

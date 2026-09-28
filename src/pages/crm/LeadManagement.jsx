@@ -288,7 +288,8 @@ const LeadManagement = () => {
             options={CUSTOMER_TYPES} />
           <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-28"
             options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setCustomerTypeFilter(undefined); setAssignmentFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); setCustomerTypeFilter(undefined); setAssignmentFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchLeads(); fetchStats(); }}>Refresh</Button>
         </div>
       </div>
 

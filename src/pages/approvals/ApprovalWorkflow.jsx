@@ -241,7 +241,8 @@ const ApprovalWorkflow = () => {
             className="w-64" allowClear />
           <Select placeholder="Type" allowClear value={typeFilter} onChange={v => setTypeFilter(v)} className="w-40"
             options={Object.keys(TYPE_COLORS).map(t => ({ value: t, label: t.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTypeFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setTypeFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchApprovals(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

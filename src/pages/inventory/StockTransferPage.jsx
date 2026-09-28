@@ -99,7 +99,8 @@ const StockTransferPage = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32"
             options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace('_', ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchTransfers(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

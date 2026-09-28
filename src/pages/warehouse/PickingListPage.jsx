@@ -273,7 +273,8 @@ const PickingListPage = () => {
             value={search} onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" value={statusFilter} onChange={setStatusFilter} allowClear className="w-40"
             options={Object.keys(STATUS_COLORS).map(status => ({ value: status, label: status.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchPickLists(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

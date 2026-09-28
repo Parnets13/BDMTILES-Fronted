@@ -240,7 +240,8 @@ const DealerPaymentsPage = () => {
             value={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} allowClear className="w-32" />
           <Select placeholder="Mode" options={Object.keys(MODE_COLORS).map(s => ({ value: s, label: s.toUpperCase() }))}
             value={filters.paymentMode} onChange={v => setFilters(f => ({ ...f, paymentMode: v }))} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, paymentMode: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ status: undefined, paymentMode: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchPayments(); }}>Refresh</Button>
         </div>
       </div>
 

@@ -206,7 +206,8 @@ const DiscountMappingPage = () => {
             options={[{ value: 'product', label: 'Product' }, { value: 'brand', label: 'Brand' }, { value: 'category', label: 'Category' }, { value: 'subcategory', label: 'Subcategory' }]} />
           <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-28"
             options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }, { value: 'expired', label: 'Expired' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTargetTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setTargetTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchRules(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

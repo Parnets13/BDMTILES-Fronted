@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Select, Table, Tag, message } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 
@@ -58,6 +58,7 @@ const ExpenseReport = () => {
           <h1 className="text-2xl font-bold text-gray-800">Expense Report</h1>
           <p className="text-sm text-gray-500 mt-0.5">Expense claims by category, status, department and claimant</p>
         </div>
+        <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

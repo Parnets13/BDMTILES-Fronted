@@ -154,7 +154,8 @@ const AttendanceDashboard = () => {
             { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
             { value: 'Late', label: 'Late' }, { value: 'Leave', label: 'On Leave' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchAttendance(); }}>Refresh</Button>
         </div>
       </div>
 

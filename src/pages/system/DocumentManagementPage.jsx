@@ -60,7 +60,8 @@ const DocumentManagementPage = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search title, file, linked..." prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Category" value={categoryFilter} onChange={v => setCategoryFilter(v)} allowClear className="w-32" options={Object.keys(CATEGORY_COLORS).map(c => ({ value: c, label: c }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setCategoryFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setCategoryFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchDocuments(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
       <div className="bg-white rounded-lg border border-gray-200">

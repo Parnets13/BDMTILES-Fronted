@@ -220,7 +220,8 @@ const PurchaseOrderPage = () => {
     <Card size="small" className="mb-4"><Space wrap>
       <Input placeholder="Search PO #, supplier..." prefix={<SearchOutlined />} value={search} onChange={event => setSearch(event.target.value)} className="w-64" allowClear />
       <Select placeholder="Status" options={STATUS_OPTIONS} value={status} onChange={setStatus} allowClear className="w-44" />
-      <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatus(undefined); }}>Reset</Button>
+      <Button onClick={() => { setSearch(''); setStatus(undefined); }}>Reset</Button>
+      <Button icon={<ReloadOutlined />} onClick={() => { fetchOrders(); fetchStats(); }}>Refresh</Button>
     </Space></Card>
     <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
       <Table columns={columns} dataSource={orders} rowKey="_id" loading={loading} size="small" scroll={{ x: 1200 }}

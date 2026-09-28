@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Select, Table, message } from 'antd';
-import { SearchOutlined, PrinterOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined, PrinterOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 import masterService from '../../services/masterService.js';
@@ -43,6 +43,7 @@ const PurchaseReports = () => {
           <h1 className="text-2xl font-bold text-gray-800">Purchase Reports</h1>
           <p className="text-sm text-gray-500 mt-0.5">PO-wise and supplier-wise purchase analysis</p>
         </div>
+        <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

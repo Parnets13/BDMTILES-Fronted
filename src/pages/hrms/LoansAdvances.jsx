@@ -118,7 +118,8 @@ const LoansAdvances = () => {
             value={typeFilter} onChange={setTypeFilter} allowClear className="w-32" />
           <Select placeholder="Status" options={LOAN_STATUSES.map(status => ({ value: status, label: status }))}
             value={statusFilter} onChange={setStatusFilter} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchLoans(); }}>Refresh</Button>
         </div>
       </div>
 
