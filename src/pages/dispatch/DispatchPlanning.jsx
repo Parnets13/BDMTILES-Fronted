@@ -150,7 +150,8 @@ const DispatchPlanning = () => {
             className="w-64" allowClear />
           <Select placeholder="Filter Status" allowClear value={statusFilter} onChange={v => setStatusFilter(v)} className="w-40"
             options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchDispatches(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -164,7 +165,7 @@ const DispatchPlanning = () => {
       {/* Create Dispatch Modal */}
       <Modal title="Create Dispatch Plan" open={showCreate}
         onCancel={() => setShowCreate(false)} onOk={handleCreate}
-        confirmLoading={createLoading} okText="Create Dispatch" width={720} destroyOnHidden>
+        confirmLoading={createLoading} okText="Create Dispatch" width={900} destroyOnHidden>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-3 gap-3">
             <div>

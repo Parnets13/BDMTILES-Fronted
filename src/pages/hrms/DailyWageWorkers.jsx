@@ -370,6 +370,7 @@ const DailyWageWorkers = () => {
         onOk={saveWorker}
         confirmLoading={workerSaveLoading}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
+        width={860}
         destroyOnHidden
       >
         <Divider />

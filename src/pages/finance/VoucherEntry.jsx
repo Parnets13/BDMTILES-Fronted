@@ -197,7 +197,8 @@ const VoucherEntry = () => {
                 options={VOUCHER_TYPES.map(t => ({ value: t.value, label: t.value }))} />
               <Select placeholder="Status" allowClear value={statusFilter} onChange={v => setStatusFilter(v)} className="w-32"
                 options={['draft','posted','cancelled'].map(s => ({ value: s, label: s }))} />
-              <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+              <Button onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+              <Button icon={<ReloadOutlined />} onClick={() => { fetchVouchers(); loadStats(); }}>Refresh</Button>
             </div>
           </div>
 
@@ -475,7 +476,7 @@ const BankAccountMaster = ({ bankAccounts, onRefresh }) => {
 
       <Modal title={editRecord ? 'Edit Bank Account' : 'Add Bank Account'}
         open={showAdd} onCancel={() => { setShowAdd(false); setEditRecord(null); setForm(emptyForm); }}
-        onOk={handleSave} confirmLoading={saveLoading} destroyOnHidden width={580}>
+        onOk={handleSave} confirmLoading={saveLoading} destroyOnHidden width={860}>
         <div className="space-y-3 mt-4">
           <div className="grid grid-cols-2 gap-3">
             <div><label className="text-xs text-gray-500 block mb-1">Account Name *</label>

@@ -65,7 +65,7 @@ const SupplierSchemeAnalysis = () => {
       </Row>
       <div className="bg-white border rounded-lg overflow-hidden"><Table rowKey="_id" columns={columns} dataSource={schemes} loading={loading} scroll={{ x: 1050 }} /></div>
       <Modal title={`${detail?.scheme?.schemeNumber || ''} authoritative analysis`} open={!!detail} onCancel={() => setDetail(null)} confirmLoading={analysisLoading}
-        footer={detail ? [<Button key="close" onClick={() => setDetail(null)}>Close</Button>, <Button key="submit" type="primary" disabled={!detail.eligible} onClick={() => submit(detail.scheme)}>Submit exact claim</Button>] : null} width={780}>
+        footer={detail ? [<Button key="close" onClick={() => setDetail(null)}>Close</Button>, <Button key="submit" type="primary" disabled={!detail.eligible} onClick={() => submit(detail.scheme)}>Submit exact claim</Button>] : null} width={960}>
         {detail && <div className="space-y-3 text-sm mt-3">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
             <Card size="small"><Statistic title="Gross value" value={money(detail.grossValue)} /></Card>

@@ -301,7 +301,8 @@ const SalesReturnPage = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace('_', ' ') }))}
             value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-36" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchReturns(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -441,7 +442,8 @@ const SalesReturnPage = () => {
                             <td className="px-3 py-2"><ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="md" /></td>
                             <td className="px-3 py-2">
                               <div className="font-medium">{item.productName}</div>
-                              <div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div>
+                            <div className="text-gray-400">{item.productCode} {item.shade ? `· ${item.shade}` : ''}</div>
+                              <div className="text-[10px] text-gray-400">SO line: {item.salesOrderItem || 'legacy/unlinked'} · Context: {item.returnContext || 'legacy_invoice'}</div>
                             </td>
                             <td className="px-3 py-2 text-right font-medium">{item.returnQty || item.quantity || 0} {item.unit}</td>
                             <td className="px-3 py-2 text-right">₹{(item.rate || 0).toLocaleString()}</td>

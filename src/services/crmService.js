@@ -53,6 +53,7 @@ const crmService = {
   // Approvals
   getApprovals: (params) => api.get('/approvals', { params }),
   getApprovalStats: () => api.get('/approvals/stats'),
+  getApprovalDetail: (id) => api.get(`/approvals/${id}`),
   createApproval: (data) => api.post('/approvals', data),
   approveRequest: (id, data) => api.patch(`/approvals/${id}/approve`, data),
   rejectRequest: (id, data) => api.patch(`/approvals/${id}/reject`, data),

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Empty, List, Pagination, Spin, Tag, message } from 'antd';
-import { CheckOutlined } from '@ant-design/icons';
+import { CheckOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import notificationService from '../../services/notificationService.js';
 
@@ -52,7 +52,10 @@ const NotificationInboxPage = () => {
           <h1 className="text-2xl font-bold text-gray-800">Notifications</h1>
           <p className="mt-0.5 text-sm text-gray-500">Your selected-branch notification inbox</p>
         </div>
-        <Button icon={<CheckOutlined />} onClick={markAllRead}>Mark all read</Button>
+        <div className="flex gap-2">
+          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
+          <Button icon={<CheckOutlined />} onClick={markAllRead}>Mark all read</Button>
+        </div>
       </div>
       <div className="rounded-lg border border-gray-200 bg-white">
         <Spin spinning={loading}>

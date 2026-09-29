@@ -140,7 +140,6 @@ const SupplierInvoicePage = () => {
     { title: 'GRNs', key: 'grns', width: 60, render: (_, r) => <span className="text-xs">{r.linkedGRNs?.length || 0}</span> },
     { title: 'Due Date', dataIndex: 'dueDate', width: 90, render: v => v ? <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> : '—' },
     { title: 'Status', dataIndex: 'status', width: 110, render: s => <Tag color={STATUS_COLORS[s]}>{s?.replace('_', ' ')}</Tag> },
-    { title: 'Tally', dataIndex: 'tallySyncStatus', width: 80, render: s => <Tag color={s === 'synced' ? 'green' : 'default'}>{s === 'not_synced' ? '—' : s}</Tag> },
     { title: 'Actions', width: 90, render: (_, r) => (
       <Space size="small">
         <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => openView(r)} />
@@ -171,7 +170,8 @@ const SupplierInvoicePage = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" options={Object.keys(STATUS_COLORS).map(s => ({ value: s, label: s.replace('_', ' ') }))}
             value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-36" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchInvoices(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -183,7 +183,7 @@ const SupplierInvoicePage = () => {
 
       {/* Create Invoice Modal */}
       <Modal title="Add Supplier Invoice" open={showCreate} onCancel={() => { setShowCreate(false); resetForm(); }}
-        width={780} footer={null} destroyOnHidden>
+        width={960} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div className="grid grid-cols-2 gap-4">
             <div>

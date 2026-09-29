@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Modal, message, Tooltip, Row, Col, Card, Statistic, DatePicker } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, UserOutlined, TeamOutlined, ShopOutlined, ToolOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, EyeOutlined, UserOutlined, TeamOutlined, ShopOutlined, ToolOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
@@ -52,6 +52,7 @@ const CustomerMaster = () => {
   const [editingCustomer, setEditingCustomer] = useState(null);
   const [form] = Form.useForm();
   const [customerType, setCustomerType] = useState('retail');
+  const [viewCustomer, setViewCustomer] = useState(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -169,6 +170,9 @@ const CustomerMaster = () => {
       title: 'Actions', key: 'actions', width: 100, fixed: 'right',
       render: (_, record) => (
         <Space size="small">
+          <Tooltip title="View">
+            <Button type="text" size="small" icon={<EyeOutlined />} onClick={() => setViewCustomer(record)} />
+          </Tooltip>
           <Tooltip title="Edit">
             <Button type="text" size="small" icon={<EditOutlined />} onClick={() => openModal(record)} />
           </Tooltip>
@@ -242,7 +246,9 @@ const CustomerMaster = () => {
         >
           {STATUS_OPTIONS.map(s => <Option key={s.value} value={s.value}>{s.label}</Option>)}
         </Select>
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ customerType: undefined, status: undefined }); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setFilters({ customerType: undefined, status: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }}>Refresh</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchCustomers(); fetchStats(); }} loading={loading}>Refresh</Button>
       </div>
 
       {/* Table */}
@@ -265,6 +271,62 @@ const CustomerMaster = () => {
         />
       </div>
 
+      {/* View Modal — read-only, so a look doesn't risk becoming an accidental edit */}
+      <Modal
+        title={viewCustomer ? `Customer: ${viewCustomer.name}` : 'Customer'}
+        open={Boolean(viewCustomer)}
+        onCancel={() => setViewCustomer(null)}
+        footer={[
+          <Button key="edit" type="primary" icon={<EditOutlined />} onClick={() => { const record = viewCustomer; setViewCustomer(null); openModal(record); }}>Edit</Button>,
+          <Button key="close" onClick={() => setViewCustomer(null)}>Close</Button>,
+        ]}
+        width={760}
+      >
+        {viewCustomer ? (
+          <div className="mt-3 space-y-3 text-sm">
+            <div className="grid grid-cols-2 gap-3 rounded border border-gray-100 bg-gray-50 p-3">
+              <div><span className="text-gray-400">Code: </span><span className="font-mono">{viewCustomer.customerCode || '—'}</span></div>
+              <div><span className="text-gray-400">Type: </span><Tag color={getTypeColor(viewCustomer.customerType)}>{viewCustomer.customerType?.replace('_', ' ')}</Tag></div>
+              <div><span className="text-gray-400">Status: </span><Tag color={viewCustomer.status === 'active' ? 'green' : viewCustomer.status === 'blocked' ? 'red' : 'orange'}>{viewCustomer.status}</Tag></div>
+              <div><span className="text-gray-400">Source: </span>{viewCustomer.source ? <Tag>{viewCustomer.source.replace('_', ' ')}</Tag> : '—'}</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div><span className="text-gray-400">Contact: </span>{viewCustomer.contactNumber || '—'}</div>
+              <div><span className="text-gray-400">WhatsApp: </span>{viewCustomer.whatsappNumber || '—'}</div>
+              <div className="col-span-2"><span className="text-gray-400">Email: </span>{viewCustomer.email || '—'}</div>
+              {(viewCustomer.gstin || viewCustomer.pan) ? <>
+                <div><span className="text-gray-400">GSTIN: </span>{viewCustomer.gstin || '—'}</div>
+                <div><span className="text-gray-400">PAN: </span>{viewCustomer.pan || '—'}</div>
+              </> : null}
+            </div>
+            <div><span className="text-gray-400">Billing address: </span>{viewCustomer.billingAddress || '—'}</div>
+            <div><span className="text-gray-400">Delivery address: </span>{viewCustomer.deliveryAddress || '—'}</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div><span className="text-gray-400">City: </span>{viewCustomer.city || '—'}</div>
+              <div><span className="text-gray-400">State: </span>{viewCustomer.state || '—'}</div>
+              <div><span className="text-gray-400">Pin: </span>{viewCustomer.pinCode || '—'}</div>
+            </div>
+            {viewCustomer.customerType !== 'retail' ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-gray-400">Credit limit: </span>₹{Number(viewCustomer.creditLimit || 0).toLocaleString()}</div>
+                <div><span className="text-gray-400">Credit days: </span>{viewCustomer.creditDays ?? '—'}</div>
+              </div>
+            ) : null}
+            <div><span className="text-gray-400">Outstanding: </span><span className={Number(viewCustomer.currentOutstanding || 0) > 0 ? 'text-red-600 font-medium' : 'text-green-600 font-medium'}>₹{Number(viewCustomer.currentOutstanding || 0).toLocaleString()}</span></div>
+            {(viewCustomer.projectName || viewCustomer.projectLocation || viewCustomer.projectDetails) ? (
+              <div className="rounded border border-gray-100 bg-gray-50 p-3">
+                <div className="mb-1 text-xs text-gray-400">Project</div>
+                <div><span className="text-gray-400">Name: </span>{viewCustomer.projectName || '—'}</div>
+                <div><span className="text-gray-400">Location: </span>{viewCustomer.projectLocation || '—'}</div>
+                <div><span className="text-gray-400">Details: </span>{viewCustomer.projectDetails || '—'}</div>
+              </div>
+            ) : null}
+            <div><span className="text-gray-400">Assigned Sales Executive: </span>{viewCustomer.assignedSalesExecutive?.name || viewCustomer.assignedSalesExecutive || '—'}</div>
+            {viewCustomer.remarks ? <div><span className="text-gray-400">Remarks: </span>{viewCustomer.remarks}</div> : null}
+          </div>
+        ) : null}
+      </Modal>
+
       {/* Add/Edit Modal */}
       <Modal
         title={editingCustomer ? 'Edit Customer' : 'Add Customer'}
@@ -272,7 +334,7 @@ const CustomerMaster = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); setEditingCustomer(null); }}
         onOk={handleSave}
         okText={editingCustomer ? 'Update' : 'Create'}
-        width={720}
+        width={900}
         confirmLoading={loading}
         destroyOnHidden
       >

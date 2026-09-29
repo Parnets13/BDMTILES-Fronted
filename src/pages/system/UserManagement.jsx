@@ -20,13 +20,17 @@ import {
 import {
   DeleteOutlined,
   EditOutlined,
+  ExclamationCircleOutlined,
   KeyOutlined,
+  LinkOutlined,
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import userService from '../../services/userService.js';
+import hrmsService from '../../services/hrmsService.js';
+import LinkRecordModal from '../../components/LinkRecordModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const SCOPE_OPTIONS = [
@@ -137,6 +141,105 @@ const AssignmentScopeField = ({
   );
 };
 
+const AccountAccessPreview = ({ form, permissionsConfig, rolePermissions, roleInfo }) => (
+  <Form.Item
+    noStyle
+    shouldUpdate={(previous, current) => (
+      previous.role !== current.role
+      || previous.permissionMode !== current.permissionMode
+      || previous.permissions !== current.permissions
+    )}
+  >
+    {() => {
+      const role = form.getFieldValue('role');
+      if (!role) return null;
+
+      const permissionMode = form.getFieldValue('permissionMode') || 'role_default';
+      const roleDefaultPermissionIds = rolePermissions[role] || [];
+      const grantedPermissionIds = permissionMode === 'custom'
+        ? (form.getFieldValue('permissions') || [])
+        : roleDefaultPermissionIds;
+      const grantsAllPermissions = grantedPermissionIds.includes('*');
+      const appPermissionCatalog = Object.entries(permissionsConfig)
+        .filter(([category]) => category.toLowerCase().includes('app'))
+        .map(([category, permissions]) => ({
+          category,
+          permissions: (permissions || []).filter((permission) => permission.id !== '*'),
+        }))
+        .filter((group) => group.permissions.length > 0);
+      const grantedAppPermissionGroups = appPermissionCatalog
+        .map((group) => ({
+          ...group,
+          permissions: group.permissions.filter((permission) => (
+            grantsAllPermissions || grantedPermissionIds.includes(permission.id)
+          )),
+        }))
+        .filter((group) => group.permissions.length > 0);
+      const pickingSortingCatalog = appPermissionCatalog.filter(({ category }) => {
+        const normalizedCategory = category.toLowerCase();
+        return normalizedCategory.includes('picking') && normalizedCategory.includes('sorting');
+      });
+      const pickingSortingPermissionIds = new Set(
+        pickingSortingCatalog.flatMap((group) => group.permissions.map((permission) => permission.id)),
+      );
+      const roleHasPickingSortingAccess = pickingSortingPermissionIds.size > 0 && (
+        roleDefaultPermissionIds.includes('*')
+        || roleDefaultPermissionIds.some((permissionId) => pickingSortingPermissionIds.has(permissionId))
+      );
+      const accountHasPickingSortingAccess = pickingSortingPermissionIds.size > 0 && (
+        grantsAllPermissions
+        || grantedPermissionIds.some((permissionId) => pickingSortingPermissionIds.has(permissionId))
+      );
+      const selectedRoleInfo = roleInfo[role];
+
+      return (
+        <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50/60 p-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-semibold text-gray-800">Selected role</span>
+            <Tag color={selectedRoleInfo?.color || 'default'}>{selectedRoleInfo?.name || role}</Tag>
+            <Tag>{permissionMode === 'custom' ? 'Custom permissions' : 'Role defaults'}</Tag>
+          </div>
+          <p className="mt-1 text-xs text-gray-600">
+            {selectedRoleInfo?.description || 'No role description is available.'}
+          </p>
+
+          <div className="mt-3 border-t border-blue-100 pt-3">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-800">
+              Application permission preview
+            </div>
+            {grantedAppPermissionGroups.length ? (
+              <div className="space-y-2">
+                {grantedAppPermissionGroups.map((group) => (
+                  <div key={group.category} className="flex flex-wrap items-center gap-1.5">
+                    <span className="mr-1 text-xs font-medium text-gray-700">{group.category}</span>
+                    {group.permissions.map((permission) => (
+                      <Tag key={permission.id} color="blue">{permission.name}</Tag>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <span className="text-xs text-gray-500">
+                No application-specific permissions are granted by the current permission mode.
+              </span>
+            )}
+          </div>
+
+          {(roleHasPickingSortingAccess || accountHasPickingSortingAccess) && (
+            <Alert
+              className="mt-3"
+              type="info"
+              showIcon
+              message={`${pickingSortingCatalog.map((group) => group.category).join(', ')} assignment guidance`}
+              description="Assign at least one branch, choose the default branch used after sign-in, and set Warehouse Scope to All or Selected. Selected warehouses are limited to the assigned branches."
+            />
+          )}
+        </div>
+      );
+    }}
+  </Form.Item>
+);
+
 const UserManagement = () => {
   const { user: currentUser, refreshUser } = useAuth();
   const [users, setUsers] = useState([]);
@@ -148,12 +251,35 @@ const UserManagement = () => {
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [branchFilter, setBranchFilter] = useState(undefined);
   const [userModalOpen, setUserModalOpen] = useState(false);
+  // The login whose HRMS employee we are attaching, if any.
+  const [linkTarget, setLinkTarget] = useState(null);
+  // An employee picked INSIDE the user form, to attach when the login is saved. Held in
+  // state because a new login has no id to link against until the save returns one.
+  const [pendingEmployee, setPendingEmployee] = useState(null);
+  const [linkEmployeeOpen, setLinkEmployeeOpen] = useState(false);
   const [permissionDrawerOpen, setPermissionDrawerOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
+
+  // Derived AFTER `selectedUser` is declared. Reading it any earlier is a temporal dead
+  // zone error — `Cannot access 'selectedUser' before initialization` — which no build
+  // step catches, only the browser.
+  //
+  // The employee already attached to the login being edited, unless one was picked in
+  // this session — the pick is what the operator will actually get on save.
+  const linkedEmployee = pendingEmployee || selectedUser?.employee || null;
+  const linkedEmployeeId = linkedEmployee?._id || null;
+  // The EMPLOYEE owns name and mobile; the login owns username, role and permissions.
+  // This is the mirror of the same rule on the HRMS employee form — locking the two
+  // fields here is what stops the records drifting apart and the link being refused for
+  // a mismatch nobody could see coming.
+  const employeeOwnsIdentity = Boolean(linkedEmployeeId);
   const [permissionsConfig, setPermissionsConfig] = useState({});
   const [rolePermissions, setRolePermissions] = useState({});
+  // Grants that carry approval authority or administrative control, from the backend
+  // so the warning list stays in one place.
+  const [sensitivePermissions, setSensitivePermissions] = useState({});
   const [roleInfo, setRoleInfo] = useState({});
   const [assignmentOptions, setAssignmentOptions] = useState(EMPTY_OPTIONS);
   const [assignmentAvailability, setAssignmentAvailability] = useState(EMPTY_AVAILABILITY);
@@ -227,6 +353,7 @@ const UserManagement = () => {
         if (configResponse.success) {
           setPermissionsConfig(configResponse.permissions || {});
           setRolePermissions(configResponse.rolePermissions || {});
+          setSensitivePermissions(configResponse.sensitivePermissions || {});
           setRoleInfo(configResponse.roleInfo || {});
         }
         if (optionsResponse.success) {
@@ -304,6 +431,7 @@ const UserManagement = () => {
       });
     }
     setUserModalOpen(true);
+    setPendingEmployee(null);
   };
 
   const closeUserModal = () => {
@@ -338,29 +466,137 @@ const UserManagement = () => {
         ? await userService.updateUser(editedUserId, values)
         : await userService.createUser(values);
       if (response.success) {
+        // Attach a chosen employee, if any. Done AFTER the save because a new login has no
+        // id until this point — and a link failure must not be reported as a save failure,
+        // or the operator re-creates the login and ends up with two.
+        const savedUser = response.data;
+        const targetUserId = savedUser?._id || editedUserId;
+        if (pendingEmployee?._id && targetUserId) {
+          try {
+            await userService.linkEmployee(targetUserId, pendingEmployee._id);
+            message.success(`Linked to ${pendingEmployee.name}.`);
+          } catch (linkError) {
+            message.warning(
+              `Login saved, but the employee could not be linked: ${linkError.message} Use "Link HRMS employee" on the row to retry.`,
+            );
+          }
+        }
         message.success(selectedUser ? 'User updated' : 'User created');
         closeUserModal();
         await refreshSelfIfNeeded(editedUserId);
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
+      if (error.code === 'PHONE_ALREADY_USED') {
+        const duplicateMessage = error.message || 'This phone number is already used by another user.';
+        form.setFields([{ name: 'phone', errors: [duplicateMessage] }]);
+        message.error(duplicateMessage);
+        return;
+      }
       message.error(error.message || 'Failed to save user');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (userId) => {
+  // Deactivation, not deletion — the backend never removes a user record. A Sales
+  // Executive who still holds dealers is refused with 409 and the dealer list,
+  // because a dealer's branch is derived from their executive; that response has to
+  // be handled or the account simply cannot be deactivated from this screen.
+  const handleDelete = async (userId, options = {}) => {
     try {
-      const response = await userService.deleteUser(userId);
+      const response = await userService.deactivateUser(userId, {
+        reason: options.reason || 'Administrative deactivation',
+        ...(options.reassignDealersTo ? { reassignDealersTo: options.reassignDealersTo } : {}),
+        ...(options.unassignDealers ? { unassignDealers: true } : {}),
+      });
       if (response.success) {
-        message.success('User deleted');
+        message.success(response.message || 'User deactivated');
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      message.error(error.message || 'Failed to delete user');
+      if (error.code === 'DEALERS_STILL_ASSIGNED' || error.details?.dealers?.length) {
+        promptDealerHandover(userId, error);
+        return;
+      }
+      message.error(error.message || 'Failed to deactivate user');
     }
+  };
+
+  const promptDealerHandover = (userId, error) => {
+    const dealers = error.details?.dealers || [];
+    // Only executives who can actually own dealers are offered as a destination.
+    const candidates = users.filter((candidate) => candidate._id !== userId
+      && candidate.status === 'Active'
+      && candidate.role === 'sales_executive');
+    let selectedTarget;
+    let handoverChoice = candidates.length ? 'reassign' : 'unassign';
+
+    Modal.confirm({
+      title: 'This user still holds dealers',
+      icon: <ExclamationCircleOutlined style={{ color: '#d46b08' }} />,
+      width: 640,
+      okText: 'Deactivate',
+      okButtonProps: { danger: true },
+      content: (
+        <div>
+          <p className="mb-2 text-sm">
+            {dealers.length} dealer{dealers.length === 1 ? ' is' : 's are'} assigned to this account. Decide where
+            they go before the account is deactivated.
+          </p>
+          {dealers.length > 0 && (
+            <div className="mb-3 max-h-32 overflow-auto rounded bg-gray-50 p-2 text-xs">
+              {dealers.map((dealer) => (
+                <div key={dealer._id || dealer.dealerCode}>
+                  {dealer.dealerCode ? `${dealer.dealerCode} — ` : ''}{dealer.businessName || dealer.name}
+                </div>
+              ))}
+            </div>
+          )}
+          <Select
+            className="mb-2 w-full"
+            defaultValue={handoverChoice}
+            onChange={(value) => { handoverChoice = value; }}
+            options={[
+              { value: 'reassign', label: 'Reassign to another sales executive', disabled: candidates.length === 0 },
+              { value: 'unassign', label: 'Leave the dealers unassigned' },
+            ]}
+          />
+          <Select
+            className="w-full"
+            allowClear
+            showSearch
+            optionFilterProp="label"
+            placeholder={candidates.length ? 'Select the receiving sales executive' : 'No other active sales executive available'}
+            disabled={candidates.length === 0}
+            onChange={(value) => { selectedTarget = value; }}
+            options={candidates.map((candidate) => ({
+              value: candidate._id,
+              label: `${candidate.name} (${candidate.username})`,
+            }))}
+          />
+        </div>
+      ),
+      onOk: async () => {
+        if (handoverChoice === 'reassign' && !selectedTarget) {
+          message.warning('Select the sales executive who will take over these dealers.');
+          return Promise.reject(new Error('handover target required'));
+        }
+        return handleDelete(userId, handoverChoice === 'reassign'
+          ? { reassignDealersTo: selectedTarget }
+          : { unassignDealers: true });
+      },
+    });
   };
 
   const handleAdminResetPassword = async () => {
@@ -376,7 +612,16 @@ const UserManagement = () => {
         fetchUsers(pagination.current, pagination.pageSize);
       }
     } catch (error) {
-      if (error.errorFields) return;
+      if (error.errorFields) {
+        // Was a bare `return`. antd marks the offending field, but when that field is
+        // scrolled out of view or on another tab of the modal, nothing visibly happened:
+        // the dialog refused to save and the user had no idea why. Name the problem and
+        // bring the field into view.
+        const first = error.errorFields[0];
+        form.scrollToField(first?.name);
+        message.error(first?.errors?.[0] || 'Please correct the highlighted field.');
+        return;
+      }
       message.error(error.message || 'Failed to reset password');
     } finally {
       setLoading(false);
@@ -470,6 +715,28 @@ const UserManagement = () => {
       ),
     },
     {
+      title: 'HRMS Employee',
+      key: 'employee',
+      width: 190,
+      // Attendance, GPS punch-in and field tracking resolve the signed-in user through
+      // Employee.userId. Without this column a linked login and an unlinked one look
+      // identical — which is precisely how a login ends up unable to load attendance
+      // with nothing on screen to explain why.
+      render: (_, record) =>
+        record.employee ? (
+          <div className="leading-tight">
+            <div className="text-xs font-medium">{record.employee.name}</div>
+            <div className="text-[11px] text-gray-400">
+              {[record.employee.empId, record.employee.department].filter(Boolean).join(' · ') || 'Linked'}
+            </div>
+          </div>
+        ) : (
+          <Tooltip title="This login cannot load attendance until an HRMS employee is linked.">
+            <Tag color="warning">Not linked</Tag>
+          </Tooltip>
+        ),
+    },
+    {
       title: 'Branches',
       key: 'branches',
       render: (_, record) => {
@@ -500,12 +767,40 @@ const UserManagement = () => {
     {
       title: 'Permissions',
       key: 'permissions',
-      render: (_, record) => (
-        <div className="text-xs text-gray-500">
-          <div>{record.permissions?.includes('*') ? 'All access' : `${record.permissions?.length || 0} permissions`}</div>
-          <div>{record.permissionMode === 'role_default' ? 'Role defaults' : 'Custom'}</div>
-        </div>
-      ),
+      render: (_, record) => {
+        const granted = record.permissions || [];
+        const unrestricted = granted.includes('*');
+        const preset = rolePermissions?.[record.role] || [];
+        const presetSet = new Set(preset);
+        const extra = unrestricted || presetSet.has('*')
+          ? []
+          : granted.filter((permission) => !presetSet.has(permission));
+        const sensitiveExtra = extra.filter((permission) => sensitivePermissions[permission]);
+
+        return (
+          <div className="text-xs text-gray-500">
+            <div>{unrestricted ? 'All access' : `${granted.length} permissions`}</div>
+            <div>{record.permissionMode === 'role_default' ? 'Role defaults' : 'Custom'}</div>
+            {/* An account holding far more than its role intends is the thing a
+                reviewer needs to spot from the list, not from a drawer. */}
+            {extra.length > 0 && (
+              <Tooltip
+                title={sensitiveExtra.length
+                  ? `${extra.length} permission(s) beyond the ${roleInfo[record.role]?.name || record.role} preset, including ${sensitiveExtra.length} high-authority one(s).`
+                  : `${extra.length} permission(s) beyond the ${roleInfo[record.role]?.name || record.role} preset.`}
+              >
+                <Tag
+                  color={sensitiveExtra.length ? 'red' : 'orange'}
+                  className="mt-1 cursor-help"
+                  icon={sensitiveExtra.length ? <ExclamationCircleOutlined /> : undefined}
+                >
+                  +{extra.length} beyond role
+                </Tag>
+              </Tooltip>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: 'Status',
@@ -542,6 +837,29 @@ const UserManagement = () => {
               className="text-green-600"
             />
           </Tooltip>
+          {/* A login with no HRMS employee cannot load attendance — attendance resolves
+              the signed-in user through Employee.userId. This is the repair path for a
+              login created here rather than through HRMS.
+
+              Disabled once linked: the row already names the employee, so offering the
+              action again would only invite a pointless second link. */}
+          {record.employee ? (
+            <Tooltip
+              title={`Linked to ${record.employee.name}${record.employee.empId ? ` (${record.employee.empId})` : ''}`}
+            >
+              <Button type="text" size="small" icon={<LinkOutlined />} disabled className="text-green-600" />
+            </Tooltip>
+          ) : (
+            <Tooltip title="Link HRMS employee">
+              <Button
+                type="text"
+                size="small"
+                icon={<LinkOutlined />}
+                onClick={() => setLinkTarget(record)}
+                className="text-cyan-600"
+              />
+            </Tooltip>
+          )}
           {record._id !== currentUser?._id && (
             <Tooltip title="Reset Password">
               <Button
@@ -558,8 +876,15 @@ const UserManagement = () => {
             </Tooltip>
           )}
           {record._id !== currentUser?._id && (
-            <Popconfirm title="Delete this user?" onConfirm={() => handleDelete(record._id)} okText="Yes" cancelText="No">
-              <Tooltip title="Delete"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
+            <Popconfirm
+              title="Deactivate this user?"
+              description="The account is disabled and signed out everywhere. No records are deleted."
+              onConfirm={() => handleDelete(record._id)}
+              okText="Deactivate"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+            >
+              <Tooltip title="Deactivate"><Button type="text" size="small" danger icon={<DeleteOutlined />} /></Tooltip>
             </Popconfirm>
           )}
         </Space>
@@ -572,10 +897,10 @@ const UserManagement = () => {
       <div className="mb-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">User Management</h1>
-          <p className="mt-0.5 text-sm text-gray-500">Manage users, role-derived permissions, and assignment scopes</p>
+          <p className="mt-0.5 text-sm text-gray-500">Manage application login, roles, permissions, branches, and operational access in one place</p>
         </div>
         <Button type="primary" icon={<PlusOutlined />} onClick={() => openUserModal()} size="large" loading={metadataLoading}>
-          Add New User
+          Add Application User
         </Button>
       </div>
 
@@ -606,8 +931,13 @@ const UserManagement = () => {
             allowClear
             className="sm:w-36"
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setRoleFilter(undefined); setStatusFilter(undefined); setBranchFilter(undefined); }}>
+          {/* No icon on Reset. It used to wear ReloadOutlined, which made "clear every
+              filter" look like the Refresh button sitting right beside it. */}
+          <Button onClick={() => { setSearch(''); setRoleFilter(undefined); setStatusFilter(undefined); setBranchFilter(undefined); }}>
             Reset
+          </Button>
+          <Button icon={<ReloadOutlined />} onClick={() => fetchUsers(pagination.current, pagination.pageSize)} loading={loading}>
+            Refresh
           </Button>
         </div>
       </div>
@@ -630,27 +960,99 @@ const UserManagement = () => {
       </div>
 
       <Modal
-        title={selectedUser ? 'Edit User' : 'Add New User'}
+        title={selectedUser ? 'Edit Account & Application Access' : 'Add Account & Application Access'}
         open={userModalOpen}
         onCancel={closeUserModal}
         onOk={handleSaveUser}
-        okText={selectedUser ? 'Update' : 'Create'}
+        okText={selectedUser ? 'Update Account' : 'Create Account'}
         confirmLoading={loading}
         width="min(960px, 94vw)"
         style={{ top: 20 }}
         destroyOnHidden
       >
         <Form form={form} layout="vertical" className="mt-4">
+          <Alert
+            className="mb-2"
+            type="info"
+            showIcon
+            message="Application account access is managed here"
+            description="Application login, roles, permissions, branches, and warehouse access are managed in User Management."
+          />
+          {/* This used to read "HRMS stores employee details only", which is the opposite
+              of what the code requires: attendance, GPS punch-in and field tracking all
+              resolve the signed-in user to an HRMS Employee. A login created only here
+              signs in fine and then fails to load attendance. */}
+          {/* Mirror of the App Login section on the HRMS employee form. Attendance, GPS
+              punch-in and field tracking resolve the signed-in user through
+              Employee.userId, so a login with no employee signs in and then cannot load
+              attendance at all. */}
+          <Divider orientation="left">HRMS Employee</Divider>
+          <Alert
+            className="mb-3"
+            type={linkedEmployeeId ? 'success' : 'warning'}
+            showIcon
+            message={linkedEmployeeId ? `Linked to ${linkedEmployee.name}` : 'No HRMS employee linked'}
+            description={
+              linkedEmployeeId
+                ? `${linkedEmployee.empId ? `${linkedEmployee.empId} · ` : ''}${linkedEmployee.department || 'No department'} — the employee owns the name and mobile, so those two are locked here. Username, role and permissions stay with this login.`
+                : 'Field roles need an employee record: without it the executive can sign in but attendance will fail to load. Link one below, or create the person in HRMS → Employees.'
+            }
+          />
+          <Space className="mb-3">
+            <Button onClick={() => setLinkEmployeeOpen(true)}>
+              {linkedEmployeeId ? 'Change employee' : 'Link existing employee'}
+            </Button>
+            {pendingEmployee ? (
+              <Button type="text" onClick={() => setPendingEmployee(null)}>Undo</Button>
+            ) : null}
+          </Space>
+          <Divider orientation="left">Account &amp; Application Access</Divider>
           <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-4">
-            <Form.Item name="name" label="Full Name" rules={[{ required: true, message: 'Name is required' }]}><Input /></Form.Item>
+            <Form.Item name="name" label="Full Name" rules={[{ required: true, message: 'Name is required' }]} extra={employeeOwnsIdentity ? 'From the linked employee' : undefined}><Input disabled={employeeOwnsIdentity} /></Form.Item>
             <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Username is required' }]}><Input /></Form.Item>
             <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input /></Form.Item>
-            <Form.Item name="phone" label="Phone" rules={[{ required: true, message: 'Phone is required' }]}><Input /></Form.Item>
+            <Form.Item
+              name="phone"
+              label="Mobile Number"
+              rules={[
+                { required: true, message: 'Mobile number is required' },
+                {
+                  validator: (_, value) => {
+                    if (!value) return Promise.resolve();
+                    const input = String(value).trim();
+                    const digits = input.replace(/\D/g, '');
+                    return /^[\d\s()+.-]+$/.test(input) && digits.length >= 10 && digits.length <= 15
+                      ? Promise.resolve()
+                      : Promise.reject(new Error('Enter a valid mobile number using digits and standard formatting'));
+                  },
+                },
+              ]}
+              extra={employeeOwnsIdentity ? 'From the linked employee' : undefined}
+            >
+              <Input inputMode="tel" autoComplete="tel" maxLength={20} placeholder="e.g. 9876543210" disabled={employeeOwnsIdentity} />
+            </Form.Item>
             <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Select a role' }]}>
               <Select options={manageableRoleOptions} optionFilterProp="label" showSearch />
             </Form.Item>
-            <Form.Item name="status" label="Status">
-              <Select options={[{ value: 'Active', label: 'Active' }, { value: 'Inactive', label: 'Inactive' }]} />
+            <Form.Item
+              name="status"
+              label="Status"
+              extra={selectedUser?.status === 'Active'
+                ? 'Use the deactivate action in the row menu to switch an active user off — it captures a reason and handles dependent records.'
+                : undefined}
+            >
+              <Select
+                options={[
+                  { value: 'Active', label: 'Active' },
+                  {
+                    value: 'Inactive',
+                    label: 'Inactive',
+                    // The server rejects Active → Inactive here on purpose; offering
+                    // it would only produce a confusing 422.
+                    disabled: selectedUser?.status === 'Active',
+                  },
+                ]}
+              />
             </Form.Item>
           </div>
 
@@ -673,6 +1075,13 @@ const UserManagement = () => {
               )}
             </Form.Item>
           </div>
+
+          <AccountAccessPreview
+            form={form}
+            permissionsConfig={permissionsConfig}
+            rolePermissions={rolePermissions}
+            roleInfo={roleInfo}
+          />
 
           <Divider orientation="left">Branch Assignment</Divider>
           <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-4">
@@ -788,6 +1197,7 @@ const UserManagement = () => {
         onOk={handleAdminResetPassword}
         okText="Set Temporary Password"
         confirmLoading={loading}
+        width={580}
         destroyOnHidden
       >
         <Alert
@@ -839,30 +1249,182 @@ const UserManagement = () => {
         user={selectedUser}
         roleInfo={roleInfo}
         permissionsConfig={permissionsConfig}
+        rolePermissions={rolePermissions}
+        sensitivePermissions={sensitivePermissions}
         onSave={handleSavePermissions}
         onReset={handleResetPermissions}
+      />
+
+      {/* The mirror of the HRMS-side picker. This is the direction that matters when the
+          person was created HERE rather than in HRMS — the case that produced the
+          "Couldn't load attendance" report in the first place. */}
+      <LinkRecordModal
+        open={linkEmployeeOpen}
+        onClose={() => setLinkEmployeeOpen(false)}
+        title="Link an HRMS employee"
+        description="Employees already linked to another login are excluded. Linking copies the employee's name and mobile onto this login — the employee owns identity, and this login keeps its username, role and permissions."
+        emptyText="Every employee already has a login."
+        searchPlaceholder="Search by name or employee code…"
+        loadCandidates={async () => {
+          const res = await hrmsService.getEmployees({ limit: 200, status: 'Active' });
+          return (res?.data || [])
+            .filter((employee) => !employee.userId)
+            .map((employee) => ({
+              value: employee._id,
+              label: employee.name,
+              hint: [employee.empId, employee.designation, employee.department, employee.mobile]
+                .filter(Boolean).join(' · '),
+              mobile: employee.mobile || '',
+            }));
+        }}
+        linkRecord={async (employeeId, row) => {
+          // An existing login can be linked immediately. A NEW one has no id yet, so the
+          // pick is held and applied the moment the save returns one.
+          if (selectedUser?._id) {
+            await userService.linkEmployee(selectedUser._id, employeeId);
+            setPendingEmployee(null);
+            fetchUsers(pagination.current, pagination.pageSize);
+            return;
+          }
+          setPendingEmployee(row);
+          // Copy the employee's identity into the form now — the fields lock the moment an
+          // employee is chosen, so this is the operator's one chance to see what the login
+          // will actually say.
+          form.setFieldsValue({
+            ...(row.label ? { name: row.label } : {}),
+            ...(row.mobile ? { phone: row.mobile } : {}),
+          });
+        }}
+      />
+
+      {/* Repair path for a login created here rather than through HRMS. Attendance, GPS
+          punch-in and field tracking all resolve the signed-in user through
+          Employee.userId, so without this link the executive signs in and then cannot
+          load attendance at all.
+
+          This belongs to UserManagement, not PermissionDrawer — linkTarget is state on
+          the page, and placing it in the child is what made it a ReferenceError. */}
+      <LinkRecordModal
+        open={!!linkTarget}
+        onClose={() => setLinkTarget(null)}
+        onLinked={() => fetchUsers(pagination.current, pagination.pageSize)}
+        title={`Link an HRMS employee${linkTarget ? ` to ${linkTarget.name}` : ''}`}
+        description="Only employees without a login of their own are listed. Linking copies the employee's name, email and mobile onto this login — the HR record stays authoritative for identity, and this login keeps its username, role and permissions."
+        emptyText="Every employee already has a login."
+        searchPlaceholder="Search by name or employee code…"
+        loadCandidates={async () => {
+          const res = await hrmsService.getEmployees({ limit: 200, status: 'Active' });
+          return (res?.data || [])
+            .filter((employee) => !employee.userId && !employee.hasAppAccount)
+            .map((employee) => ({
+              value: employee._id,
+              label: employee.name,
+              hint: [employee.empId, employee.designation, employee.mobile].filter(Boolean).join(' · '),
+            }));
+        }}
+        linkRecord={(employeeId) => userService.linkEmployee(linkTarget._id, employeeId)}
       />
     </div>
   );
 };
 
-const PermissionDrawer = ({ open, onClose, user, roleInfo, permissionsConfig, onSave, onReset }) => {
+/**
+ * Permission editor.
+ *
+ * There are 164 permissions across 15 groups. The previous version rendered all of
+ * them as flat checkboxes with no search and no way to tell a grant apart from what
+ * the role already gives, which made granting or auditing anything impractical.
+ *
+ * This version adds search, group and global bulk actions, a live diff against the
+ * role preset, and a confirmation step for grants that carry approval authority.
+ */
+const PermissionDrawer = ({
+  open, onClose, user, roleInfo, permissionsConfig, rolePermissions, sensitivePermissions = {}, onSave, onReset,
+}) => {
   const screens = Grid.useBreakpoint();
   const [selectedPermissions, setSelectedPermissions] = useState([]);
+  const [search, setSearch] = useState('');
+  const [onlyChanged, setOnlyChanged] = useState(false);
 
   useEffect(() => {
     setSelectedPermissions((user?.permissions || []).filter((permission) => permission !== '*'));
+    setSearch('');
+    setOnlyChanged(false);
   }, [user]);
 
   if (!user) return null;
   const unrestricted = (user.permissions || []).includes('*');
+
+  const rolePreset = new Set(rolePermissions?.[user.role] || []);
+  const roleGrantsAll = rolePreset.has('*');
+  const selectedSet = new Set(selectedPermissions);
+
+  const allPermissions = Object.entries(permissionsConfig || {})
+    .flatMap(([category, permissions]) => (permissions || [])
+      .filter((permission) => permission.id !== '*')
+      .map((permission) => ({ ...permission, category })));
+
+  const extraBeyondRole = roleGrantsAll
+    ? []
+    : selectedPermissions.filter((permission) => !rolePreset.has(permission));
+  const missingFromRole = roleGrantsAll
+    ? []
+    : [...rolePreset].filter((permission) => !selectedSet.has(permission));
+  const sensitiveSelected = selectedPermissions.filter((permission) => sensitivePermissions[permission]);
+
+  const matchesFilters = (permission) => {
+    const text = search.trim().toLowerCase();
+    if (text && !permission.name.toLowerCase().includes(text) && !permission.id.toLowerCase().includes(text)) {
+      return false;
+    }
+    if (onlyChanged) {
+      const inRole = roleGrantsAll || rolePreset.has(permission.id);
+      const isSelected = selectedSet.has(permission.id);
+      if (inRole === isSelected) return false;
+    }
+    return true;
+  };
+
+  const toggle = (permission) => {
+    const isAdding = !selectedSet.has(permission.id);
+    const warning = sensitivePermissions[permission.id];
+    const apply = () => setSelectedPermissions((previous) => (previous.includes(permission.id)
+      ? previous.filter((item) => item !== permission.id)
+      : [...previous, permission.id]));
+
+    // Approval authority and administrative control get a deliberate second step.
+    if (isAdding && warning) {
+      Modal.confirm({
+        title: `Grant "${permission.name}"?`,
+        icon: <ExclamationCircleOutlined style={{ color: '#d46b08' }} />,
+        content: (
+          <div>
+            <p className="mb-2">{warning}</p>
+            <p className="text-xs text-gray-500">
+              Granting this to {user.name} ({roleInfo[user.role]?.name || user.role}) is not reversible from an audit
+              point of view — the change is recorded either way.
+            </p>
+          </div>
+        ),
+        okText: 'Grant',
+        okButtonProps: { danger: true },
+        onOk: apply,
+      });
+      return;
+    }
+    apply();
+  };
+
+  const setMany = (ids, shouldSelect) => setSelectedPermissions((previous) => (shouldSelect
+    ? [...new Set([...previous, ...ids])]
+    : previous.filter((permission) => !ids.includes(permission))));
 
   return (
     <Drawer
       title={`Permissions — ${user.name}`}
       open={open}
       onClose={onClose}
-      width={screens.md ? 520 : '100%'}
+      width={screens.lg ? 720 : screens.md ? 560 : '100%'}
       extra={unrestricted ? (
         user.permissionMode === 'custom' ? <Button onClick={onReset}>Use Role Defaults</Button> : null
       ) : (
@@ -879,47 +1441,134 @@ const PermissionDrawer = ({ open, onClose, user, roleInfo, permissionsConfig, on
           <p className="text-sm">This role has unrestricted server-defined access. The UI never grants the wildcard permission.</p>
         </div>
       ) : (
-        <div className="space-y-6">
+        <div className="space-y-4">
           <Alert
             type={user.permissionMode === 'role_default' ? 'info' : 'warning'}
             showIcon
-            message={user.permissionMode === 'role_default' ? 'Using backend role defaults' : 'Using custom permissions'}
-            description="Saving selections switches this user to custom mode. Use Role Defaults to discard custom grants."
+            message={user.permissionMode === 'role_default' ? 'Using role defaults' : 'Using custom permissions'}
+            description={user.permissionMode === 'role_default'
+              ? `This account follows the ${roleInfo[user.role]?.name || user.role} preset. Saving any change switches it to custom, and it will then stop following the preset.`
+              : `This account no longer follows the ${roleInfo[user.role]?.name || user.role} preset. Use Role Defaults to put it back.`}
           />
-          <div className="text-sm text-gray-500">Selected: <strong className="text-gray-800">{selectedPermissions.length}</strong> permissions</div>
-          {Object.entries(permissionsConfig).map(([category, permissions]) => {
-            const safePermissions = permissions.filter((permission) => permission.id !== '*');
-            const allSelected = safePermissions.length > 0
-              && safePermissions.every((permission) => selectedPermissions.includes(permission.id));
+
+          {/* Live comparison against the role preset — the thing that makes an
+              over-permissioned account obvious instead of invisible. */}
+          <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-50 p-3 text-center">
+            <div>
+              <div className="text-lg font-semibold text-gray-800">{selectedPermissions.length}</div>
+              <div className="text-[11px] text-gray-500">selected of {allPermissions.length}</div>
+            </div>
+            <div>
+              <div className={`text-lg font-semibold ${extraBeyondRole.length ? 'text-orange-600' : 'text-gray-800'}`}>
+                {extraBeyondRole.length}
+              </div>
+              <div className="text-[11px] text-gray-500">beyond the role</div>
+            </div>
+            <div>
+              <div className={`text-lg font-semibold ${missingFromRole.length ? 'text-amber-600' : 'text-gray-800'}`}>
+                {missingFromRole.length}
+              </div>
+              <div className="text-[11px] text-gray-500">role grants, not given</div>
+            </div>
+          </div>
+
+          {sensitiveSelected.length > 0 && (
+            <Alert
+              type="warning"
+              showIcon
+              message={`${sensitiveSelected.length} high-authority permission(s) selected`}
+              description={
+                <div className="flex flex-wrap gap-1">
+                  {sensitiveSelected.map((permission) => (
+                    <Tooltip key={permission} title={sensitivePermissions[permission]}>
+                      <Tag color="orange">
+                        {allPermissions.find((item) => item.id === permission)?.name || permission}
+                      </Tag>
+                    </Tooltip>
+                  ))}
+                </div>
+              }
+            />
+          )}
+
+          <Space wrap>
+            <Input
+              allowClear
+              size="small"
+              prefix={<SearchOutlined />}
+              placeholder="Search permissions"
+              style={{ width: 240 }}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <Button size="small" onClick={() => setMany(allPermissions.map((p) => p.id), true)}>Select All</Button>
+            <Button size="small" onClick={() => setSelectedPermissions([])}>Clear All</Button>
+            <Button
+              size="small"
+              onClick={() => setSelectedPermissions(roleGrantsAll ? [] : [...rolePreset])}
+              disabled={roleGrantsAll}
+            >
+              Match Role Preset
+            </Button>
+            <Button
+              size="small"
+              type={onlyChanged ? 'primary' : 'default'}
+              onClick={() => setOnlyChanged((previous) => !previous)}
+            >
+              {onlyChanged ? 'Showing differences' : 'Show differences only'}
+            </Button>
+          </Space>
+
+          {Object.entries(permissionsConfig || {}).map(([category, permissions]) => {
+            const safePermissions = (permissions || []).filter((permission) => permission.id !== '*');
+            const visible = safePermissions
+              .map((permission) => ({ ...permission, category }))
+              .filter(matchesFilters);
+            if (!visible.length) return null;
+
+            const ids = safePermissions.map((permission) => permission.id);
+            const selectedInGroup = ids.filter((id) => selectedSet.has(id)).length;
+            const allSelected = selectedInGroup === ids.length;
+
             return (
               <div key={category} className="rounded-lg border border-gray-100 p-4">
                 <div className="mb-3 flex items-center justify-between">
-                  <h4 className="text-sm font-semibold text-gray-800">{category}</h4>
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={() => {
-                      const ids = safePermissions.map((permission) => permission.id);
-                      setSelectedPermissions((previous) => allSelected
-                        ? previous.filter((permission) => !ids.includes(permission))
-                        : [...new Set([...previous, ...ids])]);
-                    }}
-                  >
+                  <h4 className="text-sm font-semibold text-gray-800">
+                    {category}
+                    <span className="ml-2 text-xs font-normal text-gray-400">{selectedInGroup}/{ids.length}</span>
+                  </h4>
+                  <Button type="link" size="small" onClick={() => setMany(ids, !allSelected)}>
                     {allSelected ? 'Deselect All' : 'Select All'}
                   </Button>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  {safePermissions.map((permission) => (
-                    <Checkbox
-                      key={permission.id}
-                      checked={selectedPermissions.includes(permission.id)}
-                      onChange={() => setSelectedPermissions((previous) => previous.includes(permission.id)
-                        ? previous.filter((item) => item !== permission.id)
-                        : [...previous, permission.id])}
-                    >
-                      <span className="text-sm text-gray-700">{permission.name}</span>
-                    </Checkbox>
-                  ))}
+                  {visible.map((permission) => {
+                    const inRole = roleGrantsAll || rolePreset.has(permission.id);
+                    const isSelected = selectedSet.has(permission.id);
+                    const isSensitive = Boolean(sensitivePermissions[permission.id]);
+                    return (
+                      <div key={permission.id} className="flex items-start gap-2">
+                        <Checkbox checked={isSelected} onChange={() => toggle(permission)}>
+                          <span className="text-sm text-gray-700">{permission.name}</span>
+                        </Checkbox>
+                        {isSensitive && (
+                          <Tooltip title={sensitivePermissions[permission.id]}>
+                            <Tag color="orange" className="mt-0.5 cursor-help">high authority</Tag>
+                          </Tooltip>
+                        )}
+                        {isSelected && !inRole && (
+                          <Tooltip title={`Not part of the ${roleInfo[user.role]?.name || user.role} preset.`}>
+                            <Tag className="mt-0.5">extra</Tag>
+                          </Tooltip>
+                        )}
+                        {!isSelected && inRole && (
+                          <Tooltip title={`The ${roleInfo[user.role]?.name || user.role} preset includes this, but it is not granted here.`}>
+                            <Tag color="gold" className="mt-0.5">role has it</Tag>
+                          </Tooltip>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );

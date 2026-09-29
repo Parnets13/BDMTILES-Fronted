@@ -1,341 +1,277 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Table, Button, Input, Select, Tag, Space, message, Modal,
-  Row, Col, Card, Statistic, Alert, Checkbox, InputNumber
+  Alert, Button, Card, Checkbox, Col, Empty, Input, InputNumber, Modal, Row,
+  Select, Space, Statistic, Table, Tag, Tooltip, Typography, message,
 } from 'antd';
-import { ReloadOutlined, SearchOutlined, WarningOutlined, ShopOutlined, FallOutlined, ShoppingCartOutlined } from '@ant-design/icons';
+import {
+  ClearOutlined, EyeOutlined, FallOutlined, ReloadOutlined, SearchOutlined,
+  ShopOutlined, ShoppingCartOutlined, WarningOutlined,
+} from '@ant-design/icons';
 import purchaseService from '../../services/purchaseService.js';
-import masterService from '../../services/masterService.js';
+import categoryService from '../../services/categoryService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
+import StockDetailDrawer from './StockDetailDrawer.jsx';
 
-const ALERT_LEVELS = {
-  out_of_stock:  { label: 'Out of Stock',  color: 'red',    bg: '#fee2e2' },
-  critical:      { label: 'Critical',      color: 'volcano',bg: '#fff1f0' },
-  low_stock:     { label: 'Low Stock',     color: 'orange', bg: '#fffbe6' },
-  adequate:      { label: 'Adequate',      color: 'green',  bg: '#f6ffed' },
+const BUCKETS = ['totalQty', 'availableQty', 'reservedQty', 'blockedQty', 'damagedQty', 'sampleQty', 'transitQty', 'shortQty'];
+const BUCKET_LABELS = {
+  totalQty: 'Total', availableQty: 'Available', reservedQty: 'Reserved', blockedQty: 'Blocked',
+  damagedQty: 'Damaged', sampleQty: 'Sample', transitQty: 'Transit', shortQty: 'Short',
 };
+const ALERT_LEVELS = {
+  out_of_stock: { label: 'Out of Stock', color: 'red' },
+  critical: { label: 'Critical', color: 'volcano' },
+  low_stock: { label: 'Low Stock', color: 'orange' },
+  adequate: { label: 'Adequate', color: 'green' },
+};
+const WARNING_LABELS = {
+  product_reorder_not_configured: 'Product reorder level uses branch fallback',
+  product_minimum_not_configured: 'Product minimum level uses branch fallback',
+  reorder_normalized_to_minimum: 'Reorder level raised to minimum level',
+  negative_available_stock: 'Negative available stock requires reconciliation',
+};
+const SORT_OPTIONS = [
+  ['severity', 'Severity'], ['available', 'Available quantity'], ['deficit', 'Deficit'],
+  ['productName', 'Product name'], ['stockValue', 'Stock value'], ['lastMovementAt', 'Last movement'],
+].map(([value, label]) => ({ value, label }));
+const DEFAULT_FILTERS = {
+  severity: [], warehouse: undefined, brand: undefined, category: undefined,
+  reorderSource: undefined, hasOpenRequisition: undefined, includeAdequate: false,
+  sortBy: 'severity', sortOrder: 'asc',
+};
+const numberText = value => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 6 });
+const money = value => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const dateTime = value => value ? new Date(value).toLocaleString('en-IN') : '—';
+const cleanParams = source => Object.fromEntries(Object.entries(source).filter(([, value]) => value !== undefined && value !== null && value !== ''));
 
-const getAlertLevel = (qty, reorderLevel = 10, minLevel = 5) => {
-  if (qty <= 0)              return 'out_of_stock';
-  if (qty <= minLevel)       return 'critical';
-  if (qty <= reorderLevel)   return 'low_stock';
-  return 'adequate';
+const SeverityTag = ({ value }) => {
+  const level = ALERT_LEVELS[value] || ALERT_LEVELS.adequate;
+  return <Tag color={level.color} className="font-semibold">{value === 'out_of_stock' && <WarningOutlined className="mr-1" />}{level.label}</Tag>;
 };
 
 const StockAlerts = () => {
-  const [stock, setStock] = useState([]);
+  const navigate = useNavigate();
+  const [rows, setRows] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [scope, setScope] = useState({});
   const [loading, setLoading] = useState(false);
-  const [warehouses, setWarehouses] = useState([]);
-  const [warehouseFilter, setWarehouseFilter] = useState(undefined);
-  const [alertFilter, setAlertFilter] = useState('low_stock'); // show low + critical + out by default
+  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [lowThreshold, setLowThreshold] = useState(10);
-  const [summary, setSummary] = useState({ outOfStock: 0, critical: 0, lowStock: 0 });
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [filterOptions, setFilterOptions] = useState({});
+  const [brands, setBrands] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [showReorder, setShowReorder] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      // Fetch all low-stock items using the inventory report endpoint
-      const res = await purchaseService.getStock({
-        warehouse: warehouseFilter,
-        limit: 200,
-        page: 1,
-      });
-      if (res.success) {
-        const all = res.data || [];
-        // Annotate each with alert level
-        const annotated = all.map(s => ({
-          ...s,
-          alertLevel: getAlertLevel(s.availableQty, lowThreshold, Math.floor(lowThreshold / 2)),
-        }));
-
-        setSummary({
-          outOfStock: annotated.filter(s => s.alertLevel === 'out_of_stock').length,
-          critical:   annotated.filter(s => s.alertLevel === 'critical').length,
-          lowStock:   annotated.filter(s => s.alertLevel === 'low_stock').length,
-        });
-
-        setStock(annotated);
-      }
-    } catch (err) { message.error(err.message || 'Failed to load stock'); }
-    finally { setLoading(false); }
-  }, [warehouseFilter, lowThreshold]);
-
-  useEffect(() => { load(); }, [load]);
+  const [selectedStockId, setSelectedStockId] = useState(null);
+  const [breakdownRow, setBreakdownRow] = useState(null);
+  const requestSequence = useRef(0);
+  const optionsSequence = useRef(0);
+  const pollInFlight = useRef(false);
 
   useEffect(() => {
-    masterService.getWarehouses({ limit: 50 }).then(r => {
-      if (r.success) setWarehouses(r.data || []);
-    }).catch(() => {});
+    const timer = setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const updateFilters = patch => {
+    setFilters(current => ({ ...current, ...patch }));
+    setPagination(current => ({ ...current, current: 1 }));
+  };
+
+  const loadAlerts = useCallback(async () => {
+    const requestId = ++requestSequence.current;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await purchaseService.getCanonicalStockAlerts(cleanParams({
+        page: pagination.current,
+        limit: pagination.pageSize,
+        search: debouncedSearch || undefined,
+        severity: filters.severity.length ? filters.severity.join(',') : undefined,
+        warehouse: filters.warehouse,
+        brand: filters.brand,
+        category: filters.category,
+        reorderSource: filters.reorderSource,
+        hasOpenRequisition: filters.hasOpenRequisition,
+        includeAdequate: filters.includeAdequate,
+        sortBy: filters.sortBy,
+        sortOrder: filters.sortOrder,
+      }));
+      if (requestId !== requestSequence.current) return;
+      if (response.success) {
+        const data = response.data || [];
+        setRows(data);
+        setSummary(response.summary || {});
+        setScope(response.scope || {});
+        setPagination(current => ({
+          ...current,
+          current: response.pagination?.currentPage ?? current.current,
+          pageSize: response.pagination?.itemsPerPage ?? current.pageSize,
+          total: response.pagination?.totalItems ?? data.length,
+        }));
+      }
+    } catch (loadError) {
+      if (requestId === requestSequence.current) setError(loadError.message || 'Unable to load stock alerts.');
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
+  }, [debouncedSearch, filters, pagination.current, pagination.pageSize]);
+
+  const loadOptions = useCallback(async () => {
+    const requestId = ++optionsSequence.current;
+    try {
+      const [stockResponse, brandResponse] = await Promise.all([
+        purchaseService.getStockFilterOptions(),
+        categoryService.getBrands({ limit: 200 }),
+      ]);
+      if (requestId !== optionsSequence.current) return;
+      if (stockResponse.success) setFilterOptions(stockResponse.data || {});
+      if (brandResponse.success) setBrands(brandResponse.data || []);
+    } catch (loadError) {
+      if (requestId === optionsSequence.current) message.error(loadError.message || 'Unable to load filters');
+    }
   }, []);
 
-  const filtered = stock.filter(s => {
-    const matchAlert = alertFilter === 'all'
-      ? s.alertLevel !== 'adequate'
-      : s.alertLevel === alertFilter;
-    const matchSearch = !search ||
-      s.product?.itemName?.toLowerCase().includes(search.toLowerCase()) ||
-      s.product?.productCode?.toLowerCase().includes(search.toLowerCase());
-    return matchAlert && matchSearch;
-  });
+  useEffect(() => { loadAlerts(); }, [loadAlerts]);
+  useEffect(() => { loadOptions(); }, [loadOptions]);
+  useEffect(() => {
+    let timer; let cancelled = false;
+    const run = async () => {
+      if (cancelled || document.visibilityState !== 'visible' || pollInFlight.current) return;
+      pollInFlight.current = true;
+      try { await loadAlerts(); }
+      finally { pollInFlight.current = false; if (!cancelled) timer = setTimeout(run, 30000); }
+    };
+    const foreground = () => { if (document.visibilityState === 'visible') { clearTimeout(timer); void run(); } };
+    window.addEventListener('focus', foreground); document.addEventListener('visibilitychange', foreground);
+    timer = setTimeout(run, 30000);
+    return () => { cancelled = true; clearTimeout(timer); window.removeEventListener('focus', foreground); document.removeEventListener('visibilitychange', foreground); };
+  }, [loadAlerts]);
+  useEffect(() => {
+    if (!filters.brand) { setCategories([]); return undefined; }
+    let active = true;
+    categoryService.getCategories(filters.brand, { limit: 200 })
+      .then(response => { if (active && response.success) setCategories(response.data || []); })
+      .catch(() => { if (active) setCategories([]); });
+    return () => { active = false; };
+  }, [filters.brand]);
 
-  const columns = [
+  const clearFilters = () => {
+    setSearch('');
+    setDebouncedSearch('');
+    setFilters(DEFAULT_FILTERS);
+    setPagination(current => ({ ...current, current: 1 }));
+  };
+
+  const openStockDashboard = (row, bucket) => {
+    const params = new URLSearchParams({ tab: 'balances', product: String(row.product) });
+    const warehouse = bucket?.warehouse?._id || row.warehouse?._id;
+    if (warehouse) params.set('warehouse', String(warehouse));
+    if (bucket) {
+      params.set('shade', bucket.shade || '');
+      params.set('batch', bucket.batch || '');
+    }
+    navigate(`/inventory/stock?${params.toString()}`);
+  };
+
+  const inspectRow = row => {
+    if (row.buckets?.length === 1 && row.buckets[0].stockId) setSelectedStockId(row.buckets[0].stockId);
+    else setBreakdownRow(row);
+  };
+
+  const columns = useMemo(() => [
+    { title: 'Severity', dataIndex: 'severity', fixed: 'left', width: 120, render: value => <SeverityTag value={value} /> },
     {
-      title: 'Alert',
-      dataIndex: 'alertLevel',
-      width: 120,
-      render: v => {
-        const lvl = ALERT_LEVELS[v] || ALERT_LEVELS.adequate;
-        return (
-          <Tag color={lvl.color} style={{ fontWeight: 600 }}>
-            {v === 'out_of_stock' && <WarningOutlined className="mr-1" />}
-            {lvl.label}
-          </Tag>
-        );
-      },
-      sorter: (a, b) => {
-        const order = { out_of_stock: 0, critical: 1, low_stock: 2, adequate: 3 };
-        return (order[a.alertLevel] || 3) - (order[b.alertLevel] || 3);
-      },
-      defaultSortOrder: 'ascend',
+      title: 'Product', fixed: 'left', width: 245,
+      render: (_, row) => <div className="flex items-center gap-2"><ProductImage src={row.productImage} size="sm" /><div className="min-w-0"><div className="font-medium truncate">{row.productName}</div><div className="text-xs text-gray-400 font-mono">{row.productCode || 'No code'} · Base {row.unit || 'Unit'}</div><div className="text-xs text-gray-500 truncate">{[row.brand?.name, row.category?.name, row.tileSize, row.finish].filter(Boolean).join(' · ') || '—'}</div></div></div>,
+    },
+    { title: 'Scope', width: 160, render: (_, row) => <div className="text-xs"><div className="font-medium">{row.warehouse?.name || 'All branch warehouses'}</div><div className="text-gray-400">{row.buckets?.length || 0} exact bucket(s)</div></div> },
+    ...BUCKETS.map(bucket => ({ title: BUCKET_LABELS[bucket], dataIndex: ['quantities', bucket], width: 115, align: 'right', render: (value, row) => <span className={bucket === 'availableQty' ? 'font-bold' : ''}>{numberText(value)} <small className="text-gray-400">{row.unit || 'Unit'}</small></span> })),
+    {
+      title: 'Threshold authority', width: 245,
+      render: (_, row) => <div className="text-xs space-y-1"><div><strong>Effective:</strong> min {numberText(row.thresholds?.effectiveMinStockLevel)} / reorder {numberText(row.thresholds?.effectiveReorderLevel)}</div><div className="text-gray-500">Configured: min {numberText(row.thresholds?.configuredMinStockLevel)} / reorder {numberText(row.thresholds?.configuredReorderLevel)}</div><Space size={4} wrap><Tag color={row.thresholds?.reorderSource === 'product' ? 'blue' : 'gold'}>{row.thresholds?.reorderSource === 'product' ? 'Product reorder' : 'Branch reorder fallback'}</Tag><Tag color={row.thresholds?.minSource === 'product' ? 'blue' : 'gold'}>{row.thresholds?.minSource === 'product' ? 'Product minimum' : 'Branch minimum fallback'}</Tag></Space>{row.configurationWarnings?.length > 0 && <Tooltip title={row.configurationWarnings.map(warning => WARNING_LABELS[warning] || warning).join(' • ')}><Tag color="warning">{row.configurationWarnings.length} warning(s)</Tag></Tooltip>}</div>,
     },
     {
-      title: 'Product',
-      key: 'product',
-      render: (_, r) => (
-        <div className="flex items-center gap-2">
-          <ProductImage src={r.product?.images?.[0]} size="sm" />
-          <div>
-            <div className="font-medium text-sm">{r.product?.itemName || '—'}</div>
-            <div className="text-xs text-gray-400 font-mono">
-              {r.product?.productCode || ''}
-              {r.shade ? ` · Shade: ${r.shade}` : ''}
-              {r.batch ? ` · Batch: ${r.batch}` : ''}
-            </div>
-          </div>
-        </div>
-      ),
+      title: 'Deficit / Reorder', width: 175,
+      render: (_, row) => <div className="text-xs"><div>Deficit: <strong>{numberText(row.deficit)} {row.unit || 'Unit'}</strong></div><div>Suggested: <strong className="text-blue-700">{numberText(row.suggestedQuantity)} {row.unit || 'Unit'}</strong></div><div>Net after open supply: {numberText(row.netSuggestedQuantity)} {row.unit || 'Unit'}</div><div className="text-gray-500">Est. {money(row.valuation?.suggestedValue)}</div></div>,
     },
     {
-      title: 'Warehouse',
-      key: 'wh',
-      width: 130,
-      render: (_, r) => <span className="text-sm">{r.warehouse?.name || '—'}</span>,
+      title: 'Valuation', width: 150,
+      render: (_, row) => <div className="text-xs"><div>Rate {money(row.valuation?.effectiveRate)}</div><div>Total <strong>{money(row.valuation?.totalValue)}</strong></div><div>Available {money(row.valuation?.availableValue)}</div></div>,
     },
     {
-      title: 'Available Qty',
-      dataIndex: 'availableQty',
-      width: 120,
-      sorter: (a, b) => (a.availableQty || 0) - (b.availableQty || 0),
-      render: (v, r) => {
-        const lvl = r.alertLevel;
-        const color = lvl === 'out_of_stock' ? '#dc2626' : lvl === 'critical' ? '#ea580c' : lvl === 'low_stock' ? '#d97706' : '#16a34a';
-        return <span className="font-bold text-base" style={{ color }}>{v ?? 0}</span>;
-      },
+      title: 'Procurement', width: 230,
+      render: (_, row) => <div className="text-xs space-y-1">{row.openRequisitions?.length ? row.openRequisitions.map(pr => <div key={`${pr._id}-${pr.itemId}`}><Button type="link" size="small" className="p-0 h-auto" onClick={() => navigate(`/sales-purchase/purchase-requisition?pr=${pr._id}`)}>{pr.prNumber}</Button> <Tag>{pr.status}</Tag> · {numberText(pr.requiredQty)}</div>) : <span className="text-gray-400">No open requisition</span>}{row.openPurchaseOrders?.map(po => <div key={`${po._id}-${po.itemId}`}><Tag color={['approved', 'sent', 'partial_received'].includes(po.status) ? 'green' : 'blue'}>{po.poNumber} · {po.status}</Tag> pending {numberText(po.pendingQty)}</div>)}</div>,
     },
+    { title: 'Last activity', width: 175, render: (_, row) => <div className="text-xs"><div>Movement: {dateTime(row.lastMovementAt)}</div><div>GRN: {dateTime(row.lastGRNAt)}</div><div className="text-gray-500">{row.lastReceipt?.supplierName || 'No supplier history'}</div></div> },
     {
-      title: 'Reserved',
-      dataIndex: 'reservedQty',
-      width: 90,
-      render: v => <span className="text-gray-500">{v ?? 0}</span>,
+      title: 'Actions', fixed: 'right', width: 135,
+      render: (_, row) => <Space direction="vertical" size={0}><Button type="link" size="small" icon={<EyeOutlined />} onClick={() => inspectRow(row)}>{row.buckets?.length === 1 ? 'Details' : 'Breakdown'}</Button><Button type="link" size="small" onClick={() => openStockDashboard(row)}>Stock Dashboard</Button></Space>,
     },
-    {
-      title: 'Reorder Level',
-      key: 'reorder',
-      width: 110,
-      render: () => <span className="text-xs text-gray-400">{lowThreshold} units</span>,
-    },
-    {
-      title: 'Size / Finish',
-      key: 'spec',
-      width: 130,
-      render: (_, r) => (
-        <span className="text-xs text-gray-500">
-          {[r.product?.tileSize, r.product?.finish].filter(Boolean).join(' · ') || '—'}
-        </span>
-      ),
-    },
-    {
-      title: 'Stock Value',
-      key: 'val',
-      width: 110,
-      render: (_, r) => {
-        const val = (r.availableQty || 0) * (r.purchaseRate || 0);
-        return <span className="text-sm">₹{val.toLocaleString()}</span>;
-      },
-    },
+  ], [navigate]);
+
+  const breakdownColumns = [
+    { title: 'Warehouse', render: (_, bucket) => bucket.warehouse?.name || '—' },
+    { title: 'Shade', dataIndex: 'shade', render: value => value || 'No shade' },
+    { title: 'Batch', dataIndex: 'batch', render: value => value || 'No batch' },
+    ...BUCKETS.map(bucket => ({ title: BUCKET_LABELS[bucket], dataIndex: ['quantities', bucket], width: 88, align: 'right', render: numberText })),
+    { title: 'Value', dataIndex: ['valuation', 'totalValue'], render: money },
+    { title: 'Actions', fixed: 'right', width: 145, render: (_, bucket) => <Space><Button type="link" size="small" disabled={!bucket.stockId} onClick={() => setSelectedStockId(bucket.stockId)}>Details</Button><Button type="link" size="small" onClick={() => openStockDashboard(breakdownRow, bucket)}>Dashboard</Button></Space> },
   ];
 
-  return (
-    <div>
-      {/* Header */}
-      <div className="flex justify-between items-center mb-5">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            <WarningOutlined className="text-orange-500 text-xl" />
-            Stock Alerts
-          </h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            Products below reorder level — requires restocking action
-          </p>
-        </div>
-        <Space>
-          <Button icon={<ShoppingCartOutlined />} onClick={() => setShowReorder(true)} type="primary" ghost>
-            Reorder Guidance
-          </Button>
-          <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>
-            Refresh
-          </Button>
-        </Space>
-      </div>
-
-      {/* Summary cards */}
-      <Row gutter={16} className="mb-5">
-        <Col span={8}>
-          <Card size="small" style={{ borderLeft: '4px solid #dc2626', cursor: 'pointer' }}
-            onClick={() => setAlertFilter('out_of_stock')}>
-            <Statistic
-              title={<span className="flex items-center gap-1"><WarningOutlined className="text-red-600" /> Out of Stock</span>}
-              value={summary.outOfStock}
-              valueStyle={{ color: '#dc2626', fontSize: 28 }}
-            />
-            <div className="text-xs text-gray-400 mt-1">Zero available qty</div>
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small" style={{ borderLeft: '4px solid #ea580c', cursor: 'pointer' }}
-            onClick={() => setAlertFilter('critical')}>
-            <Statistic
-              title={<span className="flex items-center gap-1"><FallOutlined className="text-orange-600" /> Critical</span>}
-              value={summary.critical}
-              valueStyle={{ color: '#ea580c', fontSize: 28 }}
-            />
-            <div className="text-xs text-gray-400 mt-1">Below {Math.floor(lowThreshold / 2)} units</div>
-          </Card>
-        </Col>
-        <Col span={8}>
-          <Card size="small" style={{ borderLeft: '4px solid #d97706', cursor: 'pointer' }}
-            onClick={() => setAlertFilter('low_stock')}>
-            <Statistic
-              title={<span className="flex items-center gap-1"><ShopOutlined className="text-yellow-600" /> Low Stock</span>}
-              value={summary.lowStock}
-              valueStyle={{ color: '#d97706', fontSize: 28 }}
-            />
-            <div className="text-xs text-gray-400 mt-1">Below {lowThreshold} units</div>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">
-        <div className="flex flex-wrap gap-3 items-end">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Search Product</label>
-            <Input
-              placeholder="Name or code…"
-              prefix={<SearchOutlined />}
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-52"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Alert Level</label>
-            <Select
-              value={alertFilter}
-              onChange={setAlertFilter}
-              className="w-40"
-              options={[
-                { value: 'all',          label: 'All Alerts' },
-                { value: 'out_of_stock', label: 'Out of Stock' },
-                { value: 'critical',     label: 'Critical' },
-                { value: 'low_stock',    label: 'Low Stock' },
-              ]}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Warehouse</label>
-            <Select
-              placeholder="All warehouses"
-              allowClear
-              value={warehouseFilter}
-              onChange={setWarehouseFilter}
-              className="w-44"
-              options={warehouses.map(w => ({ value: w._id, label: w.name }))}
-            />
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Reorder Level (units)</label>
-            <Input
-              type="number"
-              value={lowThreshold}
-              onChange={e => setLowThreshold(parseInt(e.target.value) || 10)}
-              className="w-28"
-              min={1}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Alert banner if critical items exist */}
-      {summary.outOfStock > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 flex items-center gap-2 text-sm text-red-700">
-          <WarningOutlined />
-          <strong>{summary.outOfStock} product(s) are completely out of stock.</strong>
-          &nbsp;Raise a purchase requisition and complete supplier quotation selection before creating a PO.
-          <Button size="small" type="primary" danger icon={<ShoppingCartOutlined />} className="ml-auto"
-            onClick={() => setShowReorder(true)}>
-            View Reorder Guidance
-          </Button>
-        </div>
-      )}
-
-      {/* Table */}
-      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-        <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
-          <span className="text-sm font-medium text-gray-600">
-            {filtered.length} item{filtered.length !== 1 ? 's' : ''} shown
-          </span>
-          {alertFilter !== 'all' && (
-            <Button size="small" type="link" onClick={() => setAlertFilter('all')}>
-              Show all alerts
-            </Button>
-          )}
-        </div>
-        <Table
-          columns={columns}
-          dataSource={filtered}
-          rowKey={r => `${r._id}-${r.shade}-${r.batch}`}
-          loading={loading}
-          size="small"
-          pagination={{ pageSize: 30, showSizeChanger: false }}
-          rowClassName={r =>
-            r.alertLevel === 'out_of_stock' ? 'bg-red-50' :
-            r.alertLevel === 'critical'     ? 'bg-orange-50' : ''
-          }
-          locale={{
-            emptyText: loading ? 'Loading…' : 'No stock alerts — all products are adequately stocked!',
-          }}
-        />
-      </div>
-
-      {/* Reorder Suggestions Modal */}
-      <ReorderSuggestionsModal
-        open={showReorder}
-        onClose={() => setShowReorder(false)}
-        warehouse={warehouseFilter}
-        warehouses={warehouses}
-      />
+  return <div>
+    <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center gap-3 mb-5">
+      <div><h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><WarningOutlined className="text-orange-500 text-xl" />Stock Alerts</h1><p className="text-sm text-gray-500 mt-0.5">Server-authoritative product alerts using effective product or branch thresholds</p></div>
+      <Space wrap><Button icon={<ShoppingCartOutlined />} onClick={() => setShowReorder(true)} type="primary" ghost>Reorder Guidance</Button><Button icon={<ClearOutlined />} onClick={clearFilters}>Clear</Button><Button icon={<ReloadOutlined />} onClick={loadAlerts} loading={loading}>Refresh</Button></Space>
     </div>
-  );
+
+    <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2 mb-4">
+      {[
+        ['Out of Stock', summary.outOfStock, '#dc2626', 'out_of_stock'],
+        ['Critical', summary.critical, '#ea580c', 'critical'],
+        ['Low Stock', summary.lowStock, '#d97706', 'low_stock'],
+        ['Adequate', summary.adequate, '#16a34a', 'adequate'],
+        ['Total Deficit', numberText(summary.totalDeficit), '#2563eb'],
+        ['Stock Value', money(summary.totalValue), '#0f766e'],
+        ['Open Reorders', summary.openReorderCount, '#7c3aed'],
+      ].map(([label, value, color, severity]) => <Card key={label} size="small" className={severity ? 'cursor-pointer' : ''} onClick={() => severity && updateFilters({ severity: [severity], includeAdequate: severity === 'adequate' })}><Statistic title={<span className="text-xs">{label}</span>} value={value || 0} valueStyle={{ color, fontSize: 19 }} /></Card>)}
+    </div>
+
+    {summary.configurationWarnings?.total > 0 && <Alert className="mb-4" showIcon type="warning" message={`${summary.configurationWarnings.products} product(s) have configuration or integrity warnings`} description={<Space wrap>{Object.entries(summary.configurationWarnings.byCode || {}).map(([warning, count]) => <Tag key={warning} color={warning === 'negative_available_stock' ? 'red' : 'gold'}>{WARNING_LABELS[warning] || warning}: {count}</Tag>)}</Space>} />}
+    {error && <Alert className="mb-4" type="error" showIcon message="Stock alerts could not be loaded" description={error} action={<Button size="small" onClick={loadAlerts}>Retry</Button>} />}
+
+    <Card size="small" className="mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+        <Input prefix={<SearchOutlined />} placeholder="Search product name or code" allowClear value={search} onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }} />
+        <Select mode="multiple" maxTagCount="responsive" placeholder="All alert severities" allowClear value={filters.severity} onChange={value => updateFilters({ severity: value })} options={Object.entries(ALERT_LEVELS).map(([value, item]) => ({ value, label: item.label }))} />
+        <Select placeholder="All warehouses" allowClear value={filters.warehouse} onChange={value => updateFilters({ warehouse: value })} options={(filterOptions.warehouses || []).filter(item => item.status === 'active').map(item => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="All brands" allowClear showSearch optionFilterProp="label" value={filters.brand} onChange={value => updateFilters({ brand: value, category: undefined })} options={brands.map(item => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="All categories" allowClear disabled={!filters.brand} showSearch optionFilterProp="label" value={filters.category} onChange={value => updateFilters({ category: value })} options={categories.map(item => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="Any threshold source" allowClear value={filters.reorderSource} onChange={value => updateFilters({ reorderSource: value })} options={[{ value: 'product', label: 'Product reorder level' }, { value: 'branch_fallback', label: 'Branch reorder fallback' }]} />
+        <Select placeholder="Any PR state" allowClear value={filters.hasOpenRequisition} onChange={value => updateFilters({ hasOpenRequisition: value })} options={[{ value: true, label: 'Has open requisition' }, { value: false, label: 'No open requisition' }]} />
+        <Select value={filters.sortBy} onChange={value => updateFilters({ sortBy: value })} options={SORT_OPTIONS} />
+        <Select value={filters.sortOrder} onChange={value => updateFilters({ sortOrder: value })} options={[{ value: 'asc', label: 'Ascending' }, { value: 'desc', label: 'Descending' }]} />
+        <Checkbox checked={filters.includeAdequate} onChange={event => updateFilters({ includeAdequate: event.target.checked })}>Include adequate stock</Checkbox>
+      </div>
+      <div className="text-xs text-gray-500 mt-3">Branch fallbacks: minimum {numberText(scope.fallbackMinStockLevel)} · reorder {numberText(scope.fallbackReorderLevel)} · minimum reorder quantity {numberText(scope.minimumReorderQuantity)}</div>
+    </Card>
+
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <Table rowKey={row => `${row.product}-${row.warehouse?._id || 'branch'}`} columns={columns} dataSource={rows} loading={loading} size="small" scroll={{ x: 2450 }} rowClassName={row => row.severity === 'out_of_stock' ? 'bg-red-50' : row.severity === 'critical' ? 'bg-orange-50' : ''} locale={{ emptyText: loading ? 'Loading…' : <Empty description="No products match the selected alert filters." /> }} pagination={{ ...pagination, showSizeChanger: true, pageSizeOptions: [10, 20, 50, 100, 200], showTotal: total => `${total} alert products` }} onChange={next => setPagination(current => ({ ...current, current: next.current || 1, pageSize: next.pageSize || current.pageSize }))} />
+    </div>
+
+    <Modal title={breakdownRow ? `${breakdownRow.productName} — exact stock buckets` : 'Stock bucket breakdown'} open={Boolean(breakdownRow)} onCancel={() => setBreakdownRow(null)} footer={<Button onClick={() => setBreakdownRow(null)}>Close</Button>} width="min(1280px, 96vw)" destroyOnHidden>
+      {breakdownRow?.buckets?.length ? <Table rowKey={bucket => bucket.stockId} size="small" columns={breakdownColumns} dataSource={breakdownRow.buckets} pagination={false} scroll={{ x: 1300 }} /> : <Alert type="info" showIcon message="No Stock rows exist for this active product" description="It is correctly shown as zero stock. Open Stock Dashboard after choosing a warehouse when stock is received." />}
+    </Modal>
+
+    <StockDetailDrawer open={Boolean(selectedStockId)} stockId={selectedStockId} onClose={() => setSelectedStockId(null)} filterOptions={filterOptions} />
+    <ReorderSuggestionsModal open={showReorder} onClose={() => setShowReorder(false)} warehouse={filters.warehouse} warehouses={(filterOptions.warehouses || []).filter(item => item.status === 'active')} />
+  </div>;
 };
 
-// ═══════════════════════════════════════════════
-// REORDER SUGGESTIONS MODAL
-// ═══════════════════════════════════════════════
 const ReorderSuggestionsModal = ({ open, onClose, warehouse, warehouses }) => {
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
@@ -347,123 +283,81 @@ const ReorderSuggestionsModal = ({ open, onClose, warehouse, warehouses }) => {
   const [selected, setSelected] = useState([]);
   const [quantities, setQuantities] = useState({});
   const [receivingWarehouse, setReceivingWarehouse] = useState(warehouse || undefined);
+  const requestSequence = useRef(0);
 
-  useEffect(() => {
-    if (open) {
-      setReceivingWarehouse(warehouse || undefined);
-      fetchSuggestions();
-    }
-  }, [open, warehouse]);
-
-  const fetchSuggestions = async (scopeWarehouse = warehouse) => {
+  const fetchSuggestions = useCallback(async scopeWarehouse => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     try {
-      const res = await purchaseService.getReorderSuggestions({ warehouse: scopeWarehouse || undefined });
-      if (res.success) {
-        const rows = res.data || [];
-        setSuggestions(rows);
-        setSummary(res.summary || {});
+      const response = await purchaseService.getReorderSuggestions({ warehouse: scopeWarehouse || undefined });
+      if (requestId !== requestSequence.current) return;
+      if (response.success) {
+        const data = response.data || [];
+        setSuggestions(data);
+        setSummary(response.summary || {});
         setSelected([]);
-        setQuantities(Object.fromEntries(rows.map(row => [row.product, Number(row.suggestedQty || 1)])));
+        setQuantities(Object.fromEntries(data.map(row => [String(row.product), Number(row.netSuggestedQty || row.suggestedQty || 1)])));
       }
-    } catch (err) { message.error(err.message); }
-    finally { setLoading(false); }
-  };
+    } catch (error) {
+      if (requestId === requestSequence.current) message.error(error.message || 'Unable to load reorder guidance');
+    } finally {
+      if (requestId === requestSequence.current) setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) { requestSequence.current += 1; return; }
+    const initialWarehouse = warehouse || undefined;
+    setReceivingWarehouse(initialWarehouse);
+    fetchSuggestions(initialWarehouse);
+  }, [fetchSuggestions, open, warehouse]);
 
   const createRequisition = async () => {
     if (!canManage) return;
     if (!receivingWarehouse) return message.error('Select the receiving warehouse');
-    const rows = suggestions.filter(row => selected.includes(String(row.product)));
-    if (!rows.length) return message.error('Select at least one suggestion');
-    if (rows.some(row => !(Number(quantities[row.product]) > 0))) return message.error('Every selected quantity must be positive');
+    const selectedRows = suggestions.filter(row => selected.includes(String(row.product)));
+    if (!selectedRows.length) return message.error('Select at least one suggestion');
+    if (selectedRows.some(row => row.hasOpenRequisition)) return message.error('A selected product already has an open purchase requisition');
+    if (selectedRows.some(row => !(Number(quantities[row.product]) > 0))) return message.error('Every selected quantity must be positive');
     setCreating(true);
     try {
-      const res = await purchaseService.createPurchaseRequisition({
-        source: 'reorder_suggestion',
-        department: 'Inventory',
-        warehouse: receivingWarehouse,
-        priority: rows.some(row => row.urgency === 'critical') ? 'urgent' : 'high',
-        remarks: `Created from ${warehouse ? 'warehouse-scoped' : 'branch-scoped'} stock suggestions`,
-        items: rows.map(row => ({
-          product: row.product,
-          requiredQty: Number(quantities[row.product]),
-          currentStock: row.currentStock,
-          provenance: row.provenance,
-        })),
+      const response = await purchaseService.createPurchaseRequisition({
+        source: 'reorder_suggestion', department: 'Inventory', warehouse: receivingWarehouse,
+        priority: selectedRows.some(row => row.urgency === 'critical') ? 'urgent' : 'high',
+        remarks: `Created from ${warehouse ? 'warehouse-scoped' : 'branch-scoped'} canonical stock alerts`,
+        items: selectedRows.map(row => ({ product: row.product, requiredQty: Number(quantities[row.product]), currentStock: row.currentStock, provenance: row.provenance })),
       });
-      if (res.success) {
-        message.success(`${res.data.prNumber} created as a draft requisition`);
+      if (response.success) {
+        message.success(`${response.data.prNumber} created as a draft requisition`);
         onClose();
-        navigate(`/sales-purchase/purchase-requisition?pr=${res.data._id}`, { state: { openPurchaseRequisitionId: res.data._id } });
+        navigate(`/sales-purchase/purchase-requisition?pr=${response.data._id}`, { state: { openPurchaseRequisitionId: response.data._id } });
       }
-    } catch (err) { message.error(err.message || 'Unable to create purchase requisition'); }
+    } catch (error) { message.error(error.message || 'Unable to create purchase requisition'); }
     finally { setCreating(false); }
   };
 
-  const URGENCY_COLORS = { critical: 'red', high: 'orange', medium: 'blue' };
-
-  return (
-    <Modal title="Reorder Suggestions" open={open} onCancel={onClose} width={1050}
-      footer={[
-        <Button key="close" onClick={onClose}>Close</Button>,
-        canManage && <Button key="create" type="primary" loading={creating} disabled={!selected.length || !receivingWarehouse} onClick={createRequisition}>Create Purchase Requisition</Button>,
-      ].filter(Boolean)}>
-      <div className="space-y-4 mt-3">
-        {/* Summary */}
-        <Row gutter={12}>
-          <Col span={6}><Card size="small"><Statistic title="Total Suggestions" value={summary.total || 0} /></Card></Col>
-          <Col span={6}><Card size="small"><Statistic title="Critical (Zero Stock)" value={summary.critical || 0} valueStyle={{ color: '#dc2626' }} /></Card></Col>
-          <Col span={6}><Card size="small"><Statistic title="High Priority" value={summary.high || 0} valueStyle={{ color: '#ea580c' }} /></Card></Col>
-          <Col span={6}><Card size="small"><Statistic title="Medium" value={summary.medium || 0} valueStyle={{ color: '#1890ff' }} /></Card></Col>
-        </Row>
-
-        <Alert
-          type={canManage ? 'info' : 'warning'}
-          showIcon
-          message={canManage ? 'Create a draft requisition; a PO still requires two supplier offers and final quotation selection.' : 'Reorder guidance only'}
-          description={canManage ? 'Select products, adjust requested quantities, and choose the receiving warehouse. Current stock and provenance are recomputed by the server.' : 'You need Purchase Order Management permission to raise a requisition. Share this guidance with an authorized purchase user.'}
-        />
-
-        {canManage && <div className="flex items-center gap-3">
-          <label className="text-xs text-gray-500">Receiving warehouse *</label>
-          <Select className="w-64" placeholder="Select warehouse" value={receivingWarehouse} onChange={value => { setReceivingWarehouse(value); fetchSuggestions(value); }}
-            options={warehouses.map(item => ({ value: item._id, label: item.name }))} />
-          <span className="text-xs text-gray-400">Suggestions are {warehouse ? 'filtered to the selected warehouse' : 'branch-wide'}.</span>
-        </div>}
-
-        {/* Items table */}
-        <div className="max-h-80 overflow-y-auto border border-gray-200 rounded-lg">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 sticky top-0">
-              <tr>{[canManage ? 'Select' : '', 'Product', 'Warehouse', 'Current', 'Reorder / Min', 'Requested Qty', 'Last Supplier / Rate', 'Urgency'].map((h, index) => <th key={`${h}-${index}`} className="px-2 py-2 text-left font-semibold text-gray-600">{h}</th>)}</tr>
-            </thead>
-            <tbody>
-              {suggestions.map(s => (
-                <tr key={s.product} className={`border-t border-gray-100 ${s.isZeroStock ? 'bg-red-50' : ''}`}>
-                  <td className="px-2 py-2">{canManage && <Checkbox checked={selected.includes(String(s.product))} onChange={event => setSelected(keys => event.target.checked ? [...keys, String(s.product)] : keys.filter(key => key !== String(s.product)))} />}</td>
-                  <td className="px-2 py-2">
-                    <div className="flex items-center gap-1.5">
-                      <ProductImage src={s.productImage} size="xs" />
-                      <div><div className="font-medium">{s.productName}</div><div className="text-[9px] text-gray-400">{s.productCode} · {s.brand} · {s.tileSize}</div></div>
-                    </div>
-                  </td>
-                  <td className="px-2 py-2">{s.warehouseName || 'All branch warehouses'}</td>
-                  <td className="px-2 py-2"><span className={`font-bold ${s.isZeroStock ? 'text-red-600' : 'text-orange-600'}`}>{s.currentStock}</span></td>
-                  <td className="px-2 py-2"><div>{s.reorderLevel}</div><div className="text-[9px] text-gray-400">Min {s.minimumStockLevel || 'fallback'} · {s.reorderLevelSource === 'branch_fallback' ? 'configured fallback' : 'product'}</div></td>
-                  <td className="px-2 py-2">{canManage ? <InputNumber size="small" min={0.0001} value={quantities[s.product]} onChange={value => setQuantities(current => ({ ...current, [s.product]: value }))} /> : <span className="font-medium text-blue-600">{s.suggestedQty}</span>}</td>
-                  <td className="px-2 py-2"><div>{s.suggestedSupplierName}</div><div className="text-[9px] text-gray-400">₹{s.lastPurchaseRate}</div></td>
-                  <td className="px-2 py-2"><Tag color={URGENCY_COLORS[s.urgency]} className="text-[9px]">{s.urgency}</Tag></td>
-                </tr>
-              ))}
-              {suggestions.length === 0 && !loading && (
-                <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No reorder suggestions. All products are adequately stocked.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </Modal>
-  );
+  return <Modal title="Reorder Guidance" open={open} onCancel={onClose} width="min(1180px, 96vw)" destroyOnHidden footer={[<Button key="close" onClick={onClose}>Close</Button>, canManage && <Button key="create" type="primary" loading={creating} disabled={!selected.length || !receivingWarehouse} onClick={createRequisition}>Create Draft Purchase Requisition</Button>].filter(Boolean)}>
+    <div className="space-y-4 mt-3">
+      <Row gutter={[12, 12]}>{[['Suggestions', summary.total], ['Out of stock', summary.critical], ['Critical', summary.high], ['Low stock', summary.medium]].map(([label, value], index) => <Col xs={12} md={6} key={label}><Card size="small"><Statistic title={label} value={value || 0} valueStyle={index ? { color: index === 1 ? '#dc2626' : '#ea580c' } : {}} /></Card></Col>)}</Row>
+      <Alert type={canManage ? 'info' : 'warning'} showIcon message={canManage ? 'Draft requisitions remain subject to the procurement approval workflow.' : 'Reorder guidance only'} description={canManage ? 'Select a receiving warehouse. Products with an open requisition are locked to prevent duplicate PRs.' : 'Purchase Order Management permission is required to raise a requisition.'} />
+      {canManage && <div className="flex flex-col sm:flex-row sm:items-center gap-2"><label className="text-xs text-gray-500">Receiving warehouse *</label><Select className="w-full sm:w-72" placeholder="Select warehouse" value={receivingWarehouse} onChange={value => { setReceivingWarehouse(value); fetchSuggestions(value); }} options={warehouses.map(item => ({ value: item._id, label: item.name }))} /></div>}
+      <Table
+        rowKey={row => String(row.product)} size="small" loading={loading} dataSource={suggestions} scroll={{ x: 1250 }} pagination={{ pageSize: 25, showSizeChanger: false }}
+        rowSelection={canManage ? { selectedRowKeys: selected, onChange: keys => setSelected(keys.map(String)), getCheckboxProps: row => ({ disabled: row.hasOpenRequisition || Number(row.netSuggestedQty) <= 0, name: row.productName }) } : undefined}
+        columns={[
+          { title: 'Product', width: 230, render: (_, row) => <div className="flex gap-2"><ProductImage src={row.productImage} size="xs" /><div><div className="font-medium">{row.productName}</div><div className="text-xs text-gray-400">{row.productCode} · {row.brand} · {row.tileSize}</div></div></div> },
+          { title: 'Current', dataIndex: 'currentStock', width: 90, align: 'right', render: value => <strong>{numberText(value)}</strong> },
+          { title: 'Thresholds', width: 175, render: (_, row) => <div className="text-xs">Reorder {numberText(row.reorderLevel)}<br />Min {numberText(row.minimumStockLevel)} · {row.reorderLevelSource === 'product' ? 'product' : 'branch fallback'}</div> },
+          { title: 'Deficit', dataIndex: 'deficit', width: 90, align: 'right', render: numberText },
+          { title: 'Suggested', width: 135, render: (_, row) => canManage ? <InputNumber size="small" min={0.0001} disabled={row.hasOpenRequisition || Number(row.netSuggestedQty) <= 0} value={quantities[row.product]} onChange={value => setQuantities(current => ({ ...current, [row.product]: value }))} /> : numberText(row.suggestedQty) },
+          { title: 'Supplier / Rate', width: 190, render: (_, row) => <div className="text-xs"><div>{row.suggestedSupplierName}</div><div className="text-gray-500">{money(row.lastPurchaseRate)} · {dateTime(row.lastReceiptAt)}</div></div> },
+          { title: 'Open procurement', width: 250, render: (_, row) => row.openRequisitions?.length ? row.openRequisitions.map(pr => <div key={pr._id}><Button type="link" size="small" className="p-0" onClick={() => navigate(`/sales-purchase/purchase-requisition?pr=${pr._id}`)}>{pr.prNumber}</Button><Tag>{pr.status}</Tag> {numberText(pr.requiredQty)}</div>) : row.openPurchaseOrders?.length ? row.openPurchaseOrders.map(po => <Tag key={po._id} color="blue">{po.poNumber} · {po.status}</Tag>) : <span className="text-gray-400">None</span> },
+          { title: 'Urgency', dataIndex: 'urgency', width: 90, render: value => <Tag color={{ critical: 'red', high: 'orange', medium: 'blue' }[value]}>{value}</Tag> },
+        ]}
+        locale={{ emptyText: <Empty description="All active products are adequately stocked." /> }}
+      />
+    </div>
+  </Modal>;
 };
 
 export default StockAlerts;

@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Steps, Checkbox } from 'antd';
 import { SearchOutlined, ReloadOutlined, EyeOutlined, UserOutlined, UsergroupAddOutlined, PlusOutlined, PlayCircleOutlined, CheckCircleOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
-import salesService from '../../services/salesService.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
 const STATUS_COLORS = {
@@ -28,6 +27,7 @@ const PickingListPage = () => {
   // Generate pick list (from a confirmed/approved sales order)
   const [generateOpen, setGenerateOpen] = useState(false);
   const [orderOptions, setOrderOptions] = useState([]);
+  const [orderDetails, setOrderDetails] = useState([]);
   const [orderSearch, setOrderSearch] = useState('');
   const [selectedOrderId, setSelectedOrderId] = useState(undefined);
   const [generating, setGenerating] = useState(false);
@@ -67,14 +67,19 @@ const PickingListPage = () => {
   };
 
   // ── Generate Pick List from a sales order ──────────────────────────────────
+  // Pick-list-aware eligibility, not a plain sales-order list: this only returns
+  // orders in the current branch that still have reserved-but-unallocated stock
+  // left on at least one line, so nothing shown here can fail at submit time
+  // because it was already fully picked or belongs to a different branch.
   const fetchGeneratableOrders = useCallback(async (searchText = '') => {
     try {
-      // Confirmed/approved orders with reserved stock can be turned into pick lists.
-      const res = await salesService.getOrders({ status: 'confirmed,approved', search: searchText, limit: 50 });
+      const res = await api.get('/pick-lists/generatable-orders', { params: { search: searchText, limit: 50 } });
       if (res.success) {
-        setOrderOptions((res.data || []).map(o => ({
+        const orders = res.data || [];
+        setOrderDetails(orders);
+        setOrderOptions(orders.map(o => ({
           value: o._id,
-          label: `${o.orderNumber} — ${o.dealerName || o.customerName || 'Dealer'} (${o.status})`,
+          label: `${o.orderNumber} — ${o.dealerName || 'Dealer'} (${o.status}) · ${o.itemCount} item${o.itemCount === 1 ? '' : 's'}`,
         })));
       }
     } catch (err) { message.error(err.message); }
@@ -83,9 +88,12 @@ const PickingListPage = () => {
   const openGenerate = () => {
     setSelectedOrderId(undefined);
     setOrderSearch('');
+    setOrderDetails([]);
     setGenerateOpen(true);
     fetchGeneratableOrders('');
   };
+
+  const selectedOrderDetail = orderDetails.find(o => o._id === selectedOrderId);
 
   const submitGenerate = async () => {
     if (!selectedOrderId) return message.error('Select a sales order to generate a pick list.');
@@ -241,10 +249,13 @@ const PickingListPage = () => {
           <h1 className="text-2xl font-bold text-gray-800">Picking List</h1>
           <p className="text-sm text-gray-500 mt-0.5">Assign, pick and verify reserved stock before handing it to sorting</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={openGenerate}
-          style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-          Generate Pick List
-        </Button>
+        <Space>
+          <Button icon={<ReloadOutlined />} onClick={() => { fetchPickLists(); loadStats(); }} loading={loading}>Refresh</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openGenerate}
+            style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+            Generate Pick List
+          </Button>
+        </Space>
       </div>
 
       <Row gutter={12} className="mb-4">
@@ -262,7 +273,8 @@ const PickingListPage = () => {
             value={search} onChange={event => { setSearch(event.target.value); setPagination(current => ({ ...current, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" value={statusFilter} onChange={setStatusFilter} allowClear className="w-40"
             options={Object.keys(STATUS_COLORS).map(status => ({ value: status, label: status.replace(/_/g, ' ') }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchPickLists(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -335,10 +347,12 @@ const PickingListPage = () => {
         onOk={submitGenerate}
         confirmLoading={generating}
         okText="Generate"
+        width={960}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
       >
         <p className="text-sm text-gray-500 mb-3">
           Pick a confirmed or approved sales order with reserved stock. A pick list will be generated from its reservation.
+          {orderOptions.length >= 50 && ' Showing the first 50 matches — refine your search to narrow it down.'}
         </p>
         <Select
           showSearch
@@ -350,17 +364,68 @@ const PickingListPage = () => {
           onChange={setSelectedOrderId}
           options={orderOptions}
           notFoundContent={orderSearch ? 'No matching orders' : 'Type to search'}
+          listHeight={420}
+          optionRender={(option) => (
+            <div className="py-0.5 text-sm">{option.label}</div>
+          )}
         />
+
+        {selectedOrderDetail && (
+          <div className="mt-4 rounded-md border border-gray-200 p-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <span className="font-medium">{selectedOrderDetail.orderNumber}</span>
+                {' — '}
+                <span>{selectedOrderDetail.dealerName || 'Dealer'}</span>
+                {selectedOrderDetail.dealerCode && <span className="text-gray-500"> ({selectedOrderDetail.dealerCode})</span>}
+              </div>
+              <Space size="small">
+                <Tag>{selectedOrderDetail.status}</Tag>
+                {selectedOrderDetail.orderDate && (
+                  <span className="text-xs text-gray-500">{new Date(selectedOrderDetail.orderDate).toLocaleDateString()}</span>
+                )}
+              </Space>
+            </div>
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-gray-500">
+                    <th className="py-1 pr-2">Product</th>
+                    <th className="py-1 pr-2">Code</th>
+                    <th className="py-1 pr-2 text-right">Ordered</th>
+                    <th className="py-1 pr-2 text-right">Pending pick</th>
+                    <th className="py-1">Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(selectedOrderDetail.items || []).map((item, idx) => (
+                    <tr key={idx} className="border-b border-gray-100 last:border-0">
+                      <td className="py-1 pr-2">{item.productName || '—'}</td>
+                      <td className="py-1 pr-2 text-gray-500">{item.productCode || '—'}</td>
+                      <td className="py-1 pr-2 text-right">{item.quantity}</td>
+                      <td className="py-1 pr-2 text-right font-medium text-orange-600">{item.pendingQuantity}</td>
+                      <td className="py-1">{item.unit || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2 text-right text-xs text-gray-500">
+              {selectedOrderDetail.itemCount} item{selectedOrderDetail.itemCount === 1 ? '' : 's'} to pick
+              {selectedOrderDetail.grandTotal ? ` · Order total ₹${Number(selectedOrderDetail.grandTotal).toLocaleString('en-IN')}` : ''}
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Assign a pick list to a staff member */}
-      <Modal
-        open={!!assignRecord}
+      <Modal open={!!assignRecord}
         title={assignRecord ? `Assign ${assignRecord.pickListNumber}` : 'Assign'}
         onCancel={() => setAssignRecord(null)}
         onOk={submitAssign}
         confirmLoading={assigning}
         okText="Assign"
+        width={640}
       >
         <p className="text-sm text-gray-500 mb-3">Assign this pick list to a warehouse staff member.</p>
         <Select

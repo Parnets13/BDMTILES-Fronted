@@ -60,13 +60,14 @@ const DocumentManagementPage = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search title, file, linked..." prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Category" value={categoryFilter} onChange={v => setCategoryFilter(v)} allowClear className="w-32" options={Object.keys(CATEGORY_COLORS).map(c => ({ value: c, label: c }))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setCategoryFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setCategoryFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchDocuments(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={documents} rowKey="_id" loading={loading} size="middle" pagination={{ ...pagination, showSizeChanger: true, showTotal: (t, r) => `${r[0]}-${r[1]} of ${t}` }} onChange={pag => setPagination(p => ({ ...p, current: pag.current, pageSize: pag.pageSize }))} />
       </div>
-      <Modal title="Upload Document" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={600}>
+      <Modal title="Upload Document" open={showCreate} onCancel={() => setShowCreate(false)} footer={null} destroyOnHidden width={800}>
         <UploadDocForm onSuccess={() => { setShowCreate(false); fetchDocuments(); loadStats(); }} onCancel={() => setShowCreate(false)} />
       </Modal>
     </div>

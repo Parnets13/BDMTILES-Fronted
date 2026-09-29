@@ -140,18 +140,39 @@ const SELeadApp = () => {
         </div>
       </div>
 
-      <section className="mb-5">
-        <h2 className="text-sm font-semibold text-orange-700 mb-2">Pending acceptance ({inbox.pendingAcceptance?.length || 0})</h2>
+      <section className="mb-6">
+        <h2 className="text-xs font-bold uppercase tracking-wider text-amber-700 mb-2.5 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+          Pending Acceptance ({inbox.pendingAcceptance?.length || 0})
+        </h2>
         <div className="grid sm:grid-cols-2 gap-3">
           {(inbox.pendingAcceptance || []).map((lead) => (
-            <Card key={lead._id} size="small" className="border-orange-300" onClick={() => loadDetail(lead._id)}>
-              <div className="flex justify-between"><strong>{lead.name}</strong><Tag color="orange">{lead.priority}</Tag></div>
-              <div className="text-xs text-gray-500">{lead.leadNumber} · {lead.phone} · {lead.city || 'No city'}</div>
-              {lead.acceptanceDeadlineAt && <div className="text-xs text-red-600 mt-1">Respond by {dayjs(lead.acceptanceDeadlineAt).format('DD MMM, hh:mm A')}</div>}
-              {canRespond && <div className="flex gap-2 mt-3" onClick={(event) => event.stopPropagation()}>
-                <Button type="primary" size="small" onClick={() => respond(lead, true)}>Accept</Button>
-                <Button danger size="small" onClick={() => setDeclineLead(lead)}>Decline</Button>
-              </div>}
+            <Card
+              key={lead._id}
+              size="small"
+              className="border-amber-300/80 bg-amber-50/30 hover:border-amber-400 transition-all rounded-xl shadow-xs cursor-pointer"
+              onClick={() => loadDetail(lead._id)}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-900 truncate">{lead.name}</span>
+                <Tag color="gold" className="text-[10px] font-semibold uppercase px-1.5 py-0 border-0 rounded-full">{lead.priority}</Tag>
+              </div>
+              <div className="text-[11px] text-gray-500 mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                <span>{lead.leadNumber}</span>
+                {lead.phone && <span>· {lead.phone}</span>}
+                {lead.city && <span>· {lead.city}</span>}
+              </div>
+              {lead.acceptanceDeadlineAt && (
+                <div className="text-[11px] font-medium text-amber-800 mt-1.5 bg-amber-100/60 px-2 py-0.5 rounded-md inline-block">
+                  Respond by {dayjs(lead.acceptanceDeadlineAt).format('DD MMM, hh:mm A')}
+                </div>
+              )}
+              {canRespond && (
+                <div className="flex gap-2 mt-3 pt-2 border-t border-amber-200/60" onClick={(event) => event.stopPropagation()}>
+                  <Button type="primary" size="small" className="text-xs h-7 px-3 bg-emerald-600 hover:bg-emerald-500 border-0 rounded-lg" onClick={() => respond(lead, true)}>Accept</Button>
+                  <Button danger size="small" className="text-xs h-7 px-3 rounded-lg" onClick={() => setDeclineLead(lead)}>Decline</Button>
+                </div>
+              )}
             </Card>
           ))}
           {!inbox.pendingAcceptance?.length && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No pending leads" />}
@@ -159,18 +180,41 @@ const SELeadApp = () => {
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold text-gray-700 mb-2">Active leads</h2>
+        <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2.5 flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-blue-500" />
+          Active Leads ({inbox.active?.length || 0})
+        </h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {(inbox.active || []).map((lead) => (
-            <Card key={lead._id} size="small" onClick={() => loadDetail(lead._id)} className="cursor-pointer">
-              <div className="flex justify-between"><strong>{lead.name}</strong><Tag color={lead.priority === 'hot' ? 'red' : 'blue'}>{lead.priority}</Tag></div>
-              <div className="text-xs text-gray-500">{lead.leadNumber} · {lead.status?.replaceAll('_', ' ')}</div>
-              <div className="flex gap-1 mt-3" onClick={(event) => event.stopPropagation()}>
-                <Button size="small" icon={<PhoneOutlined />} href={`tel:${lead.phone}`} />
-                <Button size="small" icon={<WhatsAppOutlined />} href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`} target="_blank" />
-                <Button size="small" icon={<EnvironmentOutlined />} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.city || lead.name)}`} target="_blank" />
-                {canFollowup && <Button size="small" onClick={() => setFollowupLead(lead)}>Follow-up</Button>}
-                {canFollowup && <Button size="small" onClick={() => setVisitLead(lead)}>Visit</Button>}
+            <Card
+              key={lead._id}
+              size="small"
+              onClick={() => loadDetail(lead._id)}
+              className="cursor-pointer border-gray-200/90 hover:border-blue-400/80 transition-all rounded-xl shadow-xs"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-900 truncate">{lead.name}</span>
+                <Tag color={lead.priority === 'hot' ? 'red' : lead.priority === 'high' ? 'orange' : 'blue'} className="text-[10px] font-semibold uppercase px-1.5 py-0 border-0 rounded-full">
+                  {lead.priority}
+                </Tag>
+              </div>
+              <div className="text-[11px] text-gray-500 mt-1 flex items-center justify-between">
+                <span>{lead.leadNumber}</span>
+                <Tag className="text-[10px] uppercase font-medium bg-gray-100 text-gray-600 border-0 rounded-md m-0">
+                  {lead.status?.replaceAll('_', ' ')}
+                </Tag>
+              </div>
+              {lead.nextFollowupDate && (
+                <div className="text-[10.5px] text-blue-600 mt-1.5 flex items-center gap-1">
+                  <span>📅 Next follow-up {dayjs(lead.nextFollowupDate).format('DD MMM')}</span>
+                </div>
+              )}
+              <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-gray-100" onClick={(event) => event.stopPropagation()}>
+                <Button size="small" className="h-7 text-xs rounded-lg" icon={<PhoneOutlined />} href={`tel:${lead.phone}`} />
+                <Button size="small" className="h-7 text-xs rounded-lg text-emerald-600 border-emerald-200" icon={<WhatsAppOutlined />} href={`https://wa.me/${String(lead.phone).replace(/\D/g, '')}`} target="_blank" />
+                <Button size="small" className="h-7 text-xs rounded-lg" icon={<EnvironmentOutlined />} href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(lead.city || lead.name)}`} target="_blank" />
+                {canFollowup && <Button size="small" className="h-7 text-xs rounded-lg ml-auto" onClick={() => setFollowupLead(lead)}>Follow-up</Button>}
+                {canFollowup && <Button size="small" className="h-7 text-xs rounded-lg" onClick={() => setVisitLead(lead)}>Visit</Button>}
               </div>
             </Card>
           ))}
@@ -191,10 +235,10 @@ const SELeadApp = () => {
       <Modal open={!!declineLead} title="Decline lead" onCancel={() => setDeclineLead(null)} onOk={() => respond(declineLead, false)} okButtonProps={{ danger: true, disabled: !declineReason.trim() }}>
         <Input.TextArea value={declineReason} onChange={(event) => setDeclineReason(event.target.value)} placeholder="Reason is required" />
       </Modal>
-      <Modal open={!!followupLead} title="Record follow-up" onCancel={() => setFollowupLead(null)} onOk={saveFollowup}>
+      <Modal open={!!followupLead} title="Record follow-up" onCancel={() => setFollowupLead(null)} onOk={saveFollowup} width={640}>
         <Form form={followupForm} layout="vertical"><Form.Item name="outcome" label="Outcome" rules={[{ required: true }]}><Select options={['interested', 'not_interested', 'callback', ...(canConvert ? ['converted'] : []), 'no_response', 'visit_scheduled', 'quotation_sent'].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></Form.Item><Form.Item name="notes" label="Notes"><Input.TextArea /></Form.Item><Form.Item name="nextFollowupDate" label="Next follow-up"><DatePicker showTime className="w-full" /></Form.Item></Form>
       </Modal>
-      <Modal open={!!visitLead} title="Schedule visit" onCancel={() => setVisitLead(null)} onOk={saveVisit}>
+      <Modal open={!!visitLead} title="Schedule visit" onCancel={() => setVisitLead(null)} onOk={saveVisit} width={580}>
         <Form form={visitForm} layout="vertical"><Form.Item name="scheduledAt" label="Schedule" rules={[{ required: true }]}><DatePicker showTime className="w-full" /></Form.Item><Form.Item name="address" label="Location"><Input /></Form.Item><Form.Item name="remarks" label="Remarks"><Input.TextArea /></Form.Item></Form>
       </Modal>
     </div>

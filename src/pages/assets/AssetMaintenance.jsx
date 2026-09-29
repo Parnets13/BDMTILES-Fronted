@@ -290,7 +290,7 @@ export default function AssetMaintenance() {
         okText="Save Log"
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
         destroyOnHidden
-        width={560}
+        width={860}
       >
         <Form form={form} layout="vertical" style={{ marginTop: 8 }}>
           <Row gutter={12}>

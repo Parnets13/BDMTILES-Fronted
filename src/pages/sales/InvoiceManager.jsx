@@ -77,7 +77,8 @@ const InvoiceManager = () => {
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({ ...p, current: 1 })); }} className="w-64" allowClear />
           <Select placeholder="Status" value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32"
             options={[{ value: 'generated', label: 'Generated' }, { value: 'sent', label: 'Sent' }, { value: 'cancelled', label: 'Cancelled' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchInvoices(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -181,7 +182,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
                 <td className="px-1.5 py-1">
                   <div className="flex items-center gap-1">
                     <ProductImage src={item.productImage || item.product?.images?.[0] || item.images?.[0]} size="xs" />
-                    <div><div className="font-medium">{item.productName}</div><div className="text-[8px] text-gray-400">{item.productCode}</div></div>
+                    <div><div className="font-medium">{item.productName}</div><div className="text-[8px] text-gray-400">{item.productCode}{item.product?.sqftPerBox ? ` · ${item.product.sqftPerBox} sqft/box` : item.sqftPerBox ? ` · ${item.sqftPerBox} sqft/box` : ''}</div></div>
                   </div>
                 </td>
                 <td className="px-1.5 py-1">{item.hsnCode || '—'}</td>

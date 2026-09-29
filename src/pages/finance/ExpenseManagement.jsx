@@ -269,7 +269,8 @@ const ExpenseManagement = () => {
           onChange={v => { setDateRange(v); setPagination(p => ({ ...p, current: 1 })); }}
           format="DD/MM/YYYY"
         />
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, category: undefined }); setDateRange(null); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setFilters({ status: undefined, category: undefined }); setDateRange(null); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchExpenses(); fetchStats(); }}>Refresh</Button>
       </div>
 
       {/* Table */}
@@ -327,7 +328,7 @@ const ExpenseManagement = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
         onOk={handleSubmit}
         okText="Submit"
-        width={600}
+        width={800}
         confirmLoading={loading}
         destroyOnHidden
       >
@@ -389,7 +390,7 @@ const ExpenseManagement = () => {
         onOk={handleReject}
         okText="Reject"
         okButtonProps={{ danger: true }}
-        destroyOnHidden
+        width={560}
       >
         <div className="py-2">
           <label className="text-sm text-gray-600 block mb-2">Reason for rejection *</label>

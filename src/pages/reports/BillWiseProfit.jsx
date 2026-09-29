@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Row, Col, Card, Statistic, Button, Input, Table, message } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import reportService from '../../services/reportService.js';
 
@@ -57,6 +57,7 @@ const BillWiseProfit = () => {
           <h1 className="text-2xl font-bold text-gray-800">Bill-wise Profit & Category Margin</h1>
           <p className="text-sm text-gray-500 mt-0.5">Gross profit analysis per order and category</p>
         </div>
+        <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200 p-4 mb-4">

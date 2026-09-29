@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Form, Input, Button, message, Card, Divider } from 'antd';
-import { SaveOutlined } from '@ant-design/icons';
+import { SaveOutlined, ReloadOutlined } from '@ant-design/icons';
 import WebImageUpload from './WebImageUpload.jsx';
 import webManagementService from '../../services/webManagementService.js';
 
@@ -13,15 +13,24 @@ const SiteSettingsPage = () => {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    let active = true;
+  // Named rather than inline in the effect, so the Refresh button can call the same
+  // load. The old `active` flag existed to avoid a state update after unmount; React 18
+  // no longer warns about that, and keeping it would have meant two copies of the fetch.
+  const loadSettings = useCallback(async () => {
     setLoading(true);
-    webManagementService.getSiteSettings()
-      .then((res) => { if (active && res.success) form.setFieldsValue(res.data); })
-      .catch((err) => message.error(err.message))
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    try {
+      const res = await webManagementService.getSiteSettings();
+      if (res.success) form.setFieldsValue(res.data);
+    } catch (err) {
+      message.error(err.message);
+    } finally {
+      setLoading(false);
+    }
   }, [form]);
+
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   const handleSave = async () => {
     try {
@@ -44,7 +53,10 @@ const SiteSettingsPage = () => {
           <h1 className="text-2xl font-bold text-gray-800">Site Settings</h1>
           <p className="text-sm text-gray-500 mt-0.5">Header logo, brand text and contact number shown on the website</p>
         </div>
-        <Button type="primary" icon={<SaveOutlined />} size="large" loading={saving} onClick={handleSave}>Save Changes</Button>
+        <div className="flex gap-2">
+          <Button icon={<ReloadOutlined />} onClick={loadSettings} loading={loading}>Refresh</Button>
+          <Button type="primary" icon={<SaveOutlined />} size="large" loading={saving} onClick={handleSave}>Save Changes</Button>
+        </div>
       </div>
 
       <Card loading={loading} className="max-w-2xl">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Table, Button, Input, Select, Tag, Space, message, Modal } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
 import notificationService from '../../services/notificationService.js';
 
 const CHANNEL_COLORS = { whatsapp: 'green', sms: 'blue', email: 'purple', push: 'orange' };
@@ -38,12 +38,15 @@ const NotificationTemplatePage = () => {
     <div>
       <div className="flex justify-between items-center mb-5">
         <div><h1 className="text-2xl font-bold text-gray-800">Notification Templates</h1><p className="text-sm text-gray-500 mt-0.5">WhatsApp, SMS, Email, Push notification templates for automated messaging</p></div>
-        <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => { setEditRecord(null); setShowCreate(true); }}>New Template</Button>
+        <div className="flex gap-2">
+          <Button icon={<ReloadOutlined />} onClick={fetchTemplates}>Refresh</Button>
+          <Button type="primary" icon={<PlusOutlined />} size="large" onClick={() => { setEditRecord(null); setShowCreate(true); }}>New Template</Button>
+        </div>
       </div>
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={templates} rowKey="_id" size="middle" pagination={false} />
       </div>
-      <Modal title={editRecord ? 'Edit Template' : 'New Template'} open={showCreate} onCancel={() => { setShowCreate(false); setEditRecord(null); }} footer={null} width={700} destroyOnHidden>
+      <Modal title={editRecord ? 'Edit Template' : 'New Template'} open={showCreate} onCancel={() => { setShowCreate(false); setEditRecord(null); }} footer={null} width={900} destroyOnHidden>
         <TemplateForm editRecord={editRecord} onSuccess={() => { setShowCreate(false); setEditRecord(null); fetchTemplates(); }} onCancel={() => { setShowCreate(false); setEditRecord(null); }} />
       </Modal>
     </div>

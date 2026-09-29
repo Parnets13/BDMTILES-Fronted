@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Tag, Space, message, Modal, Drawer, Badge } from 'antd';
+import { Table, Button, Tag, Space, message, Modal, Drawer, Badge, Grid } from 'antd';
 import { UndoOutlined, DeleteOutlined, ExclamationCircleOutlined, RestOutlined } from '@ant-design/icons';
 import api from '../config/api.js';
 import { useConfirm } from './ConfirmModal.jsx';
@@ -19,6 +19,7 @@ import { useConfirm } from './ConfirmModal.jsx';
  *   columns: array (optional) — extra columns to show from the stored data snapshot
  */
 const ModuleRecycleBin = ({ module, title, columns: extraColumns, onRestore }) => {
+  const screens = Grid.useBreakpoint();
   const { confirm, alertModal } = useConfirm();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
@@ -128,7 +129,7 @@ const ModuleRecycleBin = ({ module, title, columns: extraColumns, onRestore }) =
         }
         open={open}
         onClose={() => setOpen(false)}
-        width={780}
+        width={screens.md ? 780 : '100%'}
         footer={
           <div className="text-xs text-gray-400">
             Items auto-delete permanently after 30 days. Restore to recover.

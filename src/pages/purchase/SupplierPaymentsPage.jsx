@@ -211,7 +211,8 @@ const SupplierPaymentsPage = () => {
             value={filters.status} onChange={v => setFilters(f => ({ ...f, status: v }))} allowClear className="w-32" />
           <Select placeholder="Mode" options={Object.keys(MODE_COLORS).map(s => ({ value: s, label: s.toUpperCase() }))}
             value={filters.paymentMode} onChange={v => setFilters(f => ({ ...f, paymentMode: v }))} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ status: undefined, paymentMode: undefined }); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({ status: undefined, paymentMode: undefined }); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchPayments(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -226,7 +227,7 @@ const SupplierPaymentsPage = () => {
 
       {/* Create Payment Modal */}
       <Modal title="Record Supplier Payment" open={showCreate} onCancel={cancelNewPayment}
-        width={650} footer={null} destroyOnHidden>
+        width={900} footer={null} destroyOnHidden>
         <div className="space-y-4 mt-4">
           <div>
             <label className="text-sm font-semibold text-gray-700 block mb-1">Supplier *</label>

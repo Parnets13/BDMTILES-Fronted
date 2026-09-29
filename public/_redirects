@@ -1,0 +1,6 @@
+# SPA fallback: this is a client-side-routed React app (BrowserRouter), so paths
+# like /dashboard, /sales-orders, etc. only exist in the browser router, not as
+# files on Netlify. Without this rule a hard reload or a shared deep link 404s.
+# Serve index.html for every path and let React Router resolve it. 200, not 302,
+# so the URL in the address bar is preserved.
+/*    /index.html   200

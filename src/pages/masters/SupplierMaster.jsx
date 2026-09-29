@@ -82,7 +82,9 @@ const SupplierMaster = () => {
         <div className="flex flex-wrap gap-3">
           <Input placeholder="Search by name, code, mobile, city..." prefix={<SearchOutlined className="text-gray-400" />} value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }} className="w-72" allowClear />
           <Select placeholder="Status" options={[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'}]} value={statusFilter} onChange={setStatusFilter} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Clear Filters</Button>
+          {/* Re-fetches the current view. Distinct from Clear Filters, which only resets the inputs. */}
+          <Button icon={<ReloadOutlined />} loading={loading} onClick={fetchSuppliers}>Refresh</Button>
         </div>
       </div>
 
@@ -242,18 +244,6 @@ const SupplierMaster = () => {
                   </div>
                 </div>
               )}
-
-              {/* Tally Sync */}
-              <div className="grid grid-cols-3 gap-3 text-xs">
-                <div className="bg-gray-100 rounded p-2 text-center">
-                  <span className="text-gray-500 block">Tally Status</span>
-                  <Tag color={viewSupplier.tallySyncStatus === 'synced' ? 'green' : viewSupplier.tallySyncStatus === 'pending' ? 'orange' : 'default'}>
-                    {viewSupplier.tallySyncStatus || 'not_synced'}
-                  </Tag>
-                </div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Tally Ledger</span><span className="font-medium">{viewSupplier.tallyLedgerName || '-'}</span></div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Last Sync</span><span className="font-medium">{viewSupplier.tallySyncDate ? new Date(viewSupplier.tallySyncDate).toLocaleDateString('en-IN') : '-'}</span></div>
-              </div>
 
               {/* Meta */}
               <div className="text-xs text-gray-400 flex gap-4 pt-2 border-t">

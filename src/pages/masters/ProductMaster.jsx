@@ -7,7 +7,49 @@ import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 
-const TILE_SIZES = ['200x200','200x300','250x375','300x300','300x450','300x600','400x400','600x600','600x1200','800x800','800x1200','800x1600','1000x1000','1200x1200','1200x1800','1200x2400','1600x3200'];
+const TILE_SIZES = [
+  // Mosaic / small
+  '50x50','75x75','100x100','100x200','100x300','150x150','150x300',
+  // Standard small
+  '200x200','200x300','200x400','200x600',
+  '250x375','250x500',
+  '300x300','300x450','300x600','300x900',
+  '400x400','400x600','400x800',
+  // Mid-size
+  '600x600','600x900','600x1200',
+  '800x800','800x1200','800x1600',
+  // Large format
+  '1000x1000',
+  '1200x1200','1200x1800','1200x2400',
+  '1600x1600','1600x3200',
+  '800x2400',
+];
+
+/**
+ * Area of one tile in sqft, keyed by "WxH" (mm).
+ * Formula: (W/1000) * (H/1000) * 10.7639
+ * Values rounded to 4 decimal places.
+ */
+export const SQFT_PER_TILE = {
+  '50x50':     0.0269, '75x75':     0.0605, '100x100':   0.1076, '100x200':   0.2153,
+  '100x300':   0.3229, '150x150':   0.2422, '150x300':   0.4844,
+  '200x200':   0.4306, '200x300':   0.6458, '200x400':   0.8611, '200x600':   1.2917,
+  '250x375':   1.0073, '250x500':   1.3444,
+  '300x300':   0.9688, '300x450':   1.4532, '300x600':   1.9375, '300x900':   2.9063,
+  '400x400':   1.7222, '400x600':   2.5833, '400x800':   3.4444,
+  '600x600':   3.8750, '600x900':   5.8125, '600x1200':  7.7500,
+  '800x800':   6.8889, '800x1200': 10.3333, '800x1600': 13.7778, '800x2400': 20.6667,
+  '1000x1000':10.7639,
+  '1200x1200':15.5000, '1200x1800':23.2500, '1200x2400':31.0000,
+  '1600x1600':27.6000, '1600x3200':55.2000,
+};
+
+/** Auto-compute sqftPerBox = sqftPerTile × pcsPerBox. Returns null if either is unknown. */
+export const calcSqftPerBox = (tileSize, pcsPerBox) => {
+  const sqftPerTile = SQFT_PER_TILE[tileSize];
+  if (!sqftPerTile || !pcsPerBox || pcsPerBox <= 0) return null;
+  return Math.round(sqftPerTile * pcsPerBox * 100) / 100; // 2 decimal places
+};
 const FINISHES = ['Glossy','Matt','Sugar','Carving','Satin','Rustic','Polished','Lapato','High Gloss','Anti-Skid','Rocker','Book Match'];
 const UNITS = ['Box','Piece','SqFt','Kg','Meter','Litre','Set','Nos'];
 const GST_RATES = [0, 5, 12, 18, 28];
@@ -78,6 +120,9 @@ const ProductMaster = () => {
     if (product) {
       form.setFieldsValue({
         ...product,
+        inventoryBaseUom: product.inventoryBaseUom || product.unit || 'Box',
+        inventoryUomVersion: product.inventoryUomVersion || 1,
+        uomConversions: product.uomConversions?.length ? product.uomConversions : [{ uom: product.unit || 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }],
         brand: product.brand?._id || product.brand,
         category: product.category?._id || product.category,
         subcategory: product.subcategory?._id || product.subcategory,
@@ -86,7 +131,7 @@ const ProductMaster = () => {
       });
     } else {
       form.resetFields();
-      form.setFieldsValue({ gst: 18, unit: 'Box', status: 'active', salesType: 'Regular Sale', productType: 'Regular Product' });
+      form.setFieldsValue({ gst: 18, unit: 'Box', inventoryBaseUom: 'Box', inventoryUomVersion: 1, uomConversions: [{ uom: 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }], status: 'active', salesType: 'Regular Sale', productType: 'Regular Product' });
     }
     setDrawerOpen(true);
   };
@@ -239,6 +284,19 @@ const ProductMaster = () => {
     form.setFieldsValue({ category: undefined, subcategory: undefined });
   };
 
+  // Auto-calculate SqFt/Box whenever tileSize or pcsPerBox changes
+  const handleTileSizeChange = (tileSize) => {
+    const pcs = form.getFieldValue('piecesPerBox');
+    const computed = calcSqftPerBox(tileSize, pcs);
+    if (computed !== null) form.setFieldsValue({ sqftPerBox: computed });
+  };
+
+  const handlePcsPerBoxChange = (pcs) => {
+    const tileSize = form.getFieldValue('tileSize');
+    const computed = calcSqftPerBox(tileSize, pcs);
+    if (computed !== null) form.setFieldsValue({ sqftPerBox: computed });
+  };
+
   // When category changes → auto-fill brand if not set, clear subcategory
   const handleCategoryChange = (categoryId) => {
     const cat = filterOptions.categories.find(c => c._id === categoryId);
@@ -274,7 +332,7 @@ const ProductMaster = () => {
       render: (_, r) => (
         <div>
           <div className="text-sm font-medium text-gray-900 truncate max-w-[180px]">{r.itemName}</div>
-          {r.tileSize && <span className="text-xs text-gray-400">{r.tileSize} | {r.finish}</span>}
+          {r.tileSize && <span className="text-xs text-gray-400">{r.tileSize}{r.finish ? ` | ${r.finish}` : ''}{r.sqftPerBox ? ` | ${r.sqftPerBox} sqft/box` : ''}</span>}
         </div>
       ),
     },
@@ -398,7 +456,18 @@ const ProductMaster = () => {
             value={filters.tileType} onChange={v => setFilters(f => ({...f, tileType: v}))} allowClear className="w-36" showSearch />
           <Select placeholder="Application" options={APPLICATION_AREAS.map(a => ({value:a,label:a}))}
             value={filters.applicationArea} onChange={v => setFilters(f => ({...f, applicationArea: v}))} allowClear className="w-36" showSearch />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({brand:undefined,category:undefined,subcategory:undefined,status:undefined,tileSize:undefined,finish:undefined,tileType:undefined,applicationArea:undefined}); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({brand:undefined,category:undefined,subcategory:undefined,status:undefined,tileSize:undefined,finish:undefined,tileType:undefined,applicationArea:undefined}); }}>Clear Filters</Button>
+          {/* Re-fetches the current view. Distinct from Clear Filters, which only resets the inputs. */}
+          <Button
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => {
+              fetchProducts();
+              productService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+            }}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -513,6 +582,23 @@ const ProductMaster = () => {
                 </Col>
               </Row>
 
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                <div className="text-sm font-semibold text-blue-800 mb-2">Inventory Base UOM</div>
+                <Row gutter={16}>
+                  <Col span={8}><Form.Item name="inventoryBaseUom" label="Base UOM" rules={[{ required: true }]}><Select options={UNITS.map(u => ({ value: u, label: u }))} /></Form.Item></Col>
+                  <Col span={8}><Form.Item name="inventoryUomVersion" label="UOM Version"><InputNumber min={1} precision={0} className="w-full" disabled={Boolean(editingProduct)} /></Form.Item></Col>
+                </Row>
+                <Form.List name="uomConversions">
+                  {(fields, { add, remove }) => <div className="space-y-2">{fields.map(({ key, name }) => <Row key={key} gutter={8} align="middle">
+                    <Col span={6}><Form.Item name={[name, 'uom']} rules={[{ required: true }]} className="mb-0"><Select placeholder="Entered UOM" options={UNITS.map(u => ({ value: u, label: u }))} /></Form.Item></Col>
+                    <Col span={6}><Form.Item name={[name, 'toBaseFactor']} rules={[{ required: true }]} className="mb-0"><InputNumber min={0.000001} step={0.000001} className="w-full" placeholder="To-base factor" /></Form.Item></Col>
+                    <Col span={4}><Form.Item name={[name, 'precision']} className="mb-0"><InputNumber min={0} max={6} precision={0} className="w-full" placeholder="Precision" /></Form.Item></Col>
+                    <Col span={4}><Form.Item name={[name, 'allowFraction']} valuePropName="checked" className="mb-0"><Switch checkedChildren="Fraction" unCheckedChildren="Whole" /></Form.Item></Col>
+                    <Col span={4}><Button danger disabled={fields.length === 1} onClick={() => remove(name)}>Remove</Button></Col>
+                  </Row>)}<Button type="dashed" onClick={() => add({ precision: 6, allowFraction: true, version: form.getFieldValue('inventoryUomVersion') || 1 })}>Add conversion</Button></div>}
+                </Form.List>
+                <div className="text-xs text-blue-700 mt-2">Base UOM and factors become immutable after stock history exists. Packaging/display fields remain editable.</div>
+              </div>
               {/* Product Details — the four tabs shown on the website product page */}
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                 <div className="text-sm font-semibold text-blue-800 mb-1">📄 Product Details <span className="font-normal text-blue-600">(shown as tabs on the website product page)</span></div>
@@ -551,7 +637,7 @@ const ProductMaster = () => {
 
               {/* Row 4: Tile Specifications */}
               <Row gutter={16}>
-                <Col span={4}><Form.Item name="tileSize" label="Tile Size"><Select placeholder="Size" allowClear showSearch options={TILE_SIZES.map(s => ({ value: s, label: s }))} /></Form.Item></Col>
+                <Col span={4}><Form.Item name="tileSize" label="Tile Size"><Select placeholder="Size" allowClear showSearch options={TILE_SIZES.map(s => ({ value: s, label: s }))} onChange={handleTileSizeChange} /></Form.Item></Col>
                 <Col span={4}><Form.Item name="finish" label="Finish"><Select placeholder="Finish" allowClear showSearch options={FINISHES.map(f => ({ value: f, label: f }))} /></Form.Item></Col>
                 <Col span={4}><Form.Item name="colour" label="Colour"><Input placeholder="Colour" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="surface" label="Surface"><Input placeholder="Surface" /></Form.Item></Col>
@@ -572,8 +658,12 @@ const ProductMaster = () => {
               <Row gutter={16}>
                 <Col span={6}><Form.Item name="design" label="Design"><Input placeholder="Design name" /></Form.Item></Col>
                 <Col span={6}><Form.Item name="collection" label="Collection"><Input placeholder="Collection" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="piecesPerBox" label="Pcs/Box"><InputNumber min={0} className="w-full" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="sqftPerBox" label="SqFt/Box"><InputNumber min={0} step={0.01} className="w-full" /></Form.Item></Col>
+                <Col span={4}><Form.Item name="piecesPerBox" label="Pcs/Box"><InputNumber min={0} className="w-full" onChange={handlePcsPerBoxChange} /></Form.Item></Col>
+                <Col span={4}>
+                  <Form.Item name="sqftPerBox" label={<span>SqFt/Box <span className="text-[10px] font-normal text-green-600 ml-1">auto-calculated</span></span>}>
+                    <InputNumber min={0} step={0.01} className="w-full bg-green-50" readOnly />
+                  </Form.Item>
+                </Col>
                 <Col span={4}><Form.Item name="weightPerBox" label="Weight/Box (Kg)"><InputNumber min={0} step={0.1} className="w-full" /></Form.Item></Col>
               </Row>
 
@@ -624,17 +714,6 @@ const ProductMaster = () => {
                 <Col span={4}><Form.Item name="rating" label="Rating (0-5)" tooltip="Average customer rating shown on the website"><InputNumber min={0} max={5} step={0.1} className="w-full" placeholder="e.g. 4.5" /></Form.Item></Col>
                 <Col span={4}><Form.Item name="reviewCount" label="Review Count" tooltip="Number of reviews shown on the website"><InputNumber min={0} className="w-full" placeholder="e.g. 128" /></Form.Item></Col>
               </Row>
-
-              <Divider className="my-3" />
-
-              {/* Tally Integration */}
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
-                <div className="text-sm font-semibold text-gray-700 mb-2">🔗 Tally Integration</div>
-                <Row gutter={16}>
-                  <Col span={12}><Form.Item name="tallyStockItemName" label="Tally Stock Item Name" tooltip="Must match exactly as it appears in Tally"><Input placeholder="e.g. KAJARIA VITRIFIED 600x600 MATT WHITE" /></Form.Item></Col>
-                  <Col span={12}><Form.Item name="tallyGUID" label="Tally GUID" tooltip="Tally-generated GUID (leave blank if creating from CRM)"><Input placeholder="Auto-populated after first Tally sync" /></Form.Item></Col>
-                </Row>
-              </div>
 
               <Divider className="my-3" />
 
@@ -756,6 +835,7 @@ const ProductMaster = () => {
                   <PreviewItem label="HSN Code" value={previewData.hsnCode} />
                   <PreviewItem label="GST" value={`${previewData.gst}%`} />
                   <PreviewItem label="Unit" value={previewData.unit} />
+                  <PreviewItem label="Inventory Base UOM" value={`${previewData.inventoryBaseUom || previewData.unit} · v${previewData.inventoryUomVersion || 1}`} />
                   <PreviewItem label="Status" value={previewData.status} />
                 </div>
 
@@ -866,6 +946,8 @@ const ViewProductModal = ({ product, onClose }) => {
             <PreviewItem label="HSN Code" value={product.hsnCode} />
             <PreviewItem label="GST" value={`${product.gst}%`} />
             <PreviewItem label="Unit" value={product.unit} />
+            <PreviewItem label="Inventory Base UOM" value={`${product.inventoryBaseUom || product.unit} · v${product.inventoryUomVersion || 1}`} />
+            <PreviewItem label="Conversions" value={(product.uomConversions || []).map(row => `${row.uom} × ${row.toBaseFactor}`).join(', ') || `${product.unit} × 1`} />
             <PreviewItem label="Status" value={product.status} />
             <PreviewItem label="Sales Type" value={product.salesType} />
             <PreviewItem label="Product Type" value={product.productType} />
@@ -919,16 +1001,6 @@ const ViewProductModal = ({ product, onClose }) => {
               <PreviewItem label="Dealer Visible" value={product.dealerVisible ? 'Yes' : 'No'} />
             </div>
           </div>
-          {(product.tallyStockItemName || product.tallyGUID) && (
-            <div className="border-t pt-4 mt-4">
-              <h4 className="font-semibold text-gray-700 text-sm mb-3">🔗 Tally Integration</h4>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <PreviewItem label="Tally Stock Item Name" value={product.tallyStockItemName} />
-                <PreviewItem label="Tally GUID" value={product.tallyGUID} />
-                <PreviewItem label="Tally Sync Status" value={product.tallySyncStatus} />
-              </div>
-            </div>
-          )}
           {(product.videos?.length > 0 || product.cataloguePdf) && (
             <div className="border-t pt-4 mt-4">
               <h4 className="font-semibold text-gray-700 text-sm mb-3">Media</h4>

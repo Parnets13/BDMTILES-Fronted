@@ -15,6 +15,8 @@ const notificationService = {
   updateModuleSettings: (module, data) => api.put(`/notifications/settings/${module}`, data),
   initializeSettings: () => api.post('/notifications/settings/initialize'),
   getDeliveryAudit: (params = {}) => api.get('/notifications/delivery-audit', { params }),
+  // Which channels actually have a delivery provider, straight from the dispatcher.
+  getChannelCapabilities: () => api.get('/notifications/channel-capabilities'),
   getAccessPolicies: () => api.get('/access-policies'),
   saveAccessPolicy: (module, resourceKey, data) => api.put(`/access-policies/${module}/${encodeURIComponent(resourceKey || '*')}`, data),
   deleteAccessPolicy: (id) => api.delete(`/access-policies/${id}`),

@@ -4,14 +4,17 @@ import {
   Modal, Form, Row, Col, Card, Statistic
 } from 'antd';
 import {
-  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined,
+  PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined,
   ReloadOutlined, CarOutlined
 } from '@ant-design/icons';
 import api from '../../config/api.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 
 const vehicleService = {
   getAll: (params) => api.get('/masters/vehicles', { params }),
+  getDeliveryExecutives: (params) => api.get('/masters/vehicles/delivery-executives', { params }),
   create: (data) => api.post('/masters/vehicles', data),
   update: (id, data) => api.put(`/masters/vehicles/${id}`, data),
   remove: (id) => api.delete(`/masters/vehicles/${id}`),
@@ -36,11 +39,15 @@ const CAPACITY_UNIT_LABELS = Object.fromEntries(CAPACITY_UNITS.map(unit => [unit
 const toDateInput = value => value ? new Date(value).toISOString().slice(0, 10) : undefined;
 
 const VehicleMaster = () => {
+  const { activeBranchId } = useAuth();
   const [vehicles, setVehicles] = useState([]);
+  const [deliveryExecutives, setDeliveryExecutives] = useState([]);
+  const [executivesLoading, setExecutivesLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
   const [form] = Form.useForm();
 
@@ -55,13 +62,40 @@ const VehicleMaster = () => {
 
   useEffect(() => { fetchVehicles(); }, [fetchVehicles]);
 
+  const fetchDeliveryExecutives = useCallback(async () => {
+    if (!activeBranchId) {
+      setDeliveryExecutives([]);
+      return;
+    }
+    setExecutivesLoading(true);
+    try {
+      const res = await vehicleService.getDeliveryExecutives();
+      if (res.success) setDeliveryExecutives(res.data || []);
+    } catch (err) { message.error(err.message); }
+    finally { setExecutivesLoading(false); }
+  }, [activeBranchId]);
+
+  useEffect(() => { fetchDeliveryExecutives(); }, [fetchDeliveryExecutives]);
+
+  // Linking an executive makes that account's contact details authoritative,
+  // so the driver fields are filled from it and locked to avoid disagreement.
+  const chooseDeliveryExecutive = (executiveId) => {
+    const picked = deliveryExecutives.find(executive => String(executive._id) === String(executiveId));
+    form.setFieldsValue({
+      deliveryExecutive: executiveId,
+      driverName: picked?.name || '',
+      driverPhone: picked?.phone || '',
+    });
+  };
+
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+      const payload = { ...values, deliveryExecutive: values.deliveryExecutive || null };
       setFormLoading(true);
       const res = editRecord
-        ? await vehicleService.update(editRecord._id, values)
-        : await vehicleService.create(values);
+        ? await vehicleService.update(editRecord._id, payload)
+        : await vehicleService.create(payload);
       if (res.success) {
         message.success(editRecord ? 'Vehicle updated' : 'Vehicle added');
         setShowForm(false); setEditRecord(null); form.resetFields();
@@ -73,8 +107,12 @@ const VehicleMaster = () => {
 
   const handleEdit = (record) => {
     setEditRecord(record);
+    const linkedExecutive = record.deliveryExecutive;
     form.setFieldsValue({
       ...record,
+      deliveryExecutive: linkedExecutive?._id || linkedExecutive || undefined,
+      driverName: linkedExecutive?.name ?? record.driverName,
+      driverPhone: linkedExecutive?.phone ?? record.driverPhone,
       insuranceExpiry: toDateInput(record.insuranceExpiry),
       fitnessExpiry: toDateInput(record.fitnessExpiry),
       isActive: record.isActive ?? true,
@@ -109,15 +147,24 @@ const VehicleMaster = () => {
     { title: 'Driver', dataIndex: 'driverName', width: 130, render: value => value || '—' },
     { title: 'Driver Phone', dataIndex: 'driverPhone', width: 120,
       render: value => <span className="text-xs">{value || '—'}</span> },
+    { title: 'Delivery Executive', dataIndex: 'deliveryExecutive', width: 170,
+      render: executive => executive ? (
+        <div>
+          <div className="text-xs font-medium">{executive.name || 'Linked account'}</div>
+          <div className="text-[11px] text-gray-400">{executive.phone || executive.email || ''}</div>
+          {executive.status && executive.status !== 'Active' ? <Tag color="red" className="mt-1">{executive.status}</Tag> : null}
+        </div>
+      ) : <span className="text-xs text-gray-400">Unlinked</span> },
     { title: 'Capacity', width: 100,
       render: (_, record) => record.capacity ? `${record.capacity} ${CAPACITY_UNIT_LABELS[record.capacityUnit] || record.capacityUnit || ''}` : '—' },
     { title: 'Insurance Exp', dataIndex: 'insuranceExpiry', width: 110, render: renderExpiry },
     { title: 'Fitness Exp', dataIndex: 'fitnessExpiry', width: 110, render: renderExpiry },
     { title: 'Status', dataIndex: 'isActive', width: 90,
       render: value => <Tag color={value ? 'green' : 'default'}>{value ? 'Active' : 'Inactive'}</Tag> },
-    { title: 'Actions', width: 90,
+    { title: 'Actions', width: 120,
       render: (_, record) => (
         <Space size="small">
+          <Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(record)} />
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(record)} />
           <DoubleConfirmDelete
             title="Delete Vehicle"
@@ -166,12 +213,70 @@ const VehicleMaster = () => {
 
       <div className="bg-white rounded-lg border border-gray-200">
         <Table columns={columns} dataSource={vehicles} rowKey="_id" loading={loading}
-          size="middle" scroll={{ x: 1250 }} pagination={{ pageSize: 20 }} />
+          size="middle" scroll={{ x: 1420 }} pagination={{ pageSize: 20 }} />
       </div>
+
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Vehicle — ${viewRecord?.vehicleNumber || ''}`}
+        subtitle={VEHICLE_TYPE_LABELS[viewRecord?.vehicleType] || viewRecord?.vehicleType}
+        sections={viewRecord ? [
+          {
+            title: 'Identification',
+            fields: [
+              { label: 'Vehicle Number', value: viewRecord.vehicleNumber, type: 'code' },
+              { label: 'Type', value: VEHICLE_TYPE_LABELS[viewRecord.vehicleType] || viewRecord.vehicleType },
+              { label: 'Status', value: viewRecord.isActive, type: 'boolean', alwaysShow: true },
+              { label: 'Make', value: viewRecord.make },
+              { label: 'Model', value: viewRecord.model },
+              { label: 'Year', value: viewRecord.year },
+            ],
+          },
+          {
+            title: 'Capacity',
+            fields: [
+              { label: 'Capacity', value: viewRecord.capacity },
+              { label: 'Unit', value: CAPACITY_UNIT_LABELS[viewRecord.capacityUnit] || viewRecord.capacityUnit },
+            ],
+          },
+          {
+            title: 'Driver & Linked Account',
+            fields: [
+              { label: 'Driver Name', value: viewRecord.driverName },
+              { label: 'Driver Phone', value: viewRecord.driverPhone },
+              { label: 'Licence Number', value: viewRecord.driverLicenseNumber },
+              {
+                label: 'Delivery Executive',
+                value: viewRecord.deliveryExecutive?.name || viewRecord.deliveryExecutiveName,
+                span: 2,
+              },
+            ],
+          },
+          {
+            title: 'Documents',
+            fields: [
+              { label: 'Insurance Expiry', value: viewRecord.insuranceExpiry, type: 'date' },
+              { label: 'Fitness Expiry', value: viewRecord.fitnessExpiry, type: 'date' },
+              { label: 'Permit Expiry', value: viewRecord.permitExpiry, type: 'date' },
+              { label: 'PUC Expiry', value: viewRecord.pucExpiry, type: 'date' },
+              { label: 'RC Number', value: viewRecord.rcNumber },
+            ],
+          },
+          {
+            title: 'Other',
+            fields: [
+              { label: 'Remarks', value: viewRecord.remarks, span: 3 },
+              { label: 'Created', value: viewRecord.createdAt, type: 'datetime' },
+              { label: 'Last Updated', value: viewRecord.updatedAt, type: 'datetime' },
+            ],
+          },
+        ] : []}
+      />
 
       <Modal title={editRecord ? 'Edit Vehicle' : 'Add Vehicle'} open={showForm}
         onCancel={() => { setShowForm(false); setEditRecord(null); form.resetFields(); }}
-        onOk={handleSubmit} confirmLoading={formLoading} width={720} destroyOnHidden>
+        onOk={handleSubmit} confirmLoading={formLoading} width={900} destroyOnHidden>
         <Form form={form} layout="vertical" className="mt-4">
           <Row gutter={16}>
             <Col span={8}><Form.Item name="vehicleNumber" label="Vehicle Number" rules={[{ required: true }]}>
@@ -186,14 +291,54 @@ const VehicleMaster = () => {
             <Col span={8}><Form.Item name="year" label="Year"><Input placeholder="e.g. 2024" /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={8}><Form.Item name="driverName" label="Driver Name"><Input placeholder="Full name" /></Form.Item></Col>
-            <Col span={8}><Form.Item name="driverPhone" label="Driver Phone"><Input placeholder="10-digit number" /></Form.Item></Col>
-            <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>
-            <Col span={4}><Form.Item name="capacityUnit" label="Unit"><Select options={CAPACITY_UNITS} /></Form.Item></Col>
+            <Col span={8}><Form.Item name="deliveryExecutive" label="Delivery Executive Account" extra="Optional · selecting one fills Driver Name/Phone automatically">
+              <Select
+                allowClear
+                showSearch
+                loading={executivesLoading}
+                placeholder="Link a Delivery Executive"
+                optionFilterProp="label"
+                onChange={chooseDeliveryExecutive}
+                onClear={() => chooseDeliveryExecutive(undefined)}
+                options={deliveryExecutives.map(executive => {
+                  const branches = (executive.assignedBranches || [])
+                    .map(branch => branch.branchCode || branch.name)
+                    .filter(Boolean)
+                    .join(', ');
+                  return {
+                    value: String(executive._id),
+                    label: [
+                      executive.name,
+                      executive.phone || executive.email,
+                      branches ? `Branches: ${branches}` : 'No branch assigned',
+                    ].filter(Boolean).join(' · '),
+                  };
+                })}
+                notFoundContent={executivesLoading ? 'Loading…' : 'No active Delivery Executive accounts found'}
+              />
+            </Form.Item></Col>
+            <Col span={8}><Form.Item noStyle shouldUpdate={(prev, curr) => prev.deliveryExecutive !== curr.deliveryExecutive}>
+              {({ getFieldValue }) => (
+                <Form.Item name="driverName" label="Driver Name" extra={getFieldValue('deliveryExecutive') ? 'From linked account' : undefined}>
+                  <Input placeholder="Full name" readOnly={!!getFieldValue('deliveryExecutive')} />
+                </Form.Item>
+              )}
+            </Form.Item></Col>
+            <Col span={8}><Form.Item noStyle shouldUpdate={(prev, curr) => prev.deliveryExecutive !== curr.deliveryExecutive}>
+              {({ getFieldValue }) => (
+                <Form.Item name="driverPhone" label="Driver Phone" extra={getFieldValue('deliveryExecutive') ? 'From linked account' : undefined}>
+                  <Input placeholder="10-digit number" readOnly={!!getFieldValue('deliveryExecutive')} />
+                </Form.Item>
+              )}
+            </Form.Item></Col>
           </Row>
           <Row gutter={16}>
+            <Col span={4}><Form.Item name="capacity" label="Capacity"><Input type="number" min="0" /></Form.Item></Col>
+            <Col span={4}><Form.Item name="capacityUnit" label="Unit"><Select options={CAPACITY_UNITS} /></Form.Item></Col>
             <Col span={8}><Form.Item name="insuranceExpiry" label="Insurance Expiry"><Input type="date" /></Form.Item></Col>
             <Col span={8}><Form.Item name="fitnessExpiry" label="Fitness Expiry"><Input type="date" /></Form.Item></Col>
+          </Row>
+          <Row gutter={16}>
             <Col span={8}><Form.Item name="isActive" label="Status">
               <Select options={[{ value: true, label: 'Active' }, { value: false, label: 'Inactive' }]} /></Form.Item></Col>
           </Row>

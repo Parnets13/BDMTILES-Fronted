@@ -119,7 +119,7 @@ const DeliveryMonitoring = () => {
           <h1 className="text-2xl font-bold text-gray-800">Delivery Monitoring</h1>
           <p className="text-sm text-gray-500 mt-0.5">Real-time status of active deliveries</p>
         </div>
-        <Button icon={<ReloadOutlined />} onClick={load} loading={loading} />
+        <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
       </div>
 
       <Row gutter={16} className="mb-5">

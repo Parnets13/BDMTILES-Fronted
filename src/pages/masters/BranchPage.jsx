@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  Button, Card, Col, Form, Input, Modal, Popconfirm, Row, Select,
+  Alert, Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select,
   Space, Statistic, Table, Tag, message,
 } from 'antd';
 import {
-  BankOutlined, DeleteOutlined, EditOutlined, PlusOutlined,
+  BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined,
   ReloadOutlined, SearchOutlined,
 } from '@ant-design/icons';
+import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 
@@ -20,6 +21,9 @@ const initialValues = {
   status: 'active',
   fiscalYearStartMonth: 4,
   timezone: 'Asia/Kolkata',
+  reorderFallbackLevel: 10,
+  minStockFallbackLevel: 5,
+  minimumReorderQuantity: 10,
 };
 
 const BranchPage = () => {
@@ -31,6 +35,7 @@ const BranchPage = () => {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState(undefined);
   const [editing, setEditing] = useState(null);
+  const [viewRecord, setViewRecord] = useState(null);
   const [open, setOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
 
@@ -72,6 +77,9 @@ const BranchPage = () => {
         fiscalYearStartMonth: branch.settings?.fiscalYearStartMonth || 4,
         timezone: branch.settings?.timezone || 'Asia/Kolkata',
         invoiceTerms: branch.settings?.invoiceTerms || '',
+        reorderFallbackLevel: branch.settings?.inventory?.reorderFallbackLevel ?? 10,
+        minStockFallbackLevel: branch.settings?.inventory?.minStockFallbackLevel ?? 5,
+        minimumReorderQuantity: branch.settings?.inventory?.minimumReorderQuantity ?? 10,
       });
       setOpen(true);
     } catch (error) {
@@ -83,8 +91,21 @@ const BranchPage = () => {
     try {
       const values = await form.validateFields();
       setSaving(true);
-      const { fiscalYearStartMonth, timezone, invoiceTerms, ...branch } = values;
-      const payload = { branch: undefined, ...branch, settings: { fiscalYearStartMonth, timezone, invoiceTerms } };
+      const {
+        fiscalYearStartMonth, timezone, invoiceTerms,
+        reorderFallbackLevel, minStockFallbackLevel, minimumReorderQuantity,
+        ...branch
+      } = values;
+      const payload = {
+        branch: undefined,
+        ...branch,
+        settings: {
+          fiscalYearStartMonth,
+          timezone,
+          invoiceTerms,
+          inventory: { reorderFallbackLevel, minStockFallbackLevel, minimumReorderQuantity },
+        },
+      };
       const response = editing
         ? await masterService.updateBranch(editing._id, payload)
         : await masterService.createBranch(payload);
@@ -133,9 +154,10 @@ const BranchPage = () => {
       render: (value) => <Tag color={value === 'active' ? 'green' : 'default'}>{value?.toUpperCase()}</Tag>,
     },
     {
-      title: 'Actions', width: 110,
+      title: 'Actions', width: 140,
       render: (_, record) => (
         <Space>
+          <Button type="text" icon={<EyeOutlined />} className="text-blue-600" onClick={() => setViewRecord(record)} />
           <Button type="text" icon={<EditOutlined />} onClick={() => showEdit(record)} />
           <Popconfirm title="Delete this branch?" description="Referenced branches must be deactivated instead." onConfirm={() => remove(record._id)}>
             <Button type="text" danger icon={<DeleteOutlined />} />
@@ -182,7 +204,54 @@ const BranchPage = () => {
         />
       </div>
 
-      <Modal title={editing ? 'Edit Branch' : 'Add Branch'} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} width={760} destroyOnHidden>
+      <RecordDetailModal
+        open={Boolean(viewRecord)}
+        onClose={() => setViewRecord(null)}
+        title={`Branch — ${viewRecord?.name || ''}`}
+        subtitle={viewRecord?.branchCode}
+        sections={viewRecord ? [
+          {
+            title: 'Identification',
+            fields: [
+              { label: 'Branch Code', value: viewRecord.branchCode, type: 'code' },
+              { label: 'Name', value: viewRecord.name },
+              { label: 'Status', value: viewRecord.status, type: 'tag', tagColor: viewRecord.status === 'active' ? 'green' : 'default', alwaysShow: true },
+              { label: 'Legal Name', value: viewRecord.legalName, span: 3 },
+            ],
+          },
+          {
+            title: 'Statutory',
+            fields: [
+              { label: 'GSTIN', value: viewRecord.gstin, type: 'code' },
+              { label: 'PAN', value: viewRecord.pan, type: 'code' },
+              { label: 'State Code', value: viewRecord.stateCode },
+            ],
+          },
+          {
+            title: 'Address & Contact',
+            fields: [
+              { label: 'Address', value: viewRecord.address, span: 3 },
+              { label: 'City', value: viewRecord.city },
+              { label: 'State', value: viewRecord.state },
+              { label: 'PIN Code', value: viewRecord.pinCode },
+              { label: 'Phone', value: viewRecord.phone },
+              { label: 'Email', value: viewRecord.email },
+            ],
+          },
+          {
+            title: 'Defaults',
+            fields: [
+              {
+                label: 'Default Warehouse',
+                value: viewRecord.defaultWarehouse?.name || viewRecord.defaultWarehouse?.warehouseCode,
+                span: 3,
+              },
+            ],
+          },
+        ] : []}
+      />
+
+      <Modal title={editing ? 'Edit Branch' : 'Add Branch'} open={open} onCancel={() => setOpen(false)} onOk={save} confirmLoading={saving} width={900} destroyOnHidden>
         <Form form={form} layout="vertical" initialValues={initialValues} className="mt-4">
           <Row gutter={16}>
             <Col span={8}><Form.Item name="branchCode" label="Branch Code" rules={[{ required: true }]}><Input placeholder="BLR" /></Form.Item></Col>
@@ -208,9 +277,16 @@ const BranchPage = () => {
             <Col span={8}><Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="fiscalYearStartMonth" label="Fiscal Year Start"><Select options={[{ value: 4, label: 'April' }, { value: 1, label: 'January' }]} /></Form.Item></Col>
-            <Col span={12}><Form.Item name="timezone" label="Timezone"><Input /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="fiscalYearStartMonth" label="Fiscal Year Start"><Select options={[{ value: 4, label: 'April' }, { value: 1, label: 'January' }]} /></Form.Item></Col>
+            <Col xs={24} md={12}><Form.Item name="timezone" label="Timezone"><Input /></Form.Item></Col>
           </Row>
+          <div className="text-sm font-semibold text-gray-700 mb-2">Inventory alert defaults</div>
+          <Row gutter={16}>
+            <Col xs={24} md={8}><Form.Item name="minStockFallbackLevel" label="Minimum stock fallback" tooltip="Critical threshold used when a product minimum is not configured." rules={[{ required: true }]}><InputNumber min={0} className="w-full" /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="reorderFallbackLevel" label="Reorder fallback" tooltip="Low-stock threshold used when a product reorder level is not configured." rules={[{ required: true }]}><InputNumber min={1} className="w-full" /></Form.Item></Col>
+            <Col xs={24} md={8}><Form.Item name="minimumReorderQuantity" label="Minimum reorder quantity" rules={[{ required: true }]}><InputNumber min={1} className="w-full" /></Form.Item></Col>
+          </Row>
+          <Alert type="info" showIcon className="mb-4" message="Effective reorder is always at least the effective minimum stock level." />
           <Form.Item name="invoiceTerms" label="Default Invoice Terms"><Input.TextArea rows={2} /></Form.Item>
         </Form>
       </Modal>

@@ -207,7 +207,8 @@ const ComplaintDashboard = () => {
             options={STATUS_OPTIONS} />
           <Select placeholder="Priority" allowClear value={priorityFilter} onChange={v => setPriorityFilter(v)} className="w-32"
             options={PRIORITY_OPTIONS} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); setPriorityFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); setPriorityFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchComplaints(); }}>Refresh</Button>
         </div>
       </div>
 

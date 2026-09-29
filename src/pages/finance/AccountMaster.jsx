@@ -189,7 +189,7 @@ const AccountMaster = () => {
         okText={editing ? 'Update' : 'Create'}
         confirmLoading={saveLoading}
         okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}
-        width={520}
+        width={860}
         destroyOnHidden
       >
         <Divider />

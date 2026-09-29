@@ -1,25 +1,44 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, TeamOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Progress } from 'antd';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, TeamOutlined, AimOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
+import dealerEmployeeTargetService from '../../services/dealerEmployeeTargetService.js';
+import { useAuth } from '../../context/AuthContext.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 
 const DealerMaster = () => {
+  const { hasPermission } = useAuth();
+  const canAssignSalesExecutive = hasPermission('dealer.assignment.manage');
   const [dealers, setDealers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: undefined, dealerType: undefined, region: undefined });
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, blocked: 0 });
-  const [options, setOptions] = useState({ dealerTypes: [], dealerCategories: [], regions: [], routes: [] });
+  const [options, setOptions] = useState({
+    dealerTypes: [],
+    dealerCategories: [],
+    regions: [],
+    routes: [],
+    salesExecutives: [],
+  });
 
   // Form
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingDealer, setEditingDealer] = useState(null);
   const [viewDealer, setViewDealer] = useState(null);
+  // App users (employees the dealer created in the Dealer App) for the dealer
+  // whose detail modal is open. Loaded on demand — most dealers have none.
+  const [team, setTeam] = useState({ loading: false, list: [], summary: null, error: false });
+  // Targets this dealer has set for those employees, shown beneath the list.
+  const [dealerTargets, setDealerTargets] = useState({ loading: false, list: [], summary: null });
+  // Early warning when a mobile is already taken. The server's message is
+  // deliberately generic — it says the number is registered but never who holds
+  // it — so this cannot be used to discover other dealers' or staff numbers.
+  const [mobileCheck, setMobileCheck] = useState(null);
   const [form] = Form.useForm();
 
-  // Load options
+  // Load dealer masters independently from the assignment-only user lookup.
   useEffect(() => {
     Promise.all([
       masterService.getDealerTypes({ limit: 100 }),
@@ -27,16 +46,30 @@ const DealerMaster = () => {
       masterService.getRegions({ limit: 100 }),
       masterService.getRoutes({ limit: 100 }),
       masterService.getDealerStats(),
-    ]).then(([dt, dc, reg, rt, st]) => {
-      setOptions({
-        dealerTypes: dt.success ? dt.data : [],
-        dealerCategories: dc.success ? dc.data : [],
-        regions: reg.success ? reg.data : [],
-        routes: rt.success ? rt.data : [],
-      });
-      if (st.success) setStats(st.data);
-    });
+    ])
+      .then(([dt, dc, reg, rt, st]) => {
+        setOptions(current => ({
+          ...current,
+          dealerTypes: dt.success ? dt.data : [],
+          dealerCategories: dc.success ? dc.data : [],
+          regions: reg.success ? reg.data : [],
+          routes: rt.success ? rt.data : [],
+        }));
+        if (st.success) setStats(st.data);
+      })
+      .catch(err => message.error(err.message || 'Could not load dealer options.'));
   }, []);
+
+  useEffect(() => {
+    if (!canAssignSalesExecutive) return;
+    masterService.getSalesExecutives()
+      .then(response => {
+        if (response.success) {
+          setOptions(current => ({ ...current, salesExecutives: response.data }));
+        }
+      })
+      .catch(err => message.error(err.message || 'Could not load Sales Executives.'));
+  }, [canAssignSalesExecutive]);
 
   const fetchDealers = useCallback(async () => {
     setLoading(true);
@@ -53,15 +86,90 @@ const DealerMaster = () => {
 
   useEffect(() => { fetchDealers(); }, [fetchDealers]);
 
+  // Load the dealer's app users whenever the detail modal opens. Guarded with a
+  // cancellation flag so closing one dealer and opening another cannot let the
+  // slower response overwrite the newer one.
+  const viewDealerId = viewDealer?._id;
+  useEffect(() => {
+    if (!viewDealerId) {
+      setTeam({ loading: false, list: [], summary: null, error: false });
+      setDealerTargets({ loading: false, list: [], summary: null });
+      return undefined;
+    }
+    let cancelled = false;
+    setTeam({ loading: true, list: [], summary: null, error: false });
+    setDealerTargets({ loading: true, list: [], summary: null });
+
+    masterService.getDealerEmployees(viewDealerId)
+      .then(response => {
+        if (cancelled) return;
+        setTeam({
+          loading: false,
+          list: response.success ? (response.data || []) : [],
+          summary: response.summary || null,
+          error: false,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setTeam({ loading: false, list: [], summary: null, error: true });
+      });
+
+    // Targets are supplementary context, so a failure here must not blank the
+    // employee list above it — it just renders as empty.
+    dealerEmployeeTargetService.forDealer(viewDealerId)
+      .then(response => {
+        if (cancelled) return;
+        setDealerTargets({
+          loading: false,
+          list: response.success ? (response.data || []) : [],
+          summary: response.summary || null,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setDealerTargets({ loading: false, list: [], summary: null });
+      });
+
+    return () => { cancelled = true; };
+  }, [viewDealerId]);
+
+  const checkMobile = async (mobile, excludeId) => {
+    const digits = String(mobile || '').replace(/\D/g, '');
+    if (digits.length < 10) {
+      setMobileCheck(null);
+      return;
+    }
+    try {
+      const response = await masterService.checkDealerMobile(mobile, excludeId);
+      setMobileCheck(response?.data || null);
+    } catch {
+      // A failed probe must never block saving — the server re-checks on save.
+      setMobileCheck(null);
+    }
+  };
+
   const openForm = (dealer = null) => {
     setEditingDealer(dealer);
+    setMobileCheck(null);
     if (dealer) {
+      const currentSalesExecutive = dealer.assignedSalesExecutive;
+      if (
+        canAssignSalesExecutive &&
+        currentSalesExecutive?._id &&
+        !options.salesExecutives.some(user => user._id === currentSalesExecutive._id)
+      ) {
+        setOptions(current => ({
+          ...current,
+          salesExecutives: [...current.salesExecutives, currentSalesExecutive],
+        }));
+      }
       form.setFieldsValue({
         ...dealer,
         dealerType: dealer.dealerType?._id || dealer.dealerType,
         dealerCategory: dealer.dealerCategory?._id || dealer.dealerCategory,
         assignedRegion: dealer.assignedRegion?._id || dealer.assignedRegion,
         assignedRoute: dealer.assignedRoute?._id || dealer.assignedRoute,
+        assignedSalesExecutive:
+          dealer.assignedSalesExecutive?._id || dealer.assignedSalesExecutive,
       });
     } else {
       form.resetFields();
@@ -73,10 +181,16 @@ const DealerMaster = () => {
   const handleSave = async () => {
     try {
       const values = await form.validateFields();
+      const payload = { ...values };
+      if (canAssignSalesExecutive) {
+        payload.assignedSalesExecutive = values.assignedSalesExecutive || null;
+      } else {
+        delete payload.assignedSalesExecutive;
+      }
       setLoading(true);
       const res = editingDealer
-        ? await masterService.updateDealer(editingDealer._id, values)
-        : await masterService.createDealer(values);
+        ? await masterService.updateDealer(editingDealer._id, payload)
+        : await masterService.createDealer(payload);
       if (res.success) {
         message.success(res.message);
         setDrawerOpen(false);
@@ -105,6 +219,7 @@ const DealerMaster = () => {
     { title: 'City', dataIndex: 'city', key: 'city', width: 100 },
     { title: 'Type', key: 'type', width: 100, render: (_, r) => <span className="text-xs">{r.dealerType?.name || '-'}</span> },
     { title: 'Region', key: 'region', width: 100, render: (_, r) => <span className="text-xs">{r.assignedRegion?.name || '-'}</span> },
+    { title: 'Sales Executive', key: 'salesExecutive', width: 150, render: (_, r) => r.assignedSalesExecutive ? <Tag color="blue">{r.assignedSalesExecutive.name}</Tag> : <Tag>Unassigned</Tag> },
     { title: 'Credit Limit', dataIndex: 'creditLimit', key: 'cl', width: 100, render: v => <span className="text-sm">₹{(v||0).toLocaleString()}</span> },
     { title: 'Outstanding', dataIndex: 'currentOutstanding', key: 'out', width: 100, render: v => <span className={`text-sm font-medium ${v > 0 ? 'text-red-600' : 'text-green-600'}`}>₹{(v||0).toLocaleString()}</span> },
     { title: 'Status', dataIndex: 'status', key: 'status', width: 80, render: s => <Tag color={s === 'active' ? 'green' : s === 'blocked' ? 'red' : 'orange'}>{s}</Tag> },
@@ -149,7 +264,18 @@ const DealerMaster = () => {
             value={filters.region} onChange={v => setFilters(f => ({...f, region: v}))} allowClear className="w-36" />
           <Select placeholder="Status" options={[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'},{value:'blocked',label:'Blocked'}]}
             value={filters.status} onChange={v => setFilters(f => ({...f, status: v}))} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({status:undefined,dealerType:undefined,region:undefined}); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setFilters({status:undefined,dealerType:undefined,region:undefined}); }}>Clear Filters</Button>
+          {/* Re-fetches the current view. Distinct from Clear Filters, which only resets the inputs. */}
+          <Button
+            icon={<ReloadOutlined />}
+            loading={loading}
+            onClick={() => {
+              fetchDealers();
+              masterService.getDealerStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+            }}
+          >
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -184,7 +310,19 @@ const DealerMaster = () => {
                   <Col span={9}><Form.Item name="ownerName" label="Owner Name" rules={[{required:true}]}><Input placeholder="Owner name" /></Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
-                  <Col span={6}><Form.Item name="mobile" label="Mobile" rules={[{required:true}]}><Input placeholder="Mobile number" /></Form.Item></Col>
+                  <Col span={6}>
+                    <Form.Item
+                      name="mobile"
+                      label="Mobile"
+                      rules={[{required:true}]}
+                      validateStatus={mobileCheck && !mobileCheck.available ? 'error' : undefined}
+                      help={mobileCheck && !mobileCheck.available ? mobileCheck.message : undefined}>
+                      <Input
+                        placeholder="Mobile number"
+                        onBlur={(event) => checkMobile(event.target.value, editingDealer?._id)}
+                      />
+                    </Form.Item>
+                  </Col>
                   <Col span={6}><Form.Item name="alternateMobile" label="Alt Mobile"><Input placeholder="Alternate" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="email" label="Email"><Input placeholder="Email" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="gstin" label="GSTIN"
@@ -217,6 +355,28 @@ const DealerMaster = () => {
                   <Col span={6}><Form.Item name="assignedRegion" label="Region"><Select placeholder="Select" allowClear showSearch optionFilterProp="label" options={options.regions.map(r => ({value:r._id,label:r.name}))} /></Form.Item></Col>
                   <Col span={6}><Form.Item name="assignedRoute" label="Route"><Select placeholder="Select" allowClear showSearch optionFilterProp="label" options={options.routes.map(r => ({value:r._id,label:r.name}))} /></Form.Item></Col>
                 </Row>
+                {canAssignSalesExecutive && (
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <Form.Item
+                        name="assignedSalesExecutive"
+                        label="Assign Sales Executive"
+                        extra="Active Sales Executive users from User Management"
+                      >
+                        <Select
+                          placeholder="Select Sales Executive"
+                          allowClear
+                          showSearch
+                          optionFilterProp="label"
+                          options={options.salesExecutives.map(user => ({
+                            value: user._id,
+                            label: `${user.name}${user.phone ? ` · ${user.phone}` : ''}${user.status === 'Inactive' ? ' · Inactive (current)' : ''}`,
+                          }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                )}
 
                 <Divider orientation="left" plain>Financial</Divider>
                 <Row gutter={16}>
@@ -235,8 +395,7 @@ const DealerMaster = () => {
                 <Row gutter={16}>
                   <Col span={6}><Form.Item name="schemeEligible" label="Scheme Eligible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
                   <Col span={6}><Form.Item name="discountEligible" label="Discount Eligible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="visitFrequency" label="Visit Frequency"><Input placeholder="e.g. Weekly" /></Form.Item></Col>
-                  <Col span={6}><Form.Item name="tallyLedgerName" label="Tally Ledger Name"><Input placeholder="Tally name" /></Form.Item></Col>
+                  <Col span={12}><Form.Item name="visitFrequency" label="Visit Frequency"><Input placeholder="e.g. Weekly" /></Form.Item></Col>
                 </Row>
               </Form>
             </div>
@@ -321,11 +480,167 @@ const DealerMaster = () => {
               )}
 
               {/* Eligibility & Other */}
-              <div className="grid grid-cols-4 gap-3 text-xs">
+              <div className="grid grid-cols-3 gap-3 text-xs">
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Scheme</span><Tag color={viewDealer.schemeEligible ? 'green' : 'red'}>{viewDealer.schemeEligible ? 'Yes' : 'No'}</Tag></div>
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Discount</span><Tag color={viewDealer.discountEligible ? 'green' : 'red'}>{viewDealer.discountEligible ? 'Yes' : 'No'}</Tag></div>
                 <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Visit Freq</span><span className="font-medium">{viewDealer.visitFrequency || '-'}</span></div>
-                <div className="bg-gray-100 rounded p-2 text-center"><span className="text-gray-500 block">Tally Ledger</span><span className="font-medium text-[10px]">{viewDealer.tallyLedgerName || '-'}</span></div>
+              </div>
+
+              {/* App Users — employees the dealer created from the Dealer App.
+                  Read-only: the dealer owns this relationship, BDMTILES only observes. */}
+              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-2">
+                    <TeamOutlined /> Dealer App Users (Employees)
+                  </h3>
+                  <div className="flex items-center gap-3 text-xs">
+                    {viewDealer.employeeAccessEnabled === false && (
+                      <Tag color="default">Employee access not enabled</Tag>
+                    )}
+                    {team.summary && (
+                      <>
+                        <span className="text-gray-600">Total: <b>{team.summary.total}</b></span>
+                        <span className="text-green-700">Active: <b>{team.summary.active}</b></span>
+                        <span className="text-gray-500">Login on: <b>{team.summary.withLogin}</b></span>
+                        <span className="text-gray-500">Live targets: <b>{team.summary.activeTargets ?? 0}</b></span>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {team.loading ? (
+                  <div className="text-sm text-gray-400 py-4 text-center">Loading app users…</div>
+                ) : team.error ? (
+                  <div className="text-sm text-red-500 py-4 text-center">Could not load app users.</div>
+                ) : team.list.length === 0 ? (
+                  <div className="text-sm text-gray-400 py-4 text-center">
+                    This dealer has not added any employees to the app yet.
+                  </div>
+                ) : (
+                  <Table
+                    size="small"
+                    rowKey="_id"
+                    pagination={false}
+                    scroll={{ x: 'max-content' }}
+                    dataSource={team.list}
+                    columns={[
+                      {
+                        title: 'Name',
+                        dataIndex: 'name',
+                        render: (value, row) => (
+                          <div>
+                            <div className="font-medium">{value}</div>
+                            <div className="text-xs text-gray-400">{row.employeeCode || '—'}</div>
+                          </div>
+                        ),
+                      },
+                      { title: 'Mobile', dataIndex: 'mobile' },
+                      { title: 'Designation', dataIndex: 'designation', render: (value) => value || '—' },
+                      { title: 'Role', dataIndex: 'role', render: (value) => <Tag>{value}</Tag> },
+                      {
+                        title: 'Status',
+                        dataIndex: 'status',
+                        render: (value) => <Tag color={value === 'active' ? 'green' : 'default'}>{value}</Tag>,
+                      },
+                      {
+                        title: 'App Login',
+                        dataIndex: 'loginEnabled',
+                        render: (value) => <Tag color={value ? 'blue' : 'default'}>{value ? 'Enabled' : 'Off'}</Tag>,
+                      },
+                      {
+                        title: 'Last Login',
+                        dataIndex: 'appLastLoginAt',
+                        render: (value) => (value ? new Date(value).toLocaleDateString('en-IN') : 'Never'),
+                      },
+                    ]}
+                  />
+                )}
+              </div>
+
+              {/* Targets this dealer has set for those employees. Read-only here:
+                  authoring lives on the Dealer Employee Targets page. */}
+              <div className="bg-indigo-50 rounded-lg p-4 border border-indigo-100">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase flex items-center gap-2">
+                    <AimOutlined /> Employee Targets Set By This Dealer
+                  </h3>
+                  {dealerTargets.summary && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="text-gray-600">Targets: <b>{dealerTargets.summary.total}</b></span>
+                      <span className="text-green-700">Achieved: <b>{dealerTargets.summary.achieved}</b></span>
+                      <span className="text-blue-700">In progress: <b>{dealerTargets.summary.inProgress}</b></span>
+                    </div>
+                  )}
+                </div>
+
+                {dealerTargets.loading ? (
+                  <div className="text-sm text-gray-400 py-4 text-center">Loading targets…</div>
+                ) : dealerTargets.list.length === 0 ? (
+                  <div className="text-sm text-gray-400 py-4 text-center">
+                    This dealer has not set any targets for their employees yet.
+                  </div>
+                ) : (
+                  <Table
+                    size="small"
+                    rowKey="rowKey"
+                    pagination={false}
+                    scroll={{ x: 'max-content' }}
+                    dataSource={dealerTargets.list}
+                    columns={[
+                      {
+                        title: 'Employee',
+                        dataIndex: 'employee',
+                        render: (employee) => (
+                          <div>
+                            <div className="font-medium">{employee?.name || '—'}</div>
+                            <div className="text-xs text-gray-400">{employee?.employeeCode || ''}</div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Target',
+                        dataIndex: 'title',
+                        render: (title, row) => (
+                          <div>
+                            <div>{title}</div>
+                            <div className="text-xs text-gray-400">
+                              {row.metricLabel} · {String(row.period || '').replace(/_/g, ' ')}
+                              {row.shared ? ' · team-wide' : ''}
+                            </div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Progress',
+                        key: 'progress',
+                        width: 170,
+                        render: (_, row) => (
+                          <div>
+                            <Progress
+                              percent={Math.min(100, Math.round(row.progressPercent || 0))}
+                              size="small"
+                              strokeColor={row.isAchieved ? '#16a34a' : '#1890ff'}
+                            />
+                            <div className="text-xs text-gray-500">
+                              {Number(row.achievedValue || 0).toLocaleString('en-IN')} of{' '}
+                              {Number(row.targetValue || 0).toLocaleString('en-IN')} {row.unit === 'currency' ? '₹' : row.unit}
+                            </div>
+                          </div>
+                        ),
+                      },
+                      {
+                        title: 'Status',
+                        dataIndex: 'status',
+                        width: 100,
+                        render: (status) => (
+                          <Tag color={status === 'active' ? 'blue' : status === 'completed' ? 'green' : 'default'}>
+                            {status}
+                          </Tag>
+                        ),
+                      },
+                    ]}
+                  />
+                )}
               </div>
 
               {/* Meta */}

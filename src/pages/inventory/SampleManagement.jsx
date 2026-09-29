@@ -223,7 +223,8 @@ const SampleManagement = () => {
         >
           {STATUS_OPTIONS.map(s => <Option key={s.value} value={s.value}>{s.label}</Option>)}
         </Select>
-        <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchSamples(); fetchStats(); }}>Refresh</Button>
       </div>
 
       {/* Table */}
@@ -253,7 +254,7 @@ const SampleManagement = () => {
         onCancel={() => { setModalOpen(false); form.resetFields(); }}
         onOk={handleIssue}
         okText="Issue"
-        width={640}
+        width={860}
         confirmLoading={loading}
         destroyOnHidden
       >
@@ -348,6 +349,7 @@ const SampleManagement = () => {
         onCancel={() => { setReturnModalOpen(false); setReturningId(null); setReturnCondition('good'); setReturnNotes(''); }}
         onOk={handleReturn}
         okText="Confirm Return"
+        width={580}
         destroyOnHidden
       >
         <div className="py-2 space-y-4">

@@ -118,7 +118,8 @@ const LoansAdvances = () => {
             value={typeFilter} onChange={setTypeFilter} allowClear className="w-32" />
           <Select placeholder="Status" options={LOAN_STATUSES.map(status => ({ value: status, label: status }))}
             value={statusFilter} onChange={setStatusFilter} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setTypeFilter(undefined); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchLoans(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -128,7 +129,7 @@ const LoansAdvances = () => {
       </div>
 
       <Modal title="New Loan / Advance" open={createModal} onCancel={() => { setCreateModal(false); createForm.resetFields(); }}
-        onOk={handleCreateLoan} okText="Create" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={520}>
+        onOk={handleCreateLoan} okText="Create" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={800}>
         <Form form={createForm} layout="vertical" className="mt-4">
           <Form.Item name="employee" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"

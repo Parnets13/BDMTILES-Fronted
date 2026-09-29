@@ -154,7 +154,8 @@ const AttendanceDashboard = () => {
             { value: 'Present', label: 'Present' }, { value: 'Absent', label: 'Absent' },
             { value: 'Late', label: 'Late' }, { value: 'Leave', label: 'On Leave' },
           ]} value={statusFilter} onChange={v => setStatusFilter(v)} allowClear className="w-32" />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setStatusFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchAttendance(); }}>Refresh</Button>
         </div>
       </div>
 
@@ -166,7 +167,7 @@ const AttendanceDashboard = () => {
 
       {/* Mark Attendance Modal */}
       <Modal title="Mark Attendance" open={markModal} onCancel={() => { setMarkModal(false); markForm.resetFields(); }}
-        onOk={handleMarkAttendance} okText="Mark" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }}>
+        onOk={handleMarkAttendance} okText="Mark" okButtonProps={{ style: { background: '#FF5F03', borderColor: '#FF5F03' } }} width={720}>
         <Form form={markForm} layout="vertical" className="mt-4">
           <Form.Item name="employeeId" label="Employee" rules={[{ required: true, message: 'Select employee' }]}>
             <Select placeholder="Select employee" showSearch optionFilterProp="label"

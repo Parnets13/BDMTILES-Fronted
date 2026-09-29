@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Table, Button, Input, Select, Tag, Space, message,
-  Row, Col, Card, Statistic, Modal, InputNumber
+  Row, Col, Card, Statistic, Modal, InputNumber, Alert
 } from 'antd';
 import {
   SearchOutlined, ReloadOutlined, UndoOutlined,
@@ -146,13 +146,32 @@ const RecycleBin = () => {
         </Button>
       </div>
 
+      {stats.expiringSoon > 0 && (
+        <Alert
+          type="error"
+          showIcon
+          className="mb-4"
+          message={`${stats.expiringSoon} item(s) will be permanently removed within 7 days`}
+          description={`The database deletes bin entries automatically after ${stats.retentionDays || 30} days. Restore anything you still need now — once removed it cannot be recovered, and this bin is not a backup.`}
+        />
+      )}
+
       <Row gutter={16} className="mb-4">
         <Col span={6}>
           <Card size="small" className="border-red-100">
             <Statistic title="Total Deleted Items" value={stats.total || 0} valueStyle={{ color: '#f5222d' }} />
           </Card>
         </Col>
-        {(stats.byModule || []).slice(0, 4).map(m => (
+        <Col span={6}>
+          <Card size="small">
+            <Statistic
+              title="Expiring Within 7 Days"
+              value={stats.expiringSoon || 0}
+              valueStyle={{ color: stats.expiringSoon ? '#cf1322' : '#389e0d' }}
+            />
+          </Card>
+        </Col>
+        {(stats.byModule || []).slice(0, 3).map(m => (
           <Col span={4} key={m._id}>
             <Card size="small">
               <Statistic title={m._id?.replace(/_/g, ' ') || '—'} value={m.count || 0} valueStyle={{ fontSize: 16 }} />
@@ -168,7 +187,8 @@ const RecycleBin = () => {
             className="w-64" allowClear />
           <Select placeholder="Module" allowClear value={moduleFilter} onChange={v => setModuleFilter(v)} className="w-40"
             options={['product','sales_order','purchase','dealer','supplier','quotation','payment','hrms','stock'].map(m => ({value:m, label:m.replace(/_/g,' ')}))} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setModuleFilter(undefined); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setModuleFilter(undefined); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchItems(); loadStats(); }}>Refresh</Button>
         </div>
       </div>
 

@@ -145,7 +145,8 @@ const PickingList = () => {
             options={warehouses.map(w => ({ value: w._id, label: w.name || w.warehouseName }))} />
           <Select placeholder="Priority" allowClear value={priorityFilter} onChange={v => setPriorityFilter(v)} className="w-32"
             options={[{ value: 'normal', label: 'Normal' }, { value: 'urgent', label: 'Urgent' }, { value: 'vip', label: 'VIP' }]} />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setPriorityFilter(undefined); setDateFrom(''); setDateTo(''); }}>Reset</Button>
+          <Button onClick={() => { setSearch(''); setPriorityFilter(undefined); setDateFrom(''); setDateTo(''); }}>Reset</Button>
+        <Button icon={<ReloadOutlined />} onClick={() => { fetchOrders(); }}>Refresh</Button>
         </div>
       </div>
 

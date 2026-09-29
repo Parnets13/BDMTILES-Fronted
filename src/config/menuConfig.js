@@ -31,6 +31,9 @@ import {
   LineChart,
   Download,
   Activity,
+  Layers,
+  LogOut,
+  ShieldCheck,
   TrendingDown,
   TrendingUp,
   FolderSync,
@@ -46,6 +49,8 @@ import {
   Globe,
   Image,
   Megaphone,
+  UserPlus,
+  FileSignature,
 } from 'lucide-react';
 
 /**
@@ -62,12 +67,12 @@ const menuConfig = {
     path: '/dashboard',
     permission: 'dashboard.view',
   },
-  system: {
-    id: 'system',
-    title: 'System Management',
-    icon: Settings,
+  userAccess: {
+    id: 'user-access',
+    title: 'User, Role & Permission Management',
+    icon: Users,
     hasSubmenu: true,
-    modulePermissions: ['system.management', 'users.manage'],
+    modulePermissions: ['users.manage', 'access.policy.manage'],
     items: [
       {
         id: 'user-management',
@@ -77,12 +82,29 @@ const menuConfig = {
         permission: 'users.manage',
       },
       {
-        id: 'recycle-bin',
-        title: 'Recycle Bin',
-        icon: Archive,
-        path: '/system/recycle-bin',
+        id: 'roles-permissions',
+        title: 'Roles & Permissions',
+        icon: ShieldCheck,
+        path: '/system/roles',
         permission: 'users.manage',
       },
+      {
+        id: 'access-policies',
+        title: 'Access Policies',
+        icon: Clock,
+        path: '/system/access-policies',
+        permission: 'access.policy.manage',
+        roles: ['super_admin', 'owner'],
+      },
+    ],
+  },
+  systemSettings: {
+    id: 'system-settings',
+    title: 'System Settings & Integrations',
+    icon: Settings,
+    hasSubmenu: true,
+    modulePermissions: ['system.management', 'users.manage', 'notification.inbox', 'notification.manage', 'dealer.app.manage'],
+    items: [
       {
         id: 'notification-inbox',
         title: 'Notifications',
@@ -107,12 +129,25 @@ const menuConfig = {
         roles: ['super_admin', 'owner'],
       },
       {
-        id: 'access-policies',
-        title: 'Access Policies',
-        icon: Clock,
-        path: '/system/access-policies',
-        permission: 'access.policy.manage',
-        roles: ['super_admin', 'owner'],
+        id: 'dealer-app-access',
+        title: 'Dealer App Access',
+        icon: Smartphone,
+        path: '/system/dealer-app-access',
+        permission: 'dealer.app.manage',
+      },
+      {
+        id: 'system-health',
+        title: 'System Health & Integrations',
+        icon: Activity,
+        path: '/system/health',
+        permission: 'system.management',
+      },
+      {
+        id: 'recycle-bin',
+        title: 'Recycle Bin',
+        icon: Archive,
+        path: '/system/recycle-bin',
+        permission: 'users.manage',
       },
     ],
   },
@@ -207,7 +242,7 @@ const menuConfig = {
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage'],
+    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage', 'stock.view'],
     items: [
       {
         id: 'product-master',
@@ -301,6 +336,16 @@ const menuConfig = {
         permission: 'dealer.master',
       },
       {
+        // Targets dealers have set for their own app employees. Gated on
+        // dealer.master to match the API, so anyone who can already open a dealer
+        // and see its staff can also see their targets.
+        id: 'dealer-employee-targets',
+        title: 'Dealer Employee Targets',
+        icon: Target,
+        path: '/masters/dealer-employee-targets',
+        permission: 'dealer.master',
+      },
+      {
         id: 'supplier-master',
         title: 'Supplier Master',
         icon: Building2,
@@ -313,6 +358,13 @@ const menuConfig = {
         icon: Users,
         path: '/masters/customers',
         permission: 'customer.master',
+      },
+      {
+        id: 'shade-batch-registry',
+        title: 'Shade & Batch Registry',
+        icon: Layers,
+        path: '/masters/shade-batch-registry',
+        permission: 'stock.view',
       },
       {
         id: 'bdm-cash-wallet',
@@ -456,14 +508,14 @@ const menuConfig = {
         title: 'Stock Adjustment',
         icon: RefreshCw,
         path: '/inventory/stock-adjustment',
-        permission: 'stock.adjustment',
+        permissions: ['stock.adjustment.create', 'stock.adjustment.submit', 'stock.adjustment.approve', 'stock.adjustment.reverse', 'stock.adjustment'],
       },
       {
         id: 'physical-audit',
         title: 'Physical Audit',
         icon: CheckCircle,
         path: '/inventory/physical-audit',
-        permission: 'stock.adjustment',
+        permissions: ['stock.audit.create', 'stock.audit.count', 'stock.audit.submit', 'stock.audit.approve', 'stock.audit.reverse'],
       },
       {
         id: 'stock-alerts',
@@ -638,7 +690,7 @@ const menuConfig = {
   },
   assets: {
     id: 'assets',
-    title: 'Assets',
+    title: 'Asset Management',
     icon: Briefcase,
     hasSubmenu: true,
     modulePermissions: ['asset.management'],
@@ -658,6 +710,13 @@ const menuConfig = {
         permission: 'asset.management',
       },
       {
+        id: 'asset-employee-history',
+        title: 'Employee Asset History',
+        icon: History,
+        path: '/assets/employee-history',
+        permission: 'asset.management',
+      },
+      {
         id: 'asset-maintenance',
         title: 'Maintenance',
         icon: RefreshCw,
@@ -671,7 +730,7 @@ const menuConfig = {
     title: 'HRMS Administration',
     icon: UserCog,
     hasSubmenu: true,
-    modulePermissions: ['hrms.management', 'employee.registration', 'attendance.master'],
+    modulePermissions: ['hrms.management', 'employee.registration', 'attendance.master', 'job.opening.manage', 'candidate.manage', 'hr.template.manage', 'performance.appraisal', 'employee.exit'],
     items: [
       {
         id: 'employee-registration',
@@ -679,6 +738,27 @@ const menuConfig = {
         icon: ClipboardList,
         path: '/hrms/employee-registration',
         permission: 'employee.registration',
+      },
+      {
+        id: 'job-openings',
+        title: 'Job Openings',
+        icon: Briefcase,
+        path: '/hrms/job-openings',
+        permission: 'job.opening.manage',
+      },
+      {
+        id: 'candidate-pipeline',
+        title: 'Candidate Recruitment',
+        icon: UserPlus,
+        path: '/hrms/candidate-pipeline',
+        permission: 'candidate.manage',
+      },
+      {
+        id: 'document-templates',
+        title: 'HR Document Templates',
+        icon: FileSignature,
+        path: '/hrms/document-templates',
+        permission: 'hr.template.manage',
       },
       {
         id: 'geo-attendance',
@@ -742,6 +822,20 @@ const menuConfig = {
         icon: Users,
         path: '/hrms/daily-wage-workers',
         permission: 'attendance.master',
+      },
+      {
+        id: 'performance-appraisal',
+        title: 'Performance Appraisal',
+        icon: TrendingUp,
+        path: '/hrms/performance',
+        permission: 'performance.appraisal',
+      },
+      {
+        id: 'employee-exit',
+        title: 'Employee Exit & F&F',
+        icon: LogOut,
+        path: '/hrms/employee-exit',
+        permission: 'employee.exit',
       },
       {
         id: 'hrms-settings',
@@ -840,10 +934,10 @@ const menuConfig = {
   },
   reports: {
     id: 'reports',
-    title: 'Reports & Logs',
+    title: 'Reports & Analytics',
     icon: BarChart2,
     hasSubmenu: true,
-    modulePermissions: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.finance', 'reports.profit', 'reports.gst', 'reports.hr', 'activity.logs', 'download.logs', 'audit.trail'],
+    modulePermissions: ['reports.sales', 'reports.purchase', 'reports.inventory', 'reports.finance', 'reports.profit', 'reports.gst', 'reports.hr'],
     items: [
       {
         id: 'profit-analysis',
@@ -856,7 +950,7 @@ const menuConfig = {
             id: 'bill-wise-profit',
             title: 'Bill-wise Profit',
             icon: FileText,
-            path: '/reports/advanced',
+            path: '/reports/profit-analysis/bill-wise-profit',
             permission: 'reports.profit',
           },
           {
@@ -918,6 +1012,48 @@ const menuConfig = {
         permission: 'reports.sales',
       },
       {
+        id: 'supplier-performance',
+        title: 'Supplier Performance',
+        icon: Building2,
+        path: '/reports/supplier-performance',
+        permission: 'reports.purchase',
+      },
+      {
+        id: 'branch-performance',
+        title: 'Branch Performance',
+        icon: Building2,
+        path: '/reports/branch-performance',
+        permission: 'reports.sales',
+      },
+      {
+        id: 'warehouse-performance',
+        title: 'Warehouse Performance',
+        icon: Warehouse,
+        path: '/reports/warehouse-performance',
+        permission: 'reports.inventory',
+      },
+      {
+        id: 'collection-report',
+        title: 'Collection Report',
+        icon: Wallet,
+        path: '/reports/collection-report',
+        permission: 'reports.finance',
+      },
+      {
+        id: 'expense-report',
+        title: 'Expense Report',
+        icon: Receipt,
+        path: '/reports/expense-report',
+        permission: 'reports.finance',
+      },
+      {
+        id: 'outstanding-report',
+        title: 'Outstanding Report',
+        icon: DollarSign,
+        path: '/reports/outstanding-report',
+        permission: 'reports.finance',
+      },
+      {
         id: 'gst-reports',
         title: 'GST Reports',
         icon: FileText,
@@ -964,8 +1100,19 @@ const menuConfig = {
         title: 'Bank Reconciliation',
         icon: RefreshCw,
         path: '/reports/bank-reconciliation',
-        permission: 'reports.finance',
+        permission: 'reconciliation',
       },
+    ],
+  },
+  // Kept separate from Reports & Analytics on purpose: reports answer business
+  // questions, logs answer "who changed what, when".
+  auditLogs: {
+    id: 'audit-logs',
+    title: 'Audit & Activity Logs',
+    icon: History,
+    hasSubmenu: true,
+    modulePermissions: ['audit.trail', 'activity.logs', 'download.logs'],
+    items: [
       {
         id: 'audit-trail',
         title: 'Audit Trail',
@@ -981,6 +1128,34 @@ const menuConfig = {
         permission: 'activity.logs',
       },
       {
+        id: 'login-history',
+        title: 'Login History',
+        icon: Clock,
+        path: '/reports/login-history',
+        permission: 'audit.trail',
+      },
+      {
+        id: 'user-activity',
+        title: 'User Activity',
+        icon: Users,
+        path: '/reports/user-activity',
+        permission: 'audit.trail',
+      },
+      {
+        id: 'data-modification',
+        title: 'Data Modification History',
+        icon: RefreshCw,
+        path: '/reports/data-modification',
+        permission: 'audit.trail',
+      },
+      {
+        id: 'approval-history',
+        title: 'Approval History',
+        icon: CheckCircle,
+        path: '/reports/approval-history',
+        permission: 'audit.trail',
+      },
+      {
         id: 'download-logs',
         title: 'Download Logs',
         icon: Download,
@@ -989,36 +1164,6 @@ const menuConfig = {
       },
     ],
   },
-  // tally: {
-  //   id: 'tally',
-  //   title: 'Tally Integration',
-  //   icon: FolderSync,
-  //   hasSubmenu: true,
-  //   modulePermissions: ['tally.sync'],
-  //   items: [
-  //     {
-  //       id: 'tally-dashboard',
-  //       title: 'Tally Dashboard',
-  //       icon: BarChart2,
-  //       path: '/tally/dashboard',
-  //       permission: 'tally.sync',
-  //     },
-  //     {
-  //       id: 'tally-sync-status',
-  //       title: 'Sync Status',
-  //       icon: RefreshCw,
-  //       path: '/tally/sync-status',
-  //       permission: 'tally.sync',
-  //     },
-  //     {
-  //       id: 'tally-conflict-resolver',
-  //       title: 'Conflict Resolver',
-  //       icon: CheckCircle,
-  //       path: '/tally/conflict-resolver',
-  //       permission: 'tally.sync',
-  //     },
-  //   ],
-  // },
   supplierIncentive: {
     id: 'supplier-incentive',
     title: 'Supplier Incentive',
@@ -1091,7 +1236,7 @@ const menuConfig = {
     title: 'Dealer App',
     icon: Smartphone,
     hasSubmenu: true,
-    modulePermissions: ['support.chat', 'dealer.order.requests'],
+    modulePermissions: ['support.chat', 'dealer.order_request.review'],
     items: [
       {
         id: 'dealer-support-chat',
@@ -1105,7 +1250,7 @@ const menuConfig = {
         title: 'Dealer Order Requests',
         icon: ClipboardList,
         path: '/dealer-app/order-requests',
-        permission: 'dealer.order.requests',
+        permission: 'dealer.order_request.review',
       },
     ],
   },
@@ -1114,13 +1259,20 @@ const menuConfig = {
     title: 'Sales Executive App',
     icon: Users2,
     hasSubmenu: true,
-    modulePermissions: ['sales.executive.app', 'se.attendance.view'],
+    modulePermissions: ['sales.executive.app', 'se.attendance.view', 'dealer.assignment.manage'],
     items: [
       {
         id: 'se-attendance',
         title: 'Attendance',
         icon: CheckCircle,
         path: '/se-app/attendance',
+        permission: 'se.attendance.view',
+      },
+      {
+        id: 'se-live-tracking',
+        title: 'Live Tracking',
+        icon: MapPin,
+        path: '/se-app/live-tracking',
         permission: 'se.attendance.view',
       },
       {
@@ -1135,7 +1287,7 @@ const menuConfig = {
         title: 'Dealer Assignment',
         icon: Users2,
         path: '/se-app/dealer-assignment',
-        permission: 'se.attendance.view',
+        permission: 'dealer.assignment.manage',
       },
       {
         id: 'se-route-plan',
@@ -1163,20 +1315,15 @@ const menuConfig = {
         title: 'Targets',
         icon: Target,
         path: '/se-app/targets',
-        permission: 'se.targets.view',
+        // Matches the /targets API guard. se.targets.view is the executive's own
+        // read on the mobile app, not permission to author targets for others.
+        permission: 'incentive.rules.view',
       },
       {
         id: 'se-expenses',
         title: 'Expenses',
         icon: Receipt,
         path: '/se-app/expenses',
-        permission: 'sales.executive.app',
-      },
-      {
-        id: 'se-live-tracking',
-        title: 'Live Tracking',
-        icon: MapPin,
-        path: '/se-app/live-tracking',
         permission: 'sales.executive.app',
       },
     ],
@@ -1246,28 +1393,41 @@ const menuConfig = {
  * super_admin sees all, others see relevant sections
  */
 export const getRoleMenuSections = () => {
+  // Ordered to follow the actual business workflow rather than module grouping:
+  // daily operational modules first, administrative ones lower down, the three
+  // apps kept together, and Reports / Logs deliberately separated.
   const allSections = [
+    // 1 — Dashboard
     menuConfig.dashboard,
-    menuConfig.system,
-    menuConfig.webManagement,
+    // 2 — Masters feed everything downstream
     menuConfig.masters,
+    // 3-7 — Order-to-delivery flow: lead -> quote/order -> stock -> pick -> dispatch
+    menuConfig.crm,
     menuConfig.salesPurchase,
     menuConfig.inventory,
     menuConfig.warehouse,
     menuConfig.dispatch,
-    menuConfig.crm,
-    menuConfig.complaints,
-    menuConfig.assets,
-    menuConfig.hrms,
+    // 8-10 — Money and incentives
     menuConfig.finance,
-    menuConfig.reports,
-    // menuConfig.tally,
     menuConfig.supplierIncentive,
     menuConfig.dealerSchemes,
+    // 11-12 — Cross-cutting queues
     menuConfig.approvals,
+    menuConfig.complaints,
+    // 13-14 — People and property
+    menuConfig.hrms,
+    menuConfig.assets,
+    // 15-16 — Reporting, then audit trail (kept apart on purpose)
+    menuConfig.reports,
+    menuConfig.auditLogs,
+    // 17-19 — Apps grouped together
     menuConfig.dealerApp,
     menuConfig.salesExecutive,
     menuConfig.deliveryExecutive,
+    // 20-22 — Storefront CMS and administration last
+    menuConfig.webManagement,
+    menuConfig.userAccess,
+    menuConfig.systemSettings,
   ];
 
   return allSections;
