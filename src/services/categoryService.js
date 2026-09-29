@@ -4,7 +4,13 @@ const base = '/category-setup';
 
 const categoryService = {
   // Brands
+  getWebCategories: () => api.get(`${base}/web-categories`),
   getBrands: (params) => api.get(`${base}/brands`, { params }),
+  uploadBrandImage: (file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post(`${base}/brands/upload-image`, formData);
+  },
   createBrand: (data) => api.post(`${base}/brands`, data),
   updateBrand: (id, data) => api.put(`${base}/brands/${id}`, data),
   deleteBrand: (id) => api.delete(`${base}/brands/${id}`),

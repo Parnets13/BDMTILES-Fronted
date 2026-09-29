@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Modal, Form, Tag, Space, message, Popconfirm, Tooltip, Breadcrumb } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RightOutlined, HomeOutlined, ReloadOutlined, ArrowLeftOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Modal, Form, Tag, Space, message, Popconfirm, Tooltip, Breadcrumb, Upload, Image } from 'antd';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, RightOutlined, ReloadOutlined, ArrowLeftOutlined, UploadOutlined } from '@ant-design/icons';
 import categoryService from '../../services/categoryService.js';
+import { resolveUploadUrl } from '../../config/api.js';
 
 const CategorySetup = () => {
   // Navigation: 'brands' | 'categories' | 'subcategories'
@@ -19,6 +20,8 @@ const CategorySetup = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [form] = Form.useForm();
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [webCategoryChoices, setWebCategoryChoices] = useState([]);
 
   // Fetch data based on current level
   const fetchData = useCallback(async () => {
@@ -47,6 +50,13 @@ const CategorySetup = () => {
   }, [level, selectedBrand, selectedCategory, pagination.current, search]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (level !== 'categories') return;
+    categoryService.getWebCategories()
+      .then((res) => { if (res.success) setWebCategoryChoices(res.data || []); })
+      .catch((err) => message.error(err.message || 'Failed to load web categories'));
+  }, [level]);
 
   // Navigate into a brand/category
   const drillInto = (item) => {
@@ -77,7 +87,7 @@ const CategorySetup = () => {
   // Add/Edit
   const openModal = (item = null) => {
     setEditingItem(item);
-    form.setFieldsValue(item ? { name: item.name, description: item.description, status: item.status || 'active' } : { name: '', description: '', status: 'active' });
+    form.setFieldsValue(item ? { name: item.name, description: item.description, image: item.image || '', status: item.status || 'active' } : { name: '', description: '', image: '', status: 'active' });
     setModalOpen(true);
   };
 
@@ -275,16 +285,73 @@ const CategorySetup = () => {
       >
         <Form form={form} layout="vertical" className="mt-4">
           <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Name is required' }]}>
-            <Input placeholder={`Enter ${level.slice(0, -1)} name`} />
+            {level === 'categories' ? (
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder="Select a Web Management category"
+                options={[...new Set([...(editingItem ? [editingItem.name] : []), ...webCategoryChoices.map((category) => category.name)])]
+                  .map((name) => ({ value: name, label: name }))}
+              />
+            ) : <Input placeholder={`Enter ${level.slice(0, -1)} name`} />}
           </Form.Item>
           <Form.Item name="description" label="Description">
             <Input.TextArea rows={2} placeholder="Optional description" />
           </Form.Item>
+          {level === 'brands' && (
+            <Form.Item name="image" label="Brand Logo">
+              <BrandLogoField uploading={uploadingLogo} setUploading={setUploadingLogo} />
+            </Form.Item>
+          )}
           <Form.Item name="status" label="Status" initialValue="active">
             <Select options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} />
           </Form.Item>
         </Form>
       </Modal>
+    </div>
+  );
+};
+
+const BrandLogoField = ({ value, onChange, uploading, setUploading }) => {
+  const uploadLogo = async (file) => {
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      message.error('Choose a JPG, PNG, or WEBP image.');
+      return false;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      message.error('Logo must be 5 MB or smaller.');
+      return false;
+    }
+
+    setUploading(true);
+    try {
+      const res = await categoryService.uploadBrandImage(file);
+      if (!res.success || !res.data) throw new Error(res.message || 'Upload failed.');
+      onChange?.(res.data);
+      message.success('Brand logo uploaded.');
+    } catch (err) {
+      message.error(err.message || 'Logo upload failed.');
+    } finally {
+      setUploading(false);
+    }
+    return false;
+  };
+
+  return (
+    <div>
+      {value && (
+        <div className="mb-2 flex items-start gap-3">
+          <Image src={resolveUploadUrl(value)} alt="Brand logo preview" width={96} height={72} className="rounded border border-gray-200 object-contain" />
+          <Button size="small" danger onClick={() => onChange?.('')}>Remove</Button>
+        </div>
+      )}
+      <Space.Compact className="w-full">
+        <Input placeholder="Paste a logo URL or upload an image" value={value || ''} onChange={(event) => onChange?.(event.target.value)} />
+        <Upload accept="image/jpeg,image/png,image/webp" showUploadList={false} beforeUpload={uploadLogo}>
+          <Button icon={<UploadOutlined />} loading={uploading}>Upload</Button>
+        </Upload>
+      </Space.Compact>
+      <div className="mt-1 text-xs text-gray-400">JPG, PNG, or WEBP · Max 5 MB</div>
     </div>
   );
 };
