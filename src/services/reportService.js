@@ -8,6 +8,7 @@ const reportService = {
   getGSTReport: (params) => api.get('/reports/gst', { params }),
   getAgingReport: () => api.get('/reports/aging'),
   getProfitReport: (params) => api.get('/reports/profit', { params }),
+  getDeviationReport: (params) => api.get('/reports/deviation', { params }),
   getHRReport: (params) => api.get('/reports/hr', { params }),
   getDealerPerformance: (params) => api.get('/reports/dealer-performance', { params }),
   getSEPerformance: (params) => api.get('/reports/se-performance', { params }),

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Card, Col, DatePicker, Divider, Form, Input, InputNumber,
-  message, Modal, Popconfirm, Row, Select, Space, Statistic, Table, Tag, Tooltip,
+  message, Modal, Popconfirm, Row, Select, Space, Statistic, Switch, Table, Tag, Tooltip,
 } from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
@@ -10,6 +10,8 @@ import recruitmentService from '../../services/recruitmentService.js';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
 const EMPLOYMENT_TYPES = ['Full Time', 'Part Time', 'Contract', 'Daily Wage'];
+// Matches the JobOpening.jobMode enum on the backend.
+const JOB_MODES = ['On-site', 'Hybrid', 'Remote'];
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
   { value: 'on_hold', label: 'On Hold' },
@@ -59,10 +61,23 @@ const JobOpenings = () => {
   const openModal = (record = null) => {
     setEditing(record);
     if (record) {
-      form.setFieldsValue({ ...record, closingDate: record.closingDate ? dayjs(record.closingDate) : null });
+      form.setFieldsValue({
+        ...record,
+        closingDate: record.closingDate ? dayjs(record.closingDate) : null,
+        // The API nests these; the form keeps them flat so Ant Design can bind to them.
+        salaryMin: record.salaryRange?.min ?? 0,
+        salaryMax: record.salaryRange?.max ?? 0,
+        salaryPeriod: record.salaryRange?.period || 'year',
+        tags: record.tags || [],
+        keywords: record.keywords || [],
+        publicVisible: record.publicVisible === true,
+      });
     } else {
       form.resetFields();
-      form.setFieldsValue({ positions: 1, employmentType: 'Full Time', status: 'open' });
+      form.setFieldsValue({
+        positions: 1, employmentType: 'Full Time', status: 'open',
+        jobMode: 'On-site', salaryPeriod: 'year', publicVisible: false,
+      });
     }
     setModalOpen(true);
   };
@@ -73,7 +88,12 @@ const JobOpenings = () => {
     try {
       const values = await form.validateFields();
       setLoading(true);
-      const payload = { ...values, closingDate: values.closingDate ? values.closingDate.format('YYYY-MM-DD') : null };
+      const { salaryMin, salaryMax, salaryPeriod, ...rest } = values;
+      const payload = {
+        ...rest,
+        closingDate: values.closingDate ? values.closingDate.format('YYYY-MM-DD') : null,
+        salaryRange: { min: salaryMin || 0, max: salaryMax || 0, period: salaryPeriod || 'year' },
+      };
       const res = editing
         ? await recruitmentService.updateJobOpening(editing._id, payload)
         : await recruitmentService.createJobOpening(payload);
@@ -107,6 +127,15 @@ const JobOpenings = () => {
     {
       title: 'Status', dataIndex: 'status', key: 'status', width: 100,
       render: (status) => <Tag color={STATUS_COLOR[status]}>{STATUS_OPTIONS.find(s => s.value === status)?.label || status}</Tag>,
+    },
+    {
+      // Publication state is separate from the opening's own status: a job can be
+      // `open` internally while not advertised. Showing it here prevents the classic
+      // "why is nobody applying" question when the listing was simply never published.
+      title: 'Careers Site', key: 'publicVisible', width: 120, align: 'center',
+      render: (_, r) => (r.publicVisible === true
+        ? <Tooltip title="Visible on the public careers page"><Tag color="blue">Published</Tag></Tooltip>
+        : <Tooltip title="Not shown on the careers page"><Tag>Internal</Tag></Tooltip>),
     },
     { title: 'Posted', dataIndex: 'postedDate', key: 'postedDate', width: 105, render: (v) => v ? dayjs(v).format('DD/MM/YY') : '-' },
     {
@@ -201,6 +230,61 @@ const JobOpenings = () => {
           <Divider />
           <Form.Item name="description" label="Job Description"><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
           <Form.Item name="requirements" label="Requirements"><Input.TextArea rows={3} maxLength={2000} showCount /></Form.Item>
+
+          {/* ── Public careers-site fields ───────────────────────────────────
+              Everything below appears on the public BDMTILES careers page and drives
+              the ATS score, so it is grouped and labelled separately from the internal
+              HR fields above. Nothing here is required — an opening can be created
+              internally first and published later. */}
+          <Divider orientation="left" plain>Public careers-site listing</Divider>
+          <Row gutter={16}>
+            <Col xs={24} md={8}>
+              <Form.Item name="location" label="Location" tooltip="Shown on the careers page, e.g. Bengaluru, Karnataka">
+                <Input placeholder="e.g. Bengaluru, Karnataka" />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item name="jobMode" label="Work Mode" initialValue="On-site">
+                <Select options={JOB_MODES.map(v => ({ value: v, label: v }))} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item name="tags" label="Tags" tooltip="Short chips shown on the job card">
+                <Select mode="tags" placeholder="e.g. Field sales, Tiles" open={false} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Row gutter={16}>
+            <Col xs={24} md={8}>
+              <Form.Item name="salaryMin" label="Salary From" tooltip="Used to check the applicant's expectation against your band">
+                <InputNumber min={0} className="w-full" prefix="₹" step={10000} />
+              </Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item name="salaryMax" label="Salary To"><InputNumber min={0} className="w-full" prefix="₹" step={10000} /></Form.Item>
+            </Col>
+            <Col xs={24} md={8}>
+              <Form.Item name="salaryPeriod" label="Salary Period" initialValue="year">
+                <Select options={[{ value: 'year', label: 'Per year' }, { value: 'month', label: 'Per month' }]} />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item
+            name="keywords"
+            label="ATS Keywords"
+            tooltip="Terms the ATS looks for in applications. Leave empty to auto-derive from the Requirements text."
+          >
+            <Select mode="tags" placeholder="e.g. field sales, tiles, dealer visits" open={false} />
+          </Form.Item>
+          <Form.Item
+            name="publicVisible"
+            label="Publish on careers site"
+            valuePropName="checked"
+            tooltip="Off by default. The opening stays internal until you tick this."
+            initialValue={false}
+          >
+            <Switch />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

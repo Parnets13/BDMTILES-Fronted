@@ -8,6 +8,8 @@ const hrTemplateService = {
   deleteTemplate: (id) => api.delete(`/hr-templates/templates/${id}`),
 
   getFieldMap: () => api.get('/hr-templates/field-map'),
+  getStarters: () => api.get('/hr-templates/starters'),
+  seedStarters: () => api.post('/hr-templates/templates/seed-starters'),
   previewTemplate: (id, employeeId) => api.post(`/hr-templates/templates/${id}/preview`, { employeeId }),
   generateDocument: (id, employeeId) => api.post(`/hr-templates/templates/${id}/generate`, { employeeId }),
 

@@ -180,7 +180,12 @@ export default function SEDealerAssignment() {
       title: 'Last change',
       key: 'history',
       render: (_, r) => {
-        const last = (r.assignmentHistory || [])[r.assignmentHistory.length - 1];
+        // The guard has to cover the INDEX, not just the lookup. Written as
+        // `(r.assignmentHistory || [])[r.assignmentHistory.length - 1]` the fallback
+        // protected the first access and the second still threw — so any assignment with
+        // no history yet crashed the whole page.
+        const history = r.assignmentHistory || [];
+        const last = history[history.length - 1];
         if (!last) return <Text type="secondary">—</Text>;
         return (
           <div style={{ fontSize: 11 }}>

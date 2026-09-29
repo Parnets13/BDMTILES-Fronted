@@ -25,6 +25,10 @@ const HRDocumentTemplates = () => {
   const [editing, setEditing] = useState(null);
   const [form] = Form.useForm();
 
+  // Ready-made letter starters, offered when creating (not editing) a template.
+  const [starters, setStarters] = useState([]);
+  const [seeding, setSeeding] = useState(false);
+
   // Generate flow
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateTemplate, setGenerateTemplate] = useState(null);
@@ -52,7 +56,14 @@ const HRDocumentTemplates = () => {
     } catch { /* non-critical helper list */ }
   }, []);
 
-  useEffect(() => { fetchTemplates(); fetchFieldMap(); }, [fetchTemplates, fetchFieldMap]);
+  const fetchStarters = useCallback(async () => {
+    try {
+      const res = await hrTemplateService.getStarters();
+      if (res.success) setStarters(res.data || []);
+    } catch { /* picker is a convenience; the free-text path still works */ }
+  }, []);
+
+  useEffect(() => { fetchTemplates(); fetchFieldMap(); fetchStarters(); }, [fetchTemplates, fetchFieldMap, fetchStarters]);
 
   const fetchEmployeeOptions = useCallback(async (text = '') => {
     try {
@@ -98,6 +109,30 @@ const HRDocumentTemplates = () => {
   const insertVariable = (variable) => {
     const current = form.getFieldValue('content') || '';
     form.setFieldsValue({ content: `${current}${current && !current.endsWith('\n') ? ' ' : ''}${variable}` });
+  };
+
+  // Drop a ready-made letter into the form. Overwrites the body on purpose: the point
+  // is to replace the blank canvas, and the browser still has the admin's undo.
+  const applyStarter = (starter) => {
+    form.setFieldsValue({
+      templateName: starter.templateName,
+      documentType: starter.documentType,
+      content: starter.content,
+      isActive: true,
+    });
+    message.success(`Loaded "${starter.templateName}" — review and save.`);
+  };
+
+  // One-click bulk add of every ready-made letter the branch is missing.
+  const handleSeedStarters = async () => {
+    setSeeding(true);
+    try {
+      const res = await hrTemplateService.seedStarters();
+      if (!res.success) throw new Error(res.message);
+      message.success(res.message || 'Ready-made templates added.');
+      await fetchTemplates();
+    } catch (error) { message.error(error.message || 'Failed to add ready-made templates'); }
+    finally { setSeeding(false); }
   };
 
   // ── Generate flow: select template -> select employee -> preview -> generate PDF ──
@@ -177,9 +212,16 @@ const HRDocumentTemplates = () => {
           <h1 className="text-2xl font-bold text-gray-800">HR Document Templates</h1>
           <p className="text-sm text-gray-500 mt-0.5">Create reusable Offer Letter, Appointment Letter, NDA and other HR document templates</p>
         </div>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()} disabled={!activeBranchId} size="large" style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-          New Template
-        </Button>
+        <Space>
+          {templates.length === 0 && !loading && starters.length > 0 && (
+            <Button onClick={handleSeedStarters} loading={seeding} style={{ borderColor: '#FF5F03', color: '#FF5F03' }}>
+              Add 5 ready-made templates
+            </Button>
+          )}
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal()} disabled={!activeBranchId} size="large" style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+            New Template
+          </Button>
+        </Space>
       </div>
 
       {!activeBranchId && <Alert className="mb-4" type="warning" showIcon message="Select an active branch before managing templates." />}
@@ -189,13 +231,38 @@ const HRDocumentTemplates = () => {
           <Input placeholder="Search template name or code..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-72" allowClear />
           <Select placeholder="Document Type" options={DOCUMENT_TYPES.map(v => ({ value: v, label: v }))} value={documentType} onChange={setDocumentType} allowClear className="w-48" />
           <Button onClick={() => { setSearch(''); setDocumentType(undefined); }}>Reset</Button>
-        <Button icon={<ReloadOutlined />} onClick={() => { fetchTemplates(); }}>Refresh</Button>
           <Button icon={<ReloadOutlined />} onClick={fetchTemplates} loading={loading}>Refresh</Button>
         </div>
       </div>
 
       <div className="bg-white rounded-lg border border-gray-200">
-        <Table columns={columns} dataSource={templates} rowKey="_id" loading={loading} size="middle" scroll={{ x: 950 }} pagination={{ pageSize: 20 }} />
+        <Table
+          columns={columns}
+          dataSource={templates}
+          rowKey="_id"
+          loading={loading}
+          size="middle"
+          scroll={{ x: 950 }}
+          pagination={{ pageSize: 20 }}
+          locale={{
+            emptyText: (
+              <div className="py-8 text-center">
+                <div className="text-gray-700 font-medium mb-1">No templates yet</div>
+                <div className="text-sm text-gray-500 mb-4">
+                  Start from a ready-made letter instead of a blank page — you can edit everything after.
+                </div>
+                <Space>
+                  <Button onClick={handleSeedStarters} loading={seeding} style={{ borderColor: '#FF5F03', color: '#FF5F03' }}>
+                    Add 5 ready-made templates
+                  </Button>
+                  <Button type="primary" onClick={() => openModal()} style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+                    Create from scratch
+                  </Button>
+                </Space>
+              </div>
+            ),
+          }}
+        />
       </div>
 
       {/* Create / Edit template */}
@@ -215,6 +282,17 @@ const HRDocumentTemplates = () => {
             <Col xs={24} md={6}><Form.Item name="documentType" label="Document Type" rules={[{ required: true }]}><Select options={DOCUMENT_TYPES.map(v => ({ value: v, label: v }))} /></Form.Item></Col>
             <Col xs={24} md={4}><Form.Item name="isActive" label="Active" valuePropName="checked"><Switch /></Form.Item></Col>
           </Row>
+          {!editing && starters.length > 0 && (
+            <div className="mb-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3">
+              <div className="text-sm font-medium text-gray-700 mb-1">Start from a ready template</div>
+              <div className="text-xs text-gray-500 mb-2">Pick a standard letter, then change anything you like. Fields fill in automatically from the employee record — delete any line you don't need (e.g. "You will report to…" when it's blank).</div>
+              <Space wrap size={[8, 8]}>
+                {starters.map(s => (
+                  <Button key={s.key} size="small" onClick={() => applyStarter(s)}>{s.templateName}</Button>
+                ))}
+              </Space>
+            </div>
+          )}
           <div className="mb-2 flex flex-wrap items-center gap-1">
             <span className="text-xs text-gray-500 mr-1">Insert field:</span>
             {fieldMap.map(f => <Tag key={f.key} className="cursor-pointer" onClick={() => insertVariable(f.variable)}>{f.variable}</Tag>)}

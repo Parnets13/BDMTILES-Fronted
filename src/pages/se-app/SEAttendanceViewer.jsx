@@ -105,6 +105,33 @@ export default function SEAttendanceViewer() {
       render: (v) => v || <Text type="secondary">—</Text>,
     },
     {
+      title: 'Location',
+      key: 'location',
+      width: 230,
+      // SOW 18.10 "Attendance location". These coordinates were always captured — the
+      // viewer simply never showed them, so a punch could not be checked against where
+      // it happened. The address appears once a geocoder is registered in the app and
+      // falls back to raw coordinates, so the column is useful either way.
+      render: (_, row) => {
+        const place = row.punchOutLocation || row.punchInLocation;
+        if (!place || (place.lat == null && place.lng == null)) {
+          return <Text type="secondary">—</Text>;
+        }
+        return (
+          <div className="leading-tight">
+            <div className="text-xs">
+              {place.address || `${place.lat}, ${place.lng}`}
+            </div>
+            <div className="text-[11px] text-gray-400">
+              {row.punchOutLocation ? 'Check-out' : 'Check-in'}
+              {/* Reported by the device, not a conclusion — see the productivity view. */}
+              {place.mocked ? ' · device reported a mocked fix' : ''}
+            </div>
+          </div>
+        );
+      },
+    },
+    {
       title: 'Working Hours',
       dataIndex: 'workingHours',
       key: 'workingHours',

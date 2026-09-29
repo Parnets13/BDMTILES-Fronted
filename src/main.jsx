@@ -1,3 +1,13 @@
+// Must be the first antd-related import — the patch has to run before any static API is
+// called.
+//
+// antd v5 targets React 16–18. Under React 19 its static `message`, `notification` and
+// `Modal.confirm` — the ones called as plain functions rather than through `App.useApp()`
+// — lose the React context and can fail to render at all. That is why this app carries a
+// bespoke bridge in config/notify.js, and why an error raised inside a modal sometimes
+// only ever reached the console. This patch is the official fix, and it is the reason the
+// `[antd: compatible]` warning appears without it.
+import '@ant-design/v5-patch-for-react-19';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

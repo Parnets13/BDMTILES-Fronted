@@ -20,6 +20,9 @@ import { API_ORIGIN } from '../config/api.js';
 
 let socket = null;
 const listeners = new Set();
+// Tracking updates are kept in their own set. A chat screen and the monitoring board
+// can be open at once, and neither should have to filter the other's traffic.
+const trackingListeners = new Set();
 
 const notify = (message) => {
   listeners.forEach((listener) => {
@@ -27,6 +30,16 @@ const notify = (message) => {
       listener(message);
     } catch {
       // One bad listener must not take down delivery for the others.
+    }
+  });
+};
+
+const notifyTracking = (update) => {
+  trackingListeners.forEach((listener) => {
+    try {
+      listener(update);
+    } catch {
+      // Same reasoning as above.
     }
   });
 };
@@ -48,6 +61,7 @@ export const startRealtime = () => {
   });
 
   socket.on('message:new', notify);
+  socket.on('tracking:update', notifyTracking);
   socket.on('connect_error', (error) => {
     // A rejected handshake means the token is no longer valid. AuthContext already
     // handles sign-out on 401, so stop retrying rather than hammering the server.
@@ -70,9 +84,25 @@ export const subscribeToMessages = (handler) => {
   return () => { listeners.delete(handler); };
 };
 
+/**
+ * Listen for field-tracking updates.
+ *
+ * The server only sends these to holders of `se.attendance.view`, and only for the
+ * branches they are assigned to — so an unauthorised screen receives nothing to
+ * filter out.
+ *
+ * @returns {() => void} unsubscribe
+ */
+export const subscribeToTracking = (handler) => {
+  trackingListeners.add(handler);
+  startRealtime();
+  return () => { trackingListeners.delete(handler); };
+};
+
 /** Close the connection and drop every listener. Used on sign-out. */
 export const stopRealtime = () => {
   listeners.clear();
+  trackingListeners.clear();
   if (socket) {
     socket.removeAllListeners();
     socket.disconnect();

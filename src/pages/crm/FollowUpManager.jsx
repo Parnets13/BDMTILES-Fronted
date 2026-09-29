@@ -7,6 +7,7 @@ import {
   PlusOutlined, SearchOutlined, EyeOutlined, ReloadOutlined, PhoneOutlined, ClockCircleOutlined, CalendarOutlined
 } from '@ant-design/icons';
 import crmService from '../../services/crmService.js';
+import { subscribeToLeadEvents } from '../../services/leadEventStream.js';
 
 const STATUS_COLORS = {
   new: 'blue', contacted: 'cyan', qualified: 'green', proposal_sent: 'orange',
@@ -15,10 +16,12 @@ const STATUS_COLORS = {
 const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', hot: 'red' };
 const OUTCOME_OPTIONS = [
   { value: 'interested', label: 'Interested' },
-  { value: 'not_interested', label: 'Not Interested' },
   { value: 'callback', label: 'Callback' },
-  { value: 'converted', label: 'Converted' },
   { value: 'no_response', label: 'No Response' },
+  { value: 'visit_scheduled', label: 'Visit Scheduled' },
+  { value: 'quotation_sent', label: 'Quotation Sent' },
+  { value: 'converted', label: 'Converted' },
+  { value: 'not_interested', label: 'Not Interested' },
 ];
 
 const FollowUpManager = () => {
@@ -50,6 +53,14 @@ const FollowUpManager = () => {
   }, [statusFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Real-time stream subscription for follow-ups and lead updates
+  useEffect(() => subscribeToLeadEvents({
+    onEvent: ({ event }) => {
+      if (event === 'ready') return;
+      load();
+    },
+  }), [load]);
 
   const openFollowup = (lead) => {
     setFollowupModal(lead);

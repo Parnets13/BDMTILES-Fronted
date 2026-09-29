@@ -16,11 +16,13 @@ const ACTION_COLORS = {
   approve: 'green', reject: 'red', status_change: 'orange', bulk_update: 'magenta',
 };
 
-const MODULE_OPTIONS = [
-  'product', 'sales_order', 'purchase', 'purchase_return', 'sales_return',
-  'payment', 'hrms', 'master', 'category', 'user', 'auth', 'pricing',
-  'quotation', 'ledger', 'cheque', 'voucher', 'dispatch', 'lead',
-  'complaint', 'approval', 'scheme', 'stock', 'supplier_invoice', 'recycle_bin',
+// Baseline modules, so the filter is usable on an empty database. This list is NOT the
+// source of truth — the backend derives module names from URL segments, so new modules
+// appear without this file changing. The live list from stats.byModule is merged in below.
+const BASE_MODULE_OPTIONS = [
+  'auth', 'product', 'sales_order', 'purchase', 'payment',
+  'hrms', 'user', 'quotation', 'ledger', 'voucher',
+  'dispatch', 'lead', 'complaint', 'approval', 'scheme', 'stock',
 ];
 
 const ACTION_OPTIONS = [
@@ -73,6 +75,13 @@ const ActivityLogs = ({
   };
 
   useEffect(() => { loadStats(); }, []);
+
+  // Live modules unioned with the baseline, so the dropdown reflects what is actually in
+  // the log (pick-lists, web-management, deliveries, …) rather than a stale hardcoded list.
+  const moduleOptions = Array.from(new Set([
+    ...(stats.byModule || []).map(m => m._id).filter(Boolean),
+    ...BASE_MODULE_OPTIONS,
+  ])).sort();
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -195,7 +204,7 @@ const ActivityLogs = ({
           <Select placeholder="Action" allowClear value={actionFilter} onChange={v => setActionFilter(v)} className="w-36"
             options={(actions?.length ? actions : ACTION_OPTIONS).map(a => ({value:a, label:a.replace(/_/g,' ')}))} />
           <Select placeholder="Module" allowClear value={moduleFilter} onChange={v => setModuleFilter(v)} className="w-40"
-            options={MODULE_OPTIONS.map(m => ({value:m, label:m.replace(/_/g,' ')}))} />
+            options={moduleOptions.map(m => ({value:m, label:m.replace(/_/g,' ')}))} />
           <div><label className="text-[10px] text-gray-400 block">From</label>
             <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-32" /></div>
           <div><label className="text-[10px] text-gray-400 block">To</label>

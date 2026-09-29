@@ -99,6 +99,7 @@ import InventoryReports from './pages/reports/InventoryReports.jsx';
 import GSTReports from './pages/reports/GSTReports.jsx';
 import AgingReport from './pages/reports/AgingReport.jsx';
 import BillWiseProfit from './pages/reports/BillWiseProfit.jsx';
+import DeviationReport from './pages/reports/DeviationReport.jsx';
 import DealerPerformance from './pages/reports/DealerPerformance.jsx';
 import FinanceStatements from './pages/reports/FinanceStatements.jsx';
 import HRReports from './pages/reports/HRReports.jsx';
@@ -183,6 +184,7 @@ import SEDealerInsights from './pages/se-app/SEDealerInsights.jsx';
 import SECollections from './pages/se-app/SECollections.jsx';
 import SETargetManagement from './pages/se-app/SETargetManagement.jsx';
 import SEExpenseViewer from './pages/se-app/SEExpenseViewer.jsx';
+import SELiveTracking from './pages/se-app/SELiveTracking.jsx';
 
 // DE App Admin Views
 import DEAssignment from './pages/de-app/DEAssignment.jsx';
@@ -649,6 +651,7 @@ const App = () => {
 
         {/* Sales Executive App */}
         <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEAttendanceViewer /></ProtectedRoute>} />
+        <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="se.attendance.view"><SELiveTracking /></ProtectedRoute>} />
         <Route path="/se-app/dealer-visits" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerVisits /></ProtectedRoute>} />
         <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredPermission="dealer.assignment.manage"><SEDealerAssignment /></ProtectedRoute>} />
         <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="se.route.plan"><SERoutePlan /></ProtectedRoute>} />
@@ -658,7 +661,6 @@ const App = () => {
             permission the /targets API enforces, so an SE cannot set their own target. */}
         <Route path="/se-app/targets" element={<ProtectedRoute requiredPermission="incentive.rules.view"><SETargetManagement /></ProtectedRoute>} />
         <Route path="/se-app/expenses" element={<ProtectedRoute requiredPermission="sales.executive.app"><SEExpenseViewer /></ProtectedRoute>} />
-        <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="sales.executive.app"><PlaceholderPage title="SE Live Tracking — Phase 2 (Socket.io)" /></ProtectedRoute>} />
 
         {/* Delivery Executive App */}
         <Route path="/de-app/assignment" element={<ProtectedRoute requiredPermission="de.assignment.manage"><DEAssignment /></ProtectedRoute>} />
@@ -743,7 +745,10 @@ const App = () => {
         <Route path="/reports/hr-reports" element={<ProtectedRoute requiredPermission="reports.hr"><HRReports /></ProtectedRoute>} />
         <Route path="/reports/se-performance" element={<ProtectedRoute requiredPermission="reports.sales"><SEPerformance /></ProtectedRoute>} />
         <Route path="/reports/cash-flow" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
-        <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="reports.finance"><PlaceholderPage title="Bank Reconciliation" /></ProtectedRoute>} />
+        {/* Gated on 'reconciliation', not 'reports.finance': this route renders the live
+            BankReconciliationPage, whose every API call requires 'reconciliation'. Gating it
+            on reports.finance would let a user in to a page that 403s on load. */}
+        <Route path="/reports/bank-reconciliation" element={<ProtectedRoute requiredPermission="reconciliation"><BankReconciliationPage /></ProtectedRoute>} />
         <Route path="/reports/gst-reports" element={<ProtectedRoute requiredPermission="reports.gst"><GSTReports /></ProtectedRoute>} />
         <Route path="/reports/aging-report" element={<ProtectedRoute requiredPermission="reports.finance"><AgingReport /></ProtectedRoute>} />
         {/* Audit & Activity Logs — one component, different slices of the ActivityLog action enum */}
@@ -794,7 +799,7 @@ const App = () => {
         <Route path="/reports/profit-loss" element={<ProtectedRoute requiredPermission="reports.finance"><FinanceStatements /></ProtectedRoute>} />
         <Route path="/reports/profit-analysis/bill-wise-profit" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
         <Route path="/reports/profit-analysis/category-margin" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
-        <Route path="/reports/profit-analysis/deviation-report" element={<ProtectedRoute requiredPermission="reports.profit"><BillWiseProfit /></ProtectedRoute>} />
+        <Route path="/reports/profit-analysis/deviation-report" element={<ProtectedRoute requiredPermission="reports.profit"><DeviationReport /></ProtectedRoute>} />
 
         {/* Approval Workflow */}
         <Route path="/approvals" element={<ProtectedRoute requiredAnyPermissions={['sales.order.approve', 'po.approve', 'finance.management', 'dealer.discounts', 'credit.note', 'debit.note', 'system.management']}><ApprovalWorkflow /></ProtectedRoute>} />

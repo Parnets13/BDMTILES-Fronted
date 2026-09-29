@@ -35,6 +35,8 @@ import {
 import dayjs from 'dayjs';
 import { useAuth } from '../../context/AuthContext.jsx';
 import hrmsService from '../../services/hrmsService.js';
+import userService from '../../services/userService.js';
+import LinkRecordModal from '../../components/LinkRecordModal.jsx';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
 const DESIGNATIONS = ['Driver', 'Helper', 'Accountant', 'Office Assistant', 'Intern'];
@@ -56,6 +58,31 @@ const EmployeeRegistration = () => {
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, onNotice: 0, terminated: 0 });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
+  // A login picked from User Management to attach to this employee. Held in state rather
+  // than written straight through, because on a NEW employee there is no id to link
+  // against until the save returns one.
+  const [pendingLogin, setPendingLogin] = useState(null);
+  const [linkLoginOpen, setLinkLoginOpen] = useState(false);
+
+  // What the App Login section shows. A login picked in this session wins over the one
+  // already saved, because the pick is what the operator will actually get on save.
+  // `value`, not `_id` — the candidate rows are built for LinkRecordModal, which keys on
+  // `value`. Reading `_id` here always yielded undefined, so the section never registered
+  // the pick: the banner stayed on "No login linked yet" and the name and mobile fields
+  // stayed editable, which is precisely what the lock exists to prevent.
+  const linkedLoginId = pendingLogin?.value || editingEmployee?.userId || null;
+
+  const linkedLoginLabel = pendingLogin
+    ? `${pendingLogin.label}${pendingLogin.hint ? ` · ${pendingLogin.hint}` : ''} (saved when you save)`
+    : editingEmployee?.userId
+      ? `${editingEmployee.name}${editingEmployee.appAccess?.username ? ` · ${editingEmployee.appAccess.username}` : ''}`
+      : '';
+
+  // Once a login is linked, the LOGIN owns the name and mobile. Editing them here would
+  // let the two records drift, and the link guard requires the numbers to match — so the
+  // save would be rejected for a reason the operator could not see coming. Locking the
+  // fields makes the rule visible at the point of entry instead.
+  const loginOwnsIdentity = Boolean(linkedLoginId);
   const [viewEmployee, setViewEmployee] = useState(null);
   const [exitEmployeeRecord, setExitEmployeeRecord] = useState(null);
   const [form] = Form.useForm();
@@ -68,6 +95,20 @@ const EmployeeRegistration = () => {
       value: branchValue(branch),
       label: `${branch.branchCode ? `${branch.branchCode} — ` : ''}${branch.name}`,
     })), [user?.assignedBranches]);
+
+  // A login belongs to one or more branches, and the employee must live in one of them —
+  // the server refuses the link otherwise. So the branch FOLLOWS the login rather than
+  // being chosen freely: a single-branch login locks the field outright, a multi-branch
+  // one restricts the choices to that login's branches.
+  //
+  // Computed here rather than beside the other link state because it reads
+  // `branchOptions`, which is declared just above — placing it earlier is a temporal dead
+  // zone error, not a syntax one, so no build step catches it.
+  const loginBranchIds = pendingLogin?.branchIds?.length ? pendingLogin.branchIds : [];
+  const branchChoices = loginBranchIds.length
+    ? branchOptions.filter((option) => loginBranchIds.includes(String(option.value)))
+    : branchOptions;
+  const branchLocked = loginBranchIds.length === 1;
 
   const fetchStats = useCallback(async () => {
     if (!activeBranchId) return setStats({ total: 0, active: 0, inactive: 0, onNotice: 0, terminated: 0 });
@@ -142,6 +183,7 @@ const EmployeeRegistration = () => {
 
   const openDrawer = (employee = null) => {
     setEditingEmployee(employee);
+    setPendingLogin(null);
     if (employee) {
       const employeeFormValues = { ...employee };
       delete employeeFormValues.appAccess;
@@ -183,6 +225,22 @@ const EmployeeRegistration = () => {
         ? await hrmsService.updateEmployee(editingEmployee._id, payload)
         : await hrmsService.createEmployee(payload);
       if (!response.success) throw new Error(response.message || 'Failed to save employee');
+
+      // Attach a chosen login, if any. Done AFTER the save because a new employee has no
+      // id until this point — and a link failure must not be reported as a save failure,
+      // or the operator re-creates the employee and ends up with two.
+      const savedEmployee = response.data;
+      if (pendingLogin?._id && savedEmployee?._id) {
+        try {
+          await hrmsService.linkUser(savedEmployee._id, pendingLogin._id);
+          message.success(`${savedEmployee.name} linked to the login ${pendingLogin.name}.`);
+        } catch (linkError) {
+          message.warning(
+            `Employee saved, but the login could not be linked: ${linkError.message} Use "Link existing login" on the employee to retry.`,
+          );
+        }
+      }
+
       message.success(response.message || 'Employee saved successfully');
       closeDrawer();
       await Promise.all([fetchEmployees(), fetchStats()]);
@@ -364,11 +422,11 @@ const EmployeeRegistration = () => {
               <Form form={form} layout="vertical" onValuesChange={(_, values) => calculateSalary(values)}>
                 <h3 className="text-base font-semibold text-gray-700 mb-3">Personal Information</h3>
                 <Row gutter={16}>
-                  <Col xs={24} md={6}><Form.Item name="name" label="Full Name" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                  <Col xs={24} md={6}><Form.Item name="name" label="Full Name" rules={[{ required: true }]} extra={loginOwnsIdentity ? 'From the linked login' : undefined}><Input disabled={loginOwnsIdentity} /></Form.Item></Col>
                   <Col xs={24} md={5}><Form.Item name="fatherName" label="Father's Name"><Input /></Form.Item></Col>
                   <Col xs={24} md={4}><Form.Item name="dateOfBirth" label="Date of Birth"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
                   <Col xs={24} md={4}><Form.Item name="gender" label="Gender" rules={[{ required: true }]}><Select options={GENDERS.map((value) => ({ value, label: value }))} /></Form.Item></Col>
-                  <Col xs={24} md={5}><Form.Item name="mobile" label="Mobile" rules={[{ required: true }]}><Input /></Form.Item></Col>
+                  <Col xs={24} md={5}><Form.Item name="mobile" label="Mobile" rules={[{ required: true }]} extra={loginOwnsIdentity ? 'From the linked login' : undefined}><Input disabled={loginOwnsIdentity} /></Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} md={6}><Form.Item name="email" label="Email"><Input type="email" /></Form.Item></Col>
@@ -412,9 +470,21 @@ const EmployeeRegistration = () => {
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} md={8}>
-                    <Form.Item name="branchId" label="Branch" rules={[{ required: true }]}>
+                    <Form.Item
+                      name="branchId"
+                      label="Branch"
+                      rules={[{ required: true }]}
+                      extra={
+                        branchLocked
+                          ? 'Set by the linked login'
+                          : loginBranchIds.length
+                            ? 'Limited to the linked login\u2019s branches'
+                            : undefined
+                      }
+                    >
                       <Select
-                        options={branchOptions}
+                        options={branchChoices}
+                        disabled={branchLocked}
                         onChange={(value) => { if (!editingEmployee) setActiveBranch(value); }}
                         placeholder="Select an active assigned branch"
                       />
@@ -422,6 +492,42 @@ const EmployeeRegistration = () => {
                   </Col>
                   <Col xs={24} md={8}><Form.Item name="empId" label="Employee Code"><Input placeholder="Auto-generated if empty" /></Form.Item></Col>
                   <Col xs={24} md={8}><Form.Item name="status" label="Status"><Select options={EMPLOYEE_STATUSES.map((value) => ({ value, label: value }))} disabled={editingEmployee?.status === 'Terminated'} /></Form.Item></Col>
+                </Row>
+
+                <Divider />
+                <h3 className="text-base font-semibold text-gray-700 mb-3">App Login</h3>
+                {/* Attendance, GPS punch-in and field tracking all resolve the signed-in
+                    user through Employee.userId. An employee with no login cannot use the
+                    Sales Executive app at all — its attendance call returns 404 and the
+                    home screen shows "Couldn't load attendance". This is where that link
+                    is made. */}
+                <Alert
+                  className="mb-3"
+                  type={linkedLoginId ? 'success' : 'warning'}
+                  showIcon
+                  message={linkedLoginId ? 'Login linked' : 'No login linked yet'}
+                  description={
+                    linkedLoginId
+                      ? 'This employee can sign in and use the field app. The login owns the name, mobile, username and role; HRMS owns everything else — department, designation, salary, leave.'
+                      : 'Until a login is linked, this employee cannot sign in to the Sales Executive app — attendance will fail to load for them. Pick one below and the name and mobile are copied across and locked, so the two records cannot disagree.'
+                  }
+                />
+                <Row gutter={16} align="middle">
+                  <Col xs={24} md={14}>
+                    <Form.Item label="Login">
+                      <Input readOnly value={linkedLoginLabel} placeholder="No login linked" />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} md={10}>
+                    <Space className="mb-6">
+                      <Button onClick={() => setLinkLoginOpen(true)}>
+                        {linkedLoginId ? 'Change login' : 'Link existing login'}
+                      </Button>
+                      {pendingLogin ? (
+                        <Button type="text" onClick={() => setPendingLogin(null)}>Undo</Button>
+                      ) : null}
+                    </Space>
+                  </Col>
                 </Row>
 
                 <Divider />
@@ -472,6 +578,72 @@ const EmployeeRegistration = () => {
           </div>
         </>
       )}
+
+      <LinkRecordModal
+        open={linkLoginOpen}
+        onClose={() => setLinkLoginOpen(false)}
+        title="Link an existing login"
+        description="Logins already linked to another employee are excluded. Linking copies this employee's name, email and mobile onto the login — the login keeps its username, role and permissions."
+        emptyText="Every login already has an employee."
+        searchPlaceholder="Search by name or username…"
+        loadCandidates={async () => {
+          const branchId = form.getFieldValue('branchId');
+          const [usersRes, employeesRes] = await Promise.all([
+            userService.getUsers({ limit: 200 }),
+            hrmsService.getEmployees({ limit: 200 }),
+          ]);
+          const linked = new Set(
+            (employeesRes?.data || []).map((employee) => String(employee.userId || '')).filter(Boolean),
+          );
+          return (usersRes?.data || usersRes?.users || [])
+            .filter((user) => !linked.has(String(user._id)))
+            // Global administrator roles are not employees. Offering them invites linking
+            // an HR record to a super-admin login, which is never what is meant — and the
+            // employee would then inherit that login's reach.
+            .filter((user) => !['super_admin', 'owner', 'admin', 'sub_admin'].includes(user.role))
+            // Branch-scoped. A login assigned to another branch cannot be linked to an
+            // employee here — the server rejects it — so offering it would be a dead end
+            // the operator only discovers after clicking. A login with no branch
+            // assignment is kept: it has nowhere else to belong.
+            .filter((user) => {
+              if (!branchId) return true;
+              const branches = (user.assignedBranches || []).map((branch) => String(branch?._id || branch));
+              return branches.length === 0 || branches.includes(String(branchId));
+            })
+            .map((user) => ({
+              value: user._id,
+              label: user.name,
+              hint: [user.username, user.role, user.phone].filter(Boolean).join(' · '),
+              // Carried so the form can copy it — the login owns the mobile, and the
+              // employee record has to agree with it or the link is refused.
+              mobile: user.phone || '',
+              // Drives the Branch field: the employee has to sit in a branch the login
+              // is assigned to.
+              branchIds: (user.assignedBranches || []).map((branch) => String(branch?._id || branch)),
+            }));
+        }}
+        linkRecord={async (userId, row) => {
+          // An existing employee can be linked immediately. A NEW one has no id yet, so
+          // the choice is held in state and applied the moment the save returns one.
+          if (editingEmployee?._id) {
+            await hrmsService.linkUser(editingEmployee._id, userId);
+            setPendingLogin(null);
+            await fetchEmployees();
+            return;
+          }
+          setPendingLogin(row);
+          // Copy the login's identity into the form now. The fields are locked the moment
+          // a login is chosen, so this is the operator's one chance to see what the
+          // employee record will actually say.
+          form.setFieldsValue({
+            ...(row.label ? { name: row.label } : {}),
+            ...(row.mobile ? { mobile: row.mobile } : {}),
+            // Move the branch onto the login's, so the save cannot fail the link's branch
+            // check for a reason the operator never saw.
+            ...(row.branchIds?.length ? { branchId: String(row.branchIds[0]) } : {}),
+          });
+        }}
+      />
 
       <Modal
         title={`Record employee exit${exitEmployeeRecord ? ` — ${exitEmployeeRecord.name}` : ''}`}

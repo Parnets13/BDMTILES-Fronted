@@ -22,12 +22,15 @@ import {
   EditOutlined,
   ExclamationCircleOutlined,
   KeyOutlined,
+  LinkOutlined,
   LockOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
 } from '@ant-design/icons';
 import userService from '../../services/userService.js';
+import hrmsService from '../../services/hrmsService.js';
+import LinkRecordModal from '../../components/LinkRecordModal.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 
 const SCOPE_OPTIONS = [
@@ -248,10 +251,30 @@ const UserManagement = () => {
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [branchFilter, setBranchFilter] = useState(undefined);
   const [userModalOpen, setUserModalOpen] = useState(false);
+  // The login whose HRMS employee we are attaching, if any.
+  const [linkTarget, setLinkTarget] = useState(null);
+  // An employee picked INSIDE the user form, to attach when the login is saved. Held in
+  // state because a new login has no id to link against until the save returns one.
+  const [pendingEmployee, setPendingEmployee] = useState(null);
+  const [linkEmployeeOpen, setLinkEmployeeOpen] = useState(false);
   const [permissionDrawerOpen, setPermissionDrawerOpen] = useState(false);
   const [resetPasswordModalOpen, setResetPasswordModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [resetPasswordUser, setResetPasswordUser] = useState(null);
+
+  // Derived AFTER `selectedUser` is declared. Reading it any earlier is a temporal dead
+  // zone error — `Cannot access 'selectedUser' before initialization` — which no build
+  // step catches, only the browser.
+  //
+  // The employee already attached to the login being edited, unless one was picked in
+  // this session — the pick is what the operator will actually get on save.
+  const linkedEmployee = pendingEmployee || selectedUser?.employee || null;
+  const linkedEmployeeId = linkedEmployee?._id || null;
+  // The EMPLOYEE owns name and mobile; the login owns username, role and permissions.
+  // This is the mirror of the same rule on the HRMS employee form — locking the two
+  // fields here is what stops the records drifting apart and the link being refused for
+  // a mismatch nobody could see coming.
+  const employeeOwnsIdentity = Boolean(linkedEmployeeId);
   const [permissionsConfig, setPermissionsConfig] = useState({});
   const [rolePermissions, setRolePermissions] = useState({});
   // Grants that carry approval authority or administrative control, from the backend
@@ -408,6 +431,7 @@ const UserManagement = () => {
       });
     }
     setUserModalOpen(true);
+    setPendingEmployee(null);
   };
 
   const closeUserModal = () => {
@@ -442,6 +466,21 @@ const UserManagement = () => {
         ? await userService.updateUser(editedUserId, values)
         : await userService.createUser(values);
       if (response.success) {
+        // Attach a chosen employee, if any. Done AFTER the save because a new login has no
+        // id until this point — and a link failure must not be reported as a save failure,
+        // or the operator re-creates the login and ends up with two.
+        const savedUser = response.data;
+        const targetUserId = savedUser?._id || editedUserId;
+        if (pendingEmployee?._id && targetUserId) {
+          try {
+            await userService.linkEmployee(targetUserId, pendingEmployee._id);
+            message.success(`Linked to ${pendingEmployee.name}.`);
+          } catch (linkError) {
+            message.warning(
+              `Login saved, but the employee could not be linked: ${linkError.message} Use "Link HRMS employee" on the row to retry.`,
+            );
+          }
+        }
         message.success(selectedUser ? 'User updated' : 'User created');
         closeUserModal();
         await refreshSelfIfNeeded(editedUserId);
@@ -676,6 +715,28 @@ const UserManagement = () => {
       ),
     },
     {
+      title: 'HRMS Employee',
+      key: 'employee',
+      width: 190,
+      // Attendance, GPS punch-in and field tracking resolve the signed-in user through
+      // Employee.userId. Without this column a linked login and an unlinked one look
+      // identical — which is precisely how a login ends up unable to load attendance
+      // with nothing on screen to explain why.
+      render: (_, record) =>
+        record.employee ? (
+          <div className="leading-tight">
+            <div className="text-xs font-medium">{record.employee.name}</div>
+            <div className="text-[11px] text-gray-400">
+              {[record.employee.empId, record.employee.department].filter(Boolean).join(' · ') || 'Linked'}
+            </div>
+          </div>
+        ) : (
+          <Tooltip title="This login cannot load attendance until an HRMS employee is linked.">
+            <Tag color="warning">Not linked</Tag>
+          </Tooltip>
+        ),
+    },
+    {
       title: 'Branches',
       key: 'branches',
       render: (_, record) => {
@@ -776,6 +837,29 @@ const UserManagement = () => {
               className="text-green-600"
             />
           </Tooltip>
+          {/* A login with no HRMS employee cannot load attendance — attendance resolves
+              the signed-in user through Employee.userId. This is the repair path for a
+              login created here rather than through HRMS.
+
+              Disabled once linked: the row already names the employee, so offering the
+              action again would only invite a pointless second link. */}
+          {record.employee ? (
+            <Tooltip
+              title={`Linked to ${record.employee.name}${record.employee.empId ? ` (${record.employee.empId})` : ''}`}
+            >
+              <Button type="text" size="small" icon={<LinkOutlined />} disabled className="text-green-600" />
+            </Tooltip>
+          ) : (
+            <Tooltip title="Link HRMS employee">
+              <Button
+                type="text"
+                size="small"
+                icon={<LinkOutlined />}
+                onClick={() => setLinkTarget(record)}
+                className="text-cyan-600"
+              />
+            </Tooltip>
+          )}
           {record._id !== currentUser?._id && (
             <Tooltip title="Reset Password">
               <Button
@@ -892,11 +976,39 @@ const UserManagement = () => {
             type="info"
             showIcon
             message="Application account access is managed here"
-            description="Application login, roles, permissions, branches, and warehouse access are managed in User Management. HRMS stores employee details only."
+            description="Application login, roles, permissions, branches, and warehouse access are managed in User Management."
           />
+          {/* This used to read "HRMS stores employee details only", which is the opposite
+              of what the code requires: attendance, GPS punch-in and field tracking all
+              resolve the signed-in user to an HRMS Employee. A login created only here
+              signs in fine and then fails to load attendance. */}
+          {/* Mirror of the App Login section on the HRMS employee form. Attendance, GPS
+              punch-in and field tracking resolve the signed-in user through
+              Employee.userId, so a login with no employee signs in and then cannot load
+              attendance at all. */}
+          <Divider orientation="left">HRMS Employee</Divider>
+          <Alert
+            className="mb-3"
+            type={linkedEmployeeId ? 'success' : 'warning'}
+            showIcon
+            message={linkedEmployeeId ? `Linked to ${linkedEmployee.name}` : 'No HRMS employee linked'}
+            description={
+              linkedEmployeeId
+                ? `${linkedEmployee.empId ? `${linkedEmployee.empId} · ` : ''}${linkedEmployee.department || 'No department'} — the employee owns the name and mobile, so those two are locked here. Username, role and permissions stay with this login.`
+                : 'Field roles need an employee record: without it the executive can sign in but attendance will fail to load. Link one below, or create the person in HRMS → Employees.'
+            }
+          />
+          <Space className="mb-3">
+            <Button onClick={() => setLinkEmployeeOpen(true)}>
+              {linkedEmployeeId ? 'Change employee' : 'Link existing employee'}
+            </Button>
+            {pendingEmployee ? (
+              <Button type="text" onClick={() => setPendingEmployee(null)}>Undo</Button>
+            ) : null}
+          </Space>
           <Divider orientation="left">Account &amp; Application Access</Divider>
           <div className="grid grid-cols-1 gap-0 md:grid-cols-2 md:gap-4">
-            <Form.Item name="name" label="Full Name" rules={[{ required: true, message: 'Name is required' }]}><Input /></Form.Item>
+            <Form.Item name="name" label="Full Name" rules={[{ required: true, message: 'Name is required' }]} extra={employeeOwnsIdentity ? 'From the linked employee' : undefined}><Input disabled={employeeOwnsIdentity} /></Form.Item>
             <Form.Item name="username" label="Username" rules={[{ required: true, message: 'Username is required' }]}><Input /></Form.Item>
             <Form.Item name="email" label="Email" rules={[{ required: true, type: 'email', message: 'Valid email required' }]}><Input /></Form.Item>
             <Form.Item
@@ -915,8 +1027,9 @@ const UserManagement = () => {
                   },
                 },
               ]}
+              extra={employeeOwnsIdentity ? 'From the linked employee' : undefined}
             >
-              <Input inputMode="tel" autoComplete="tel" maxLength={20} placeholder="e.g. 9876543210" />
+              <Input inputMode="tel" autoComplete="tel" maxLength={20} placeholder="e.g. 9876543210" disabled={employeeOwnsIdentity} />
             </Form.Item>
             <Form.Item name="role" label="Role" rules={[{ required: true, message: 'Select a role' }]}>
               <Select options={manageableRoleOptions} optionFilterProp="label" showSearch />
@@ -1140,6 +1253,76 @@ const UserManagement = () => {
         sensitivePermissions={sensitivePermissions}
         onSave={handleSavePermissions}
         onReset={handleResetPermissions}
+      />
+
+      {/* The mirror of the HRMS-side picker. This is the direction that matters when the
+          person was created HERE rather than in HRMS — the case that produced the
+          "Couldn't load attendance" report in the first place. */}
+      <LinkRecordModal
+        open={linkEmployeeOpen}
+        onClose={() => setLinkEmployeeOpen(false)}
+        title="Link an HRMS employee"
+        description="Employees already linked to another login are excluded. Linking copies the employee's name and mobile onto this login — the employee owns identity, and this login keeps its username, role and permissions."
+        emptyText="Every employee already has a login."
+        searchPlaceholder="Search by name or employee code…"
+        loadCandidates={async () => {
+          const res = await hrmsService.getEmployees({ limit: 200, status: 'Active' });
+          return (res?.data || [])
+            .filter((employee) => !employee.userId)
+            .map((employee) => ({
+              value: employee._id,
+              label: employee.name,
+              hint: [employee.empId, employee.designation, employee.department, employee.mobile]
+                .filter(Boolean).join(' · '),
+              mobile: employee.mobile || '',
+            }));
+        }}
+        linkRecord={async (employeeId, row) => {
+          // An existing login can be linked immediately. A NEW one has no id yet, so the
+          // pick is held and applied the moment the save returns one.
+          if (selectedUser?._id) {
+            await userService.linkEmployee(selectedUser._id, employeeId);
+            setPendingEmployee(null);
+            fetchUsers(pagination.current, pagination.pageSize);
+            return;
+          }
+          setPendingEmployee(row);
+          // Copy the employee's identity into the form now — the fields lock the moment an
+          // employee is chosen, so this is the operator's one chance to see what the login
+          // will actually say.
+          form.setFieldsValue({
+            ...(row.label ? { name: row.label } : {}),
+            ...(row.mobile ? { phone: row.mobile } : {}),
+          });
+        }}
+      />
+
+      {/* Repair path for a login created here rather than through HRMS. Attendance, GPS
+          punch-in and field tracking all resolve the signed-in user through
+          Employee.userId, so without this link the executive signs in and then cannot
+          load attendance at all.
+
+          This belongs to UserManagement, not PermissionDrawer — linkTarget is state on
+          the page, and placing it in the child is what made it a ReferenceError. */}
+      <LinkRecordModal
+        open={!!linkTarget}
+        onClose={() => setLinkTarget(null)}
+        onLinked={() => fetchUsers(pagination.current, pagination.pageSize)}
+        title={`Link an HRMS employee${linkTarget ? ` to ${linkTarget.name}` : ''}`}
+        description="Only employees without a login of their own are listed. Linking copies the employee's name, email and mobile onto this login — the HR record stays authoritative for identity, and this login keeps its username, role and permissions."
+        emptyText="Every employee already has a login."
+        searchPlaceholder="Search by name or employee code…"
+        loadCandidates={async () => {
+          const res = await hrmsService.getEmployees({ limit: 200, status: 'Active' });
+          return (res?.data || [])
+            .filter((employee) => !employee.userId && !employee.hasAppAccount)
+            .map((employee) => ({
+              value: employee._id,
+              label: employee.name,
+              hint: [employee.empId, employee.designation, employee.mobile].filter(Boolean).join(' · '),
+            }));
+        }}
+        linkRecord={(employeeId) => userService.linkEmployee(linkTarget._id, employeeId)}
       />
     </div>
   );

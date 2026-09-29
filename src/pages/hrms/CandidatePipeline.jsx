@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Card, Col, DatePicker, Divider, Empty, Form, Input, InputNumber,
-  message, Modal, Popconfirm, Radio, Rate, Row, Select, Space, Statistic, Table, Tag,
-  Timeline, Tooltip, Upload,
+  message, Modal, Popconfirm, Popover, Progress, Radio, Rate, Row, Select, Space,
+  Statistic, Table, Tag, Timeline, Tooltip, Upload,
 } from 'antd';
 import {
   CheckCircleOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, EyeOutlined,
-  PlusOutlined, ReloadOutlined, SearchOutlined, StarOutlined, StarFilled,
-  SwapRightOutlined, UploadOutlined, UserAddOutlined,
+  PlusOutlined, ReloadOutlined, SearchOutlined, SortDescendingOutlined, StarOutlined,
+  StarFilled, SwapRightOutlined, UploadOutlined, UserAddOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -31,6 +31,69 @@ const INTERVIEW_MODES = [
   { value: 'video', label: 'Video' },
 ];
 
+// Mirrors services/atsScoring.js BANDS on the backend. Kept as a small local map
+// rather than fetched, because the band ids are a stable contract — if the backend
+// gains a band, an unknown id falls through to Ant Design's default grey rather than
+// rendering nothing.
+const BAND_TONE = { excellent: 'green', good: 'cyan', fair: 'gold', weak: 'default' };
+
+/**
+ * The "why" behind an ATS score. Renders the per-factor points the backend returned
+ * (`atsFactors`) plus the keyword hits and misses, so HR can see the reasoning rather
+ * than trusting a number.
+ */
+const AtsBreakdown = ({ candidate }) => {
+  const factors = candidate.atsFactors || [];
+  const matches = candidate.atsKeyMatches || [];
+  const misses = candidate.atsKeyMisses || [];
+
+  if (!factors.length) {
+    return <span className="text-gray-400 text-xs">No breakdown available.</span>;
+  }
+
+  return (
+    <div className="w-72">
+      {factors.map((f) => (
+        <div key={f.id} className="mb-2">
+          <div className="flex justify-between text-xs mb-0.5">
+            <span className="text-gray-700">{f.label}</span>
+            <span className="tabular-nums text-gray-500">{f.points} / {f.max}</span>
+          </div>
+          <Progress
+            percent={Math.round((f.points / (f.max || 1)) * 100)}
+            showInfo={false}
+            size="small"
+            strokeColor="#FF5F03"
+          />
+          <div className="text-[11px] text-gray-400 mt-0.5">{f.detail}</div>
+        </div>
+      ))}
+
+      {matches.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-gray-100">
+          <div className="text-[11px] text-gray-500 mb-1">Requirement terms found</div>
+          <div className="flex flex-wrap gap-1">
+            {matches.map((m) => <Tag key={m} color="green" className="m-0 text-[11px]">{m}</Tag>)}
+          </div>
+        </div>
+      )}
+
+      {misses.length > 0 && (
+        <div className="mt-2">
+          <div className="text-[11px] text-gray-500 mb-1">Not found</div>
+          <div className="flex flex-wrap gap-1">
+            {misses.map((m) => <Tag key={m} className="m-0 text-[11px] text-gray-400">{m}</Tag>)}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 pt-2 border-t border-gray-100 text-[11px] text-gray-400">
+        Deterministic score — every point comes from a field the applicant filled in.
+      </div>
+    </div>
+  );
+};
+
 const CandidatePipeline = () => {
   const { activeBranchId, branchEpoch } = useAuth();
   const [candidates, setCandidates] = useState([]);
@@ -39,6 +102,9 @@ const CandidatePipeline = () => {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({ status: undefined, jobOpening: undefined });
   const [talentPoolView, setTalentPoolView] = useState(false);
+  // Rank the list by ATS score instead of newest-first. Only offered once a job is
+  // chosen, since scores across different openings are not comparable.
+  const [byScore, setByScore] = useState(false);
   const [stats, setStats] = useState({ total: 0, applied: 0, shortlisted: 0, interview: 0, selected: 0, rejected: 0, talentPool: 0 });
   const [jobOptions, setJobOptions] = useState([]);
 
@@ -87,6 +153,9 @@ const CandidatePipeline = () => {
         page: pagination.current, limit: pagination.pageSize, search,
         ...Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
         ...(talentPoolView ? { talentPool: 'true' } : {}),
+        // Server ranks only when a job is selected; the ATS column's own sorter then
+        // covers the in-page case, so both orderings agree.
+        ...(byScore && filters.jobOpening ? { sortBy: 'score' } : {}),
       };
       const res = await recruitmentService.getCandidates(params);
       if (res.success) {
@@ -95,7 +164,7 @@ const CandidatePipeline = () => {
       }
     } catch (error) { message.error(error.message); }
     finally { setLoading(false); }
-  }, [activeBranchId, branchEpoch, filters, pagination.current, pagination.pageSize, search, talentPoolView]);
+  }, [activeBranchId, branchEpoch, filters, pagination.current, pagination.pageSize, search, talentPoolView, byScore]);
 
   useEffect(() => { fetchCandidates(); fetchStats(); fetchJobOptions(); }, [fetchCandidates, fetchStats, fetchJobOptions]);
 
@@ -276,6 +345,30 @@ const CandidatePipeline = () => {
     { title: 'Job Opening', key: 'jobOpening', width: 160, render: (_, r) => r.jobOpening?.title || '-' },
     { title: 'Qualification', dataIndex: 'qualification', key: 'qualification', width: 140, render: (v) => v || '-' },
     {
+      // ATS score. Deliberately renders the *reason* alongside the number: a bare
+      // figure invites blind trust, and HR needs to be able to defend why someone
+      // ranked where they did. `atsFactors` comes from the same computation that
+      // produced the score, so the explanation can never disagree with it.
+      title: 'ATS Score', key: 'atsScore', width: 130, align: 'center',
+      sorter: (a, b) => (b.atsScore || 0) - (a.atsScore || 0),
+      render: (_, r) => {
+        if (typeof r.atsScore !== 'number') return <span className="text-gray-300">—</span>;
+        const tone = BAND_TONE[r.atsBand?.id] || 'default';
+        return (
+          <Popover
+            trigger="click"
+            placement="left"
+            title={`ATS score ${r.atsScore}/100 · ${r.atsBand?.label || ''}`}
+            content={<AtsBreakdown candidate={r} />}
+          >
+            <Tag color={tone} className="cursor-pointer tabular-nums">
+              {r.atsScore} · {r.atsBand?.label || '—'}
+            </Tag>
+          </Popover>
+        );
+      },
+    },
+    {
       title: 'Status', dataIndex: 'status', key: 'status', width: 115,
       render: (status) => <Tag color={STATUS_COLOR[status]}>{status}</Tag>,
     },
@@ -347,7 +440,20 @@ const CandidatePipeline = () => {
           )}
           {talentPoolView && <Tag color="gold" className="text-sm py-1 px-3">Viewing Talent Pool — click the star card again to return to the full pipeline</Tag>}
           <Button onClick={() => { setSearch(''); setFilters({ status: undefined, jobOpening: undefined }); }}>Reset</Button>
-        <Button icon={<ReloadOutlined />} onClick={() => { fetchCandidates(); fetchStats(); }}>Refresh</Button>
+          {/* Ranking is only meaningful within one opening — see the note on the
+              backend candidates route. The toggle is disabled until a job is picked
+              so it cannot produce a list that looks ranked but is not comparable. */}
+          <Tooltip title={filters.jobOpening ? 'Show best-matching candidates first' : 'Select a job opening to rank by ATS score'}>
+            <Button
+              icon={<SortDescendingOutlined />}
+              type={byScore ? 'primary' : 'default'}
+              disabled={!filters.jobOpening}
+              onClick={() => { setByScore((v) => !v); setPagination((c) => ({ ...c, current: 1 })); }}
+              style={byScore ? { background: '#FF5F03', borderColor: '#FF5F03' } : undefined}
+            >
+              Best match
+            </Button>
+          </Tooltip>
           <Button icon={<ReloadOutlined />} onClick={() => { fetchCandidates(); fetchStats(); }} loading={loading}>Refresh</Button>
         </div>
       </div>

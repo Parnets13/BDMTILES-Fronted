@@ -19,6 +19,15 @@ const hrmsService = {
   getEmployee: (id) => api.get(`/hrms/employees/${id}`),
   createEmployee: (data) => api.post('/hrms/employees', data),
   updateEmployee: (id, data) => api.put(`/hrms/employees/${id}`, data),
+  /**
+   * Attach an existing login to this employee.
+   *
+   * Attendance and field tracking resolve the signed-in user through Employee.userId, so
+   * an employee with no login — or a login with no employee — cannot punch in. Mirror of
+   * userService.linkEmployee; both hit the same service so the two directions cannot
+   * drift apart.
+   */
+  linkUser: (id, userId) => api.post(`/hrms/employees/${id}/link-user`, { userId }),
   deactivateEmployee: (id) => api.delete(`/hrms/employees/${id}`),
   // Backward-compatible alias: the backend now deactivates and never physically deletes.
   deleteEmployee: (id) => api.delete(`/hrms/employees/${id}`),

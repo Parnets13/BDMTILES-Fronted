@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Row, Col, Card, Button, Input, Tabs, Divider, message, Statistic } from 'antd';
+import { Row, Col, Card, Button, Input, Tabs, Divider, message, Statistic, Table, Tag, Alert } from 'antd';
 import { SearchOutlined, ReloadOutlined, PrinterOutlined, ArrowUpOutlined, ArrowDownOutlined, RiseOutlined, FallOutlined } from '@ant-design/icons';
 import reportService from '../../services/reportService.js';
 
@@ -43,6 +43,20 @@ const FinanceStatements = () => {
   const pl = data?.profitLoss;
   const cf = data?.cashFlow;
   const bs = data?.balanceSheet;
+  const tb = data?.trialBalance;
+
+  const tbCols = [
+    { title: 'Account', dataIndex: 'account', render: v => <span className="text-sm">{v}</span> },
+    { title: 'Type', dataIndex: 'accountType', width: 110,
+      render: v => <Tag className="capitalize">{v || 'other'}</Tag> },
+    { title: 'Debit', dataIndex: 'debit', width: 130, align: 'right',
+      render: v => `₹${(v||0).toLocaleString()}` },
+    { title: 'Credit', dataIndex: 'credit', width: 130, align: 'right',
+      render: v => `₹${(v||0).toLocaleString()}` },
+    { title: 'Balance', dataIndex: 'balance', width: 130, align: 'right',
+      render: v => <span className={`font-semibold ${(v||0) >= 0 ? 'text-blue-700' : 'text-orange-600'}`}>
+        ₹{(v||0).toLocaleString()}</span> },
+  ];
 
   const tabItems = [
     {
@@ -62,10 +76,23 @@ const FinanceStatements = () => {
               </div>
               <KV label="Gross Margin %" value={`${pl.grossMargin||0}%`} color={(pl.grossProfit||0)>=0?'#52c41a':'#f5222d'} />
               <div className="pt-3" />
+              <KV label="Less: Operating Expenses" value={`(₹${(pl.expenses||0).toLocaleString()})`} color="#f5222d" />
+              <div className="flex justify-between py-3 border-b-2 border-gray-300">
+                <span className="font-bold text-base">Net Profit</span>
+                <span className={`font-bold text-base ${(pl.netProfit||0)>=0?'text-green-600':'text-red-600'}`}>
+                  ₹{(pl.netProfit||0).toLocaleString()}
+                </span>
+              </div>
+              <KV label="Net Margin %" value={`${pl.netMargin||0}%`} color={(pl.netProfit||0)>=0?'#52c41a':'#f5222d'} />
+              <div className="pt-3" />
               <KV label="GST Collected (on Sales)" value={`₹${(pl.totalTaxCollected||0).toLocaleString()}`} />
               <KV label="GST Paid (on Purchases)" value={`₹${(pl.totalTaxPaid||0).toLocaleString()}`} />
               <KV label="Net GST Payable" value={`₹${((pl.totalTaxCollected||0)-(pl.totalTaxPaid||0)).toLocaleString()}`}
                 color="#fa8c16" />
+              <div className="pt-2 text-xs text-gray-400">
+                Net profit is gross profit less settled operating expenses (approved and reimbursed).
+                Pending and rejected expense claims are excluded.
+              </div>
             </div>
           </div>
           <div className="mt-4">
@@ -116,27 +143,69 @@ const FinanceStatements = () => {
                 <div className="font-bold text-sm text-gray-600 mb-3 uppercase tracking-wide">Assets</div>
                 <div className="space-y-1">
                   <KV label="Stock Value (Inventory)" value={`₹${(bs.stockValue||0).toLocaleString()}`} color="#1890ff" />
-                  <KV label="Accounts Receivable" value="(See Dealer Ledger)" />
-                  <KV label="Cash & Bank" value="(See Cash/Bank Book)" />
+                  <KV label="Accounts Receivable" value={`₹${(bs.totalReceivables||0).toLocaleString()}`} color="#1890ff" />
                 </div>
               </Col>
               <Col span={12}>
                 <div className="font-bold text-sm text-gray-600 mb-3 uppercase tracking-wide">Liabilities</div>
                 <div className="space-y-1">
-                  <KV label="Accounts Payable" value="(See Supplier Ledger)" />
+                  <KV label="Accounts Payable" value={`₹${(bs.totalPayables||0).toLocaleString()}`} color="#f5222d" />
                   <KV label="GST Payable" value={`₹${((pl?.totalTaxCollected||0)-(pl?.totalTaxPaid||0)).toLocaleString()}`} />
                 </div>
               </Col>
             </Row>
             <Divider />
             <div className="flex justify-between py-3 border-t-2 border-gray-400">
-              <span className="font-bold text-base">Stock Value (Key Asset)</span>
-              <span className="font-bold text-base text-blue-700">₹{(bs.stockValue||0).toLocaleString()}</span>
+              <span className="font-bold text-base">Net Working Capital</span>
+              <span className={`font-bold text-base ${(bs.netWorkingCapital||0)>=0?'text-green-600':'text-red-600'}`}>
+                ₹{(bs.netWorkingCapital||0).toLocaleString()}
+              </span>
             </div>
-            <p className="text-xs text-gray-400 mt-3">Full balance sheet requires complete accounting voucher entries. Use Dealer Ledger for receivables and Supplier Ledger for payables.</p>
+            <p className="text-xs text-gray-400 mt-3">
+              Receivables are dealer ledger debit − credit, payables are supplier ledger credit − debit,
+              both accumulated up to the report end date. Cash &amp; bank and fixed assets are not included,
+              so this is a working-capital view rather than a full statutory balance sheet.
+            </p>
           </div>
           <div className="mt-4">
             <Button icon={<PrinterOutlined />} onClick={() => print('Balance Sheet')}>Print Balance Sheet</Button>
+          </div>
+        </div>
+      ) : <div className="py-8 text-center text-gray-400">Generate report to view</div>,
+    },
+    {
+      key: 'tb',
+      label: '⚖️ Trial Balance',
+      children: tb ? (
+        <div>
+          <div id="stmt-print">
+            <Table
+              columns={tbCols}
+              dataSource={(tb.rows || []).map((r, i) => ({ ...r, key: r.account || i }))}
+              size="small"
+              pagination={(tb.rows || []).length > 15 ? { pageSize: 15 } : false}
+              summary={() => (
+                <Table.Summary.Row className="font-semibold bg-gray-50">
+                  <Table.Summary.Cell index={0}>Total</Table.Summary.Cell>
+                  <Table.Summary.Cell index={1} />
+                  <Table.Summary.Cell index={2} align="right">₹{(tb.totalDebit||0).toLocaleString()}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={3} align="right">₹{(tb.totalCredit||0).toLocaleString()}</Table.Summary.Cell>
+                  <Table.Summary.Cell index={4} />
+                </Table.Summary.Row>
+              )}
+            />
+            <div className="mt-3">
+              {tb.balanced
+                ? <Alert type="success" showIcon message="Debits equal credits — the ledger balances." />
+                : <Alert type="error" showIcon message={`Out of balance by ₹${Math.abs((tb.totalDebit||0)-(tb.totalCredit||0)).toLocaleString()}. This indicates a data problem in the voucher entries.`} />}
+            </div>
+            <p className="text-xs text-gray-400 mt-3">
+              Built from posted double-entry vouchers only; drafts and cancelled vouchers are excluded.
+              {tb.scope === 'company' && ' Vouchers carry no branch field, so this statement is company-wide, not branch-scoped.'}
+            </p>
+          </div>
+          <div className="mt-4">
+            <Button icon={<PrinterOutlined />} onClick={() => print('Trial Balance')}>Print Trial Balance</Button>
           </div>
         </div>
       ) : <div className="py-8 text-center text-gray-400">Generate report to view</div>,
@@ -148,7 +217,7 @@ const FinanceStatements = () => {
       <div className="flex justify-between items-center mb-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Finance Statements</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Profit & Loss, Cash Flow, Balance Sheet</p>
+          <p className="text-sm text-gray-500 mt-0.5">Profit & Loss, Cash Flow, Balance Sheet, Trial Balance</p>
         </div>
         <Button icon={<ReloadOutlined />} onClick={generate} loading={loading}>Refresh</Button>
       </div>
