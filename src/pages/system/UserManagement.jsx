@@ -67,6 +67,23 @@ const DIMENSION_FIELDS = {
   employees: 'assignedEmployees',
 };
 
+const FALLBACK_ROLE_INFO = {
+  supervisor: {
+    name: 'Supervisor',
+    description: 'Supervise picking, sorting, loading, and delivery for assigned branches',
+    color: '#1677ff',
+    rank: 45,
+  },
+};
+const FALLBACK_ROLE_PERMISSIONS = {
+  supervisor: [
+    'dashboard.view', 'notification.inbox', 'stock.view',
+    'picking.management', 'sorting.management', 'dispatch.management', 'dispatch.verify',
+    'delivery.view', 'delivery.assignment', 'delivery.execute', 'delivery.verify',
+    'delivery.complete', 'delivery.fail',
+  ],
+};
+
 const idsOf = (values = []) => values.map((value) => value?._id || value).filter(Boolean);
 
 const inferredScope = (user, dimension, values) => (
@@ -276,7 +293,7 @@ const UserManagement = () => {
   // a mismatch nobody could see coming.
   const employeeOwnsIdentity = Boolean(linkedEmployeeId);
   const [permissionsConfig, setPermissionsConfig] = useState({});
-  const [rolePermissions, setRolePermissions] = useState({});
+  const [rolePermissions, setRolePermissions] = useState(FALLBACK_ROLE_PERMISSIONS);
   // Grants that carry approval authority or administrative control, from the backend
   // so the warning list stays in one place.
   const [sensitivePermissions, setSensitivePermissions] = useState({});
@@ -286,7 +303,8 @@ const UserManagement = () => {
   const [form] = Form.useForm();
   const [resetPasswordForm] = Form.useForm();
 
-  const roleOptions = Object.entries(roleInfo).map(([value, info]) => ({
+  const availableRoleInfo = { ...FALLBACK_ROLE_INFO, ...roleInfo };
+  const roleOptions = Object.entries(availableRoleInfo).map(([value, info]) => ({
     value,
     label: info.name,
     title: info.description,
@@ -294,8 +312,8 @@ const UserManagement = () => {
   const manageableRoleOptions = roleOptions.filter(({ value }) => {
     if (currentUser?.role === 'super_admin') return true;
     if (value === 'super_admin' || value === 'owner') return false;
-    return (roleInfo[value]?.rank ?? Number.POSITIVE_INFINITY)
-      < (roleInfo[currentUser?.role]?.rank ?? Number.NEGATIVE_INFINITY);
+    return (availableRoleInfo[value]?.rank ?? Number.POSITIVE_INFINITY)
+      < (availableRoleInfo[currentUser?.role]?.rank ?? Number.NEGATIVE_INFINITY);
   });
   const branches = assignmentOptions.branches;
   // Grouped permission options so the Add/Edit modal list mirrors the drawer —
@@ -352,9 +370,9 @@ const UserManagement = () => {
         ]);
         if (configResponse.success) {
           setPermissionsConfig(configResponse.permissions || {});
-          setRolePermissions(configResponse.rolePermissions || {});
+          setRolePermissions({ ...FALLBACK_ROLE_PERMISSIONS, ...(configResponse.rolePermissions || {}) });
           setSensitivePermissions(configResponse.sensitivePermissions || {});
-          setRoleInfo(configResponse.roleInfo || {});
+          setRoleInfo({ ...FALLBACK_ROLE_INFO, ...(configResponse.roleInfo || {}) });
         }
         if (optionsResponse.success) {
           setAssignmentOptions({ ...EMPTY_OPTIONS, ...(optionsResponse.data || {}) });
