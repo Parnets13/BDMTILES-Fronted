@@ -180,13 +180,6 @@ const menuConfig = {
         permission: 'webmanagement.manage',
       },
       {
-        id: 'web-categories',
-        title: 'Category Management',
-        icon: Archive,
-        path: '/web-management/categories',
-        permission: 'webmanagement.manage',
-      },
-      {
         id: 'web-pincodes',
         title: 'Delivery Pincodes',
         icon: MapPin,
@@ -264,6 +257,13 @@ const menuConfig = {
         icon: DollarSign,
         path: '/masters/dealer-product-pricing',
         permission: 'dealer.discounts',
+      },
+      {
+        id: 'web-categories',
+        title: 'Category Management',
+        icon: Archive,
+        path: '/web-management/categories',
+        permission: 'webmanagement.manage',
       },
       {
         id: 'category-master',

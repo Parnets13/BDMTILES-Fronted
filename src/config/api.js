@@ -87,7 +87,7 @@ function showGlobalError(status, serverMessage, url) {
   });
 }
 
-const PRODUCTION_API_URL = 'https://bdmtiles-backend.onrender.com/api/v1';
+const PRODUCTION_API_URL = 'https://bdmtiles-backend-tm6p.onrender.com/api/v1';
 const DEVELOPMENT_API_URL = 'http://localhost:5000/api/v1';
 
 const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL

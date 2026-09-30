@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Modal, Input, Select, Button, Tag, Pagination, message, Badge, Empty } from 'antd';
 import { SearchOutlined, ReloadOutlined, CheckOutlined, PlusOutlined, CloseOutlined } from '@ant-design/icons';
 import productService from '../services/productService.js';
+import { brandsOf, categoriesFor, departmentsOf, subcategoriesFor } from '../utils/taxonomy.js';
 import salesService from '../services/salesService.js';
 
 /**
@@ -20,8 +21,8 @@ const ProductSelectionModal = ({ open, onClose, onAdd, customerType = 'dealer', 
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
-  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
-  const [filters, setFilters] = useState({ brand: undefined, category: undefined, subcategory: undefined });
+  const [filterOptions, setFilterOptions] = useState({ brands: [], departments: [], categories: [], subcategories: [] });
+  const [filters, setFilters] = useState({ department: undefined, brand: undefined, category: undefined, subcategory: undefined });
   const [selected, setSelected] = useState([]);
 
   useEffect(() => {
@@ -121,18 +122,22 @@ const ProductSelectionModal = ({ open, onClose, onAdd, customerType = 'dealer', 
             allowClear
             size="large"
           />
-          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ brand: undefined, category: undefined, subcategory: undefined }); }}>Reset</Button>
+          <Button icon={<ReloadOutlined />} onClick={() => { setSearch(''); setFilters({ department: undefined, brand: undefined, category: undefined, subcategory: undefined }); }}>Reset</Button>
         </div>
         <div className="flex gap-3">
-          <Select placeholder="All Brands" allowClear value={filters.brand} showSearch optionFilterProp="label"
-            onChange={v => { setFilters(f => ({...f, brand: v})); setPagination(p => ({...p, current: 1})); }}
-            options={filterOptions.brands.map(b => ({value: b._id, label: b.name}))} className="w-44" />
+          {/* Taxonomy cascade, with brand as its own axis. */}
+          <Select placeholder="All Departments" allowClear value={filters.department} showSearch optionFilterProp="label"
+            onChange={v => { setFilters(f => ({...f, department: v, category: undefined, subcategory: undefined})); setPagination(p => ({...p, current: 1})); }}
+            options={departmentsOf(filterOptions).map(d => ({value: d._id, label: d.name}))} className="w-44" />
           <Select placeholder="All Categories" allowClear value={filters.category} showSearch optionFilterProp="label"
-            onChange={v => { setFilters(f => ({...f, category: v})); setPagination(p => ({...p, current: 1})); }}
-            options={filterOptions.categories.map(c => ({value: c._id, label: c.name}))} className="w-44" />
+            onChange={v => { setFilters(f => ({...f, category: v, subcategory: undefined})); setPagination(p => ({...p, current: 1})); }}
+            options={categoriesFor(filterOptions, filters.department).map(c => ({value: c._id, label: c.name}))} className="w-44" />
           <Select placeholder="All Subcategories" allowClear value={filters.subcategory} showSearch optionFilterProp="label"
             onChange={v => { setFilters(f => ({...f, subcategory: v})); setPagination(p => ({...p, current: 1})); }}
-            options={filterOptions.subcategories.map(s => ({value: s._id, label: s.name}))} className="w-44" />
+            options={subcategoriesFor(filterOptions, filters.category).map(s => ({value: s._id, label: s.name}))} className="w-44" />
+          <Select placeholder="All Brands" allowClear value={filters.brand} showSearch optionFilterProp="label"
+            onChange={v => { setFilters(f => ({...f, brand: v})); setPagination(p => ({...p, current: 1})); }}
+            options={brandsOf(filterOptions).map(b => ({value: b._id, label: b.name}))} className="w-44" />
           <div className="ml-auto text-xs text-gray-400 self-center">
             {pagination.total} products found
           </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { brandsOf, categoriesFor, departmentsOf, subcategoriesFor } from '../../utils/taxonomy.js';
 import {
   Alert, Button, Card, Col, DatePicker, Descriptions, Divider, Form, Input,
   InputNumber, Modal, Popconfirm, Radio, Row, Select, Space, Statistic, Switch,
@@ -81,10 +82,10 @@ const DealerProductPricingPage = () => {
   const [dealer, setDealer] = useState(searchParams.get('dealer') || undefined);
   const [dealerSearch, setDealerSearch] = useState('');
   const [filters, setFilters] = useState({
-    search: searchParams.get('product') || '', brand: undefined, category: undefined,
+    search: searchParams.get('product') || '', department: undefined, brand: undefined, category: undefined,
     subcategory: undefined, quantity: 1,
   });
-  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
+  const [filterOptions, setFilterOptions] = useState({ brands: [], departments: [], categories: [], subcategories: [] });
   const [rows, setRows] = useState([]);
   const [selectedProductIds, setSelectedProductIds] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -167,6 +168,7 @@ const DealerProductPricingPage = () => {
   const catalogParams = useCallback((page = pagination.current, limit = pagination.pageSize) => ({
     ...target,
     search: filters.search || undefined,
+    department: filters.department,
     brand: filters.brand,
     category: filters.category,
     subcategory: filters.subcategory,
@@ -228,7 +230,7 @@ const DealerProductPricingPage = () => {
     if (activeTab === 'history') loadHistory(1, historyPagination.pageSize);
   }, [activeTab, target]);
 
-  const resetFilters = () => setFilters({ search: '', brand: undefined, category: undefined, subcategory: undefined, quantity: 1 });
+  const resetFilters = () => setFilters({ search: '', department: undefined, brand: undefined, category: undefined, subcategory: undefined, quantity: 1 });
   const changeScope = (nextScope) => {
     catalogRequest.current += 1;
     setLoading(false);
@@ -324,7 +326,7 @@ const DealerProductPricingPage = () => {
 
   const buildBulkPayload = async () => {
     const values = await bulkForm.validateFields();
-    const filtersPayload = { search: filters.search || undefined, brand: filters.brand, category: filters.category, subcategory: filters.subcategory };
+    const filtersPayload = { search: filters.search || undefined, department: filters.department, brand: filters.brand, category: filters.category, subcategory: filters.subcategory };
     const validity = values.validity?.length === 2 ? {
       from: values.validity[0].startOf('day').toISOString(),
       to: values.validity[1].endOf('day').toISOString(),
@@ -502,11 +504,13 @@ const DealerProductPricingPage = () => {
 
   const filterBar = (
     <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7 gap-2">
         <Input prefix={<SearchOutlined />} placeholder="Product name or code" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} allowClear />
-        <Select placeholder="All brands" value={filters.brand} onChange={(value) => setFilters((current) => ({ ...current, brand: value, category: undefined, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.brands || []).map((item) => ({ value: item._id, label: item.name }))} />
-        <Select placeholder="All categories" value={filters.category} onChange={(value) => setFilters((current) => ({ ...current, category: value, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.categories || []).filter((item) => !filters.brand || idOf(item.brand) === filters.brand).map((item) => ({ value: item._id, label: item.name }))} />
-        <Select placeholder="All subcategories" value={filters.subcategory} onChange={(value) => setFilters((current) => ({ ...current, subcategory: value }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.subcategories || []).filter((item) => !filters.category || idOf(item.category) === filters.category).map((item) => ({ value: item._id, label: item.name }))} />
+        {/* Cascade follows the taxonomy; brand is its own axis, not the entry point. */}
+        <Select placeholder="All departments" value={filters.department} onChange={(value) => setFilters((current) => ({ ...current, department: value, category: undefined, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={departmentsOf(filterOptions).map((item) => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="All categories" value={filters.category} onChange={(value) => setFilters((current) => ({ ...current, category: value, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={categoriesFor(filterOptions, filters.department).map((item) => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="All subcategories" value={filters.subcategory} onChange={(value) => setFilters((current) => ({ ...current, subcategory: value }))} allowClear showSearch optionFilterProp="label" options={subcategoriesFor(filterOptions, filters.category).map((item) => ({ value: item._id, label: item.name }))} />
+        <Select placeholder="All brands" value={filters.brand} onChange={(value) => setFilters((current) => ({ ...current, brand: value }))} allowClear showSearch optionFilterProp="label" options={brandsOf(filterOptions).map((item) => ({ value: item._id, label: item.name }))} />
         <InputNumber min={1} value={filters.quantity} onChange={(value) => setFilters((current) => ({ ...current, quantity: value || 1 }))} addonBefore="Qty" className="w-full" />
         <Space><Button onClick={resetFilters}>Clear</Button><Button icon={<ReloadOutlined />} onClick={() => loadCatalog(pagination.current, pagination.pageSize)} loading={loading}>Refresh</Button></Space>
       </div>

@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import { ProductImage } from '../ImageLightbox.jsx';
+import { brandsOf, categoriesFor, departmentsOf, subcategoriesFor } from '../../utils/taxonomy.js';
 
 const money = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const idOf = (value) => String(value?._id || value || '');
@@ -21,8 +22,8 @@ const QuotationProductBrowser = ({
   alreadySelected = [],
 }) => {
   const [products, setProducts] = useState([]);
-  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
-  const [filters, setFilters] = useState({ brand: undefined, category: undefined, subcategory: undefined });
+  const [filterOptions, setFilterOptions] = useState({ brands: [], departments: [], categories: [], subcategories: [] });
+  const [filters, setFilters] = useState({ department: undefined, brand: undefined, category: undefined, subcategory: undefined });
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selected, setSelected] = useState([]);
@@ -100,13 +101,17 @@ const QuotationProductBrowser = ({
     loadingRef.current = false;
   }, []);
 
-  const categories = useMemo(() => filterOptions.categories.filter(
-    (category) => !filters.brand || idOf(category.brand) === filters.brand
-  ), [filterOptions.categories, filters.brand]);
-  const subcategories = useMemo(() => filterOptions.subcategories.filter(
-    (subcategory) => (!filters.brand || idOf(subcategory.brand) === filters.brand)
-      && (!filters.category || idOf(subcategory.category) === filters.category)
-  ), [filterOptions.subcategories, filters.brand, filters.category]);
+  // Cascade by the taxonomy, not by brand. Filtering categories by brand is what used to
+  // tie a category to a single brand; brand is an independent axis here.
+  const departments = useMemo(() => departmentsOf(filterOptions), [filterOptions]);
+  const categories = useMemo(
+    () => categoriesFor(filterOptions, filters.department),
+    [filterOptions, filters.department],
+  );
+  const subcategories = useMemo(
+    () => subcategoriesFor(filterOptions, filters.category),
+    [filterOptions, filters.category],
+  );
 
   const handleScroll = (event) => {
     const node = event.currentTarget;
@@ -129,7 +134,7 @@ const QuotationProductBrowser = ({
   const clearFilters = () => {
     setSearch('');
     setDebouncedSearch('');
-    setFilters({ brand: undefined, category: undefined, subcategory: undefined });
+    setFilters({ department: undefined, brand: undefined, category: undefined, subcategory: undefined });
   };
 
   const handleDone = () => {
@@ -194,10 +199,17 @@ const QuotationProductBrowser = ({
             />
             <div className="flex flex-1 flex-wrap gap-2">
               <Select
+                allowClear showSearch optionFilterProp="label" placeholder="All departments"
+                value={filters.department}
+                onChange={(department) => setFilters((current) => ({ ...current, department, category: undefined, subcategory: undefined }))}
+                options={departments.map((item) => ({ value: idOf(item), label: item.name }))}
+                className="min-w-44 flex-1"
+              />
+              <Select
                 allowClear showSearch optionFilterProp="label" placeholder="All brands"
                 value={filters.brand}
-                onChange={(brand) => setFilters({ brand, category: undefined, subcategory: undefined })}
-                options={filterOptions.brands.map((item) => ({ value: idOf(item), label: item.name }))}
+                onChange={(brand) => setFilters((current) => ({ ...current, brand }))}
+                options={brandsOf(filterOptions).map((item) => ({ value: idOf(item), label: item.name }))}
                 className="min-w-44 flex-1"
               />
               <Select

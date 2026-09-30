@@ -275,27 +275,31 @@ const DiscountRuleModal = ({ open, mappingType = 'sales', editRecord, onClose, o
     }
   }, [open, isPurchase]);
 
-  // Load categories when brand is selected (for category/subcategory targets)
+  // Category and subcategory targets read the taxonomy directly.
+  //
+  // These used to be gated on a brand being selected first, which is the brand-first coupling
+  // the taxonomy replaced: a category is brand-neutral now, and one "Tiles" serves every brand.
+  // Gating on brand would also have hidden most categories, since only a few carry brand links.
   useEffect(() => {
-    if (form.selectedBrand && (form.targetType === 'category' || form.targetType === 'subcategory')) {
-      api.get(`/category-setup/brands/${form.selectedBrand}/categories`, { params: { limit: 200 } }).then(r => {
+    if (form.targetType === 'category' || form.targetType === 'subcategory') {
+      api.get('/category-setup/nodes', { params: { level: 2, status: 'active' } }).then(r => {
         if (r.success) setCategories(r.data || []);
       }).catch(() => {});
     } else {
       setCategories([]);
     }
-  }, [form.selectedBrand, form.targetType]);
+  }, [form.targetType]);
 
-  // Load subcategories when brand + category selected (for subcategory target)
+  // Subcategories of the chosen category.
   useEffect(() => {
-    if (form.selectedBrand && form.selectedCategory && form.targetType === 'subcategory') {
-      api.get(`/category-setup/brands/${form.selectedBrand}/categories/${form.selectedCategory}/subcategories`, { params: { limit: 200 } }).then(r => {
+    if (form.selectedCategory && form.targetType === 'subcategory') {
+      api.get('/category-setup/nodes', { params: { parent: form.selectedCategory, status: 'active' } }).then(r => {
         if (r.success) setSubcategories(r.data || []);
       }).catch(() => {});
     } else {
       setSubcategories([]);
     }
-  }, [form.selectedBrand, form.selectedCategory, form.targetType]);
+  }, [form.selectedCategory, form.targetType]);
 
   // Search products
   useEffect(() => {

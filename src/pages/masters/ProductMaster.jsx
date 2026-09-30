@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Modal } from 'antd';
+import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Modal, Spin, Alert } from 'antd';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, ShopOutlined } from '@ant-design/icons';
 import productService from '../../services/productService.js';
+import attributeService from '../../services/attributeService.js';
+import { categoriesFor, displayName } from '../../utils/taxonomy.js';
+import { ruleForCategory, computeFor } from '../../utils/productCalculations.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
@@ -64,9 +67,19 @@ const ProductMaster = () => {
   const [loading, setLoading] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ brand: undefined, category: undefined, subcategory: undefined, status: undefined, tileSize: undefined, finish: undefined, tileType: undefined, applicationArea: undefined });
-  const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
+  const [filters, setFilters] = useState({ department: undefined, brand: undefined, category: undefined, subcategory: undefined, status: undefined, tileSize: undefined, finish: undefined, tileType: undefined, applicationArea: undefined });
+  const [filterOptions, setFilterOptions] = useState({ brands: [], departments: [], categories: [], subcategories: [] });
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, draft: 0 });
+
+  // Attribute definitions for the currently selected category, inherited from its ancestors.
+  // This is what makes one product form serve every vertical: tiles get size/finish/surface,
+  // cement gets grade/pack size, and neither sees the other's fields.
+  const [categoryAttributes, setCategoryAttributes] = useState([]);
+  const [loadingAttributes, setLoadingAttributes] = useState(false);
+  // How many attribute definitions each category declares, keyed by category id.
+  // Lets the Specifications card distinguish "this category has no fields" from
+  // "its fields are on its subcategories — pick one", which are very different messages.
+  const [attributeIndex, setAttributeIndex] = useState({});
 
   // Drawer
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -118,20 +131,29 @@ const ProductMaster = () => {
     setImageFiles([]);
     setImagePreviews((product?.images || []).map(img => getImageUrl(img)));
     if (product) {
+      const catId = product.category?._id || product.category;
       form.setFieldsValue({
         ...product,
         inventoryBaseUom: product.inventoryBaseUom || product.unit || 'Box',
         inventoryUomVersion: product.inventoryUomVersion || 1,
         uomConversions: product.uomConversions?.length ? product.uomConversions : [{ uom: product.unit || 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }],
-        brand: product.brand?._id || product.brand,
-        category: product.category?._id || product.category,
-        subcategory: product.subcategory?._id || product.subcategory,
+        brand: product.brand?._id || product.brand || undefined,
+        category: catId || undefined,
+        subcategory: product.subcategory?._id || product.subcategory || undefined,
+        // Category-defined specs. A plain object maps straight onto Product.attributes.
+        attributes: product.attributes || {},
         // Convert arrays to editable string format for the textarea fields
         videos: Array.isArray(product.videos) ? product.videos.join('\n') : (product.videos || ''),
       });
+      // Render the fields of the deepest node this product sits on, so a product filed
+      // under Cement shows Cement's fields rather than its parent's (which has none).
+      loadCategoryAttributes(product.subcategory?._id || product.subcategory || catId);
+      // Bring the stored calculation up to date with the values just loaded.
+      applyCalculation(form.getFieldsValue());
     } else {
       form.resetFields();
       form.setFieldsValue({ gst: 18, unit: 'Box', inventoryBaseUom: 'Box', inventoryUomVersion: 1, uomConversions: [{ uom: 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }], status: 'active', salesType: 'Regular Sale', productType: 'Regular Product' });
+      setCategoryAttributes([]);
     }
     setDrawerOpen(true);
   };
@@ -163,10 +185,15 @@ const ProductMaster = () => {
   const handleShowPreview = async () => {
     try {
       const values = await form.validateFields();
-      // Resolve names for preview display
-      const brandName = filterOptions.brands.find(b => b._id === values.brand)?.name || '-';
-      const categoryName = filterOptions.categories.find(c => c._id === values.category)?.name || '-';
-      const subcategoryName = filterOptions.subcategories.find(s => s._id === values.subcategory)?.name || '-';
+
+      // Resolve names for the preview. The mapping lives in utils/taxonomy.js because the API's
+      // array names (departments/categories/subcategories) do NOT match the form's field names
+      // (Category/Subcategory) — a mismatch that fails silently as a dash, and has caused three
+      // separate bugs now.
+      const brandName = displayName.brand(filterOptions, values.brand);
+      const categoryName = displayName.category(filterOptions, values.category);
+      const subcategoryName = displayName.subcategory(filterOptions, values.subcategory);
+
       setPreviewData({ ...values, brandName, categoryName, subcategoryName });
       setShowPreview(true);
     } catch (err) {
@@ -266,22 +293,105 @@ const ProductMaster = () => {
     }
   };
 
-  // Get filtered categories/subcategories based on selection (cascading)
-  const getFilteredCategories = (brandId) => {
-    const bid = brandId || form.getFieldValue('brand');
-    if (!bid) return filterOptions.categories;
-    return filterOptions.categories.filter(c => String(c.brand) === String(bid) || String(c.brand?._id) === String(bid));
-  };
+  // ── Cascade: Brand → Category → Subcategory ──────────────────────────────
+  //
+  // "Category" here is the level-1 node (Tiles, Building Materials, Sanitaryware …) — the
+  // same thing Category Management lists and Brand & Category Setup links a brand to. So
+  // picking a brand offers exactly the categories that brand sells, not all of them.
+  // Its children (Floor Tiles, Wall Tiles …) are the subcategories.
+  //
+  // The API names these arrays `departments` / `categories` / `subcategories` for levels
+  // 1 / 2 / 3. The UI only ever says "Category" and "Subcategory", so the mapping lives
+  // here and nowhere else.
+  const categoryOptionsFor = useCallback((brandId) => {
+    const all = filterOptions.departments || [];
+    const list = brandId
+      ? all.filter((c) => (c.brands || []).map(String).includes(String(brandId)))
+      : all;
+    return list.map((c) => ({ value: c._id, label: c.name }));
+  }, [filterOptions]);
 
   const getFilteredSubcategories = (categoryId) => {
-    const cid = categoryId || form.getFieldValue('category');
-    if (!cid) return filterOptions.subcategories;
-    return filterOptions.subcategories.filter(s => String(s.category) === String(cid) || String(s.category?._id) === String(cid));
+    const cid = categoryId === undefined ? form.getFieldValue('category') : categoryId;
+    if (!cid) return [];
+    // Level-2 nodes carry their parent id in `category`.
+    return (filterOptions.categories || []).filter((s) => String(s.category) === String(cid));
   };
 
-  // When brand changes → clear category and subcategory
-  const handleBrandChange = (brandId) => {
+  // Pull the attribute definitions for a node — its own plus everything it inherits.
+  //
+  // ALWAYS pass the MOST SPECIFIC node the admin has chosen. Attributes are declared at
+  // whichever level actually varies: Tiles declares `finish` once for all its subcategories,
+  // but Cement declares `grade` / `packSize` on itself. Loading from the Category alone gave
+  // Cement 0 fields, because none of its attributes live on Building Materials.
+  const loadCategoryAttributes = useCallback(async (nodeId) => {
+    if (!nodeId) { setCategoryAttributes([]); return; }
+    setLoadingAttributes(true);
+    try {
+      const res = await attributeService.getEffective(nodeId);
+      const all = res.success ? (res.data || []) : [];
+      // Calculated outputs are rendered by the calculation block below, read-only. Showing
+      // them here too would ask the admin to type a value the form is about to overwrite.
+      setCategoryAttributes(all.filter((a) => !a.calculated));
+    } catch {
+      setCategoryAttributes([]);
+    } finally { setLoadingAttributes(false); }
+  }, []);
+
+  const loadAttributeIndex = useCallback(async () => {
+    try {
+      const res = await attributeService.list();
+      if (!res.success) return;
+      const index = {};
+      for (const def of res.data || []) {
+        const key = String(def.category);
+        index[key] = (index[key] || 0) + 1;
+      }
+      setAttributeIndex(index);
+    } catch { /* only powers a hint — the form works without it */ }
+  }, []);
+
+  useEffect(() => { loadAttributeIndex(); }, [loadAttributeIndex]);
+
+  /** The deepest node chosen so far — what the Specifications fields come from. */
+  const deepestSelectedNode = () =>
+    form.getFieldValue('subcategory') || form.getFieldValue('category') || null;
+
+  // Changing the brand narrows the category list, so a category that no longer belongs
+  // to the chosen brand must be cleared rather than left dangling.
+  const handleBrandChange = () => {
     form.setFieldsValue({ category: undefined, subcategory: undefined });
+    setCategoryAttributes([]);
+  };
+
+  /**
+   * Recompute this category's auto-calculation, if it has one, and store the result.
+   *
+   * Called whenever ANY field changes, so the result always reflects the current inputs.
+   * The guard (`value !== current`) matters: writing an identical value would re-trigger
+   * the change handler and loop forever.
+   */
+  const applyCalculation = useCallback((allValues) => {
+    const category = (filterOptions.departments || []).find((d) => d._id === allValues?.category);
+    const rule = ruleForCategory(category);
+    if (!rule) return;
+    const attributes = allValues?.attributes || {};
+    const { value } = computeFor(rule, attributes);
+    if (value !== attributes[rule.output.key]) {
+      form.setFieldsValue({ attributes: { ...attributes, [rule.output.key]: value } });
+    }
+  }, [filterOptions, form]);
+
+  // A new category invalidates the subcategory, so fall back to the category's own fields.
+  const handleCategoryChange = (categoryId) => {
+    form.setFieldsValue({ subcategory: undefined });
+    loadCategoryAttributes(categoryId);
+  };
+
+  // A subcategory is more specific than its parent, so its fields replace the parent's.
+  // Clearing it falls back to the category again.
+  const handleSubcategoryChange = (subcategoryId) => {
+    loadCategoryAttributes(subcategoryId || form.getFieldValue('category'));
   };
 
   // Auto-calculate SqFt/Box whenever tileSize or pcsPerBox changes
@@ -297,29 +407,35 @@ const ProductMaster = () => {
     if (computed !== null) form.setFieldsValue({ sqftPerBox: computed });
   };
 
-  // When category changes → auto-fill brand if not set, clear subcategory
-  const handleCategoryChange = (categoryId) => {
-    const cat = filterOptions.categories.find(c => c._id === categoryId);
-    if (cat) {
-      // Auto-fill brand from category's parent
-      form.setFieldsValue({ brand: cat.brand, subcategory: undefined });
-    } else {
-      form.setFieldsValue({ subcategory: undefined });
+  /**
+   * Render the right control for an attribute's declared type.
+   *
+   * A select must be a select — letting someone type a free value into a field the storefront
+   * filters on would produce an option nobody can find. Values are stored on
+   * `form.attributes[key]`, which maps straight onto `Product.attributes`.
+   */
+  const renderAttributeInput = (a) => {
+    if (a.type === 'select') {
+      return (
+        <Select
+          allowClear showSearch optionFilterProp="label"
+          placeholder={`Select ${String(a.label || '').toLowerCase()}`}
+          options={(a.options || []).map((o) => ({ value: o, label: o }))}
+        />
+      );
     }
-  };
-
-  // When subcategory changes → auto-fill both category and brand
-  const handleSubcategoryChange = (subcategoryId) => {
-    const sub = filterOptions.subcategories.find(s => s._id === subcategoryId);
-    if (sub) {
-      // Auto-fill category from subcategory's parent
-      form.setFieldsValue({ category: sub.category });
-      // Auto-fill brand from category's parent
-      const cat = filterOptions.categories.find(c => c._id === sub.category);
-      if (cat) {
-        form.setFieldsValue({ brand: cat.brand });
-      }
+    if (a.type === 'multiselect') {
+      return (
+        <Select
+          mode="multiple" allowClear optionFilterProp="label"
+          placeholder={`Select ${String(a.label || '').toLowerCase()}`}
+          options={(a.options || []).map((o) => ({ value: o, label: o }))}
+        />
+      );
     }
+    if (a.type === 'number') return <InputNumber className="w-full" />;
+    if (a.type === 'boolean') return <Switch />;
+    return <Input placeholder={a.help || ''} />;
   };
 
   const columns = [
@@ -435,14 +551,19 @@ const ProductMaster = () => {
           <Input placeholder="Search by name, code, HSN, colour..." prefix={<SearchOutlined className="text-gray-400" />}
             value={search} onChange={e => { setSearch(e.target.value); setPagination(p => ({...p, current:1})); }}
             className="w-72" allowClear />
-          <Select placeholder="Brand" options={filterOptions.brands.map(b => ({ value: b._id, label: b.name }))}
-            value={filters.brand} onChange={v => setFilters(f => ({...f, brand: v, category: undefined, subcategory: undefined}))}
-            allowClear className="w-36" />
-          <Select placeholder="Category" options={getFilteredCategories().map(c => ({ value: c._id, label: c.name }))}
+          {/* Filters follow the taxonomy: Department → Category → Subcategory, with Brand as
+              a separate optional axis rather than the entry point. */}
+          <Select placeholder="Department" options={filterOptions.departments.map(d => ({ value: d._id, label: d.name }))}
+            value={filters.department} onChange={v => setFilters(f => ({...f, department: v, category: undefined, subcategory: undefined}))}
+            allowClear className="w-40" />
+          <Select placeholder="Category" options={categoriesFor(filterOptions, filters.department).map(c => ({ value: c._id, label: c.name }))}
             value={filters.category} onChange={v => setFilters(f => ({...f, category: v, subcategory: undefined}))}
-            allowClear className="w-36" />
-          <Select placeholder="Subcategory" options={getFilteredSubcategories().map(s => ({ value: s._id, label: s.name }))}
+            allowClear className="w-40" />
+          <Select placeholder="Subcategory" options={getFilteredSubcategories(filters.category).map(s => ({ value: s._id, label: s.name }))}
             value={filters.subcategory} onChange={v => setFilters(f => ({...f, subcategory: v}))}
+            allowClear className="w-40" />
+          <Select placeholder="Brand" options={filterOptions.brands.map(b => ({ value: b._id, label: b.name }))}
+            value={filters.brand} onChange={v => setFilters(f => ({...f, brand: v}))}
             allowClear className="w-36" />
           <Select placeholder="Status" options={[{value:'active',label:'Active'},{value:'inactive',label:'Inactive'},{value:'draft',label:'Draft'}]}
             value={filters.status} onChange={v => setFilters(f => ({...f, status: v}))} allowClear className="w-28" />
@@ -506,43 +627,187 @@ const ProductMaster = () => {
 
             {/* Form */}
             <div className="px-8 py-6">
-              <Form form={form} layout="vertical">
-              {/* Row 1: Brand, Category, Subcategory */}
+              <Form
+                form={form}
+                layout="vertical"
+                onValuesChange={(_changed, all) => applyCalculation(all)}
+              >
+              {/* Row 1: Brand → Category → Subcategory.
+                  Pick a brand and only the categories that brand sells are offered; pick a
+                  category and only its own subcategories are offered. Each step narrows the
+                  next, so nobody scrolls a list of 99 categories to find one. */}
               <Row gutter={16}>
                 <Col span={8}>
-                  <Form.Item name="brand" label="Brand" rules={[{ required: true, message: 'Select brand' }]}>
-                    <Select placeholder="Search brands..." showSearch optionFilterProp="label"
+                  <Form.Item name="brand" label="Brand" extra="Optional — leave blank for unbranded goods">
+                    <Select placeholder="Select brand..." showSearch optionFilterProp="label" allowClear
                       options={filterOptions.brands.map(b => ({ value: b._id, label: b.name }))}
                       onChange={handleBrandChange} />
                   </Form.Item>
                 </Col>
                 <Col span={8}>
                   <Form.Item noStyle shouldUpdate={(prev, curr) => prev.brand !== curr.brand}>
-                    {() => (
-                      <Form.Item name="category" label="Category" rules={[{ required: true, message: 'Select category' }]}>
-                        <Select placeholder={form.getFieldValue('brand') ? 'Select category...' : 'Select brand first'} showSearch optionFilterProp="label"
-                          disabled={!form.getFieldValue('brand')}
-                          options={getFilteredCategories().map(c => ({ value: c._id, label: c.name }))}
-                          onChange={handleCategoryChange}
-                          notFoundContent={form.getFieldValue('brand') ? 'No categories for this brand' : 'Select a brand first'} />
-                      </Form.Item>
-                    )}
+                    {() => {
+                      const brandId = form.getFieldValue('brand');
+                      const options = categoryOptionsFor(brandId);
+                      return (
+                        <Form.Item name="category" label="Category" rules={[{ required: true, message: 'Select category' }]}>
+                          <Select
+                            placeholder={brandId ? 'Select category...' : 'Select category (or pick a brand first)'}
+                            showSearch optionFilterProp="label"
+                            options={options}
+                            onChange={handleCategoryChange}
+                            notFoundContent={brandId
+                              ? 'This brand has no categories yet — set them up in Brand & Category Setup'
+                              : 'No categories yet — add them in Category Management'} />
+                        </Form.Item>
+                      );
+                    }}
                   </Form.Item>
                 </Col>
                 <Col span={8}>
-                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.category !== curr.category || prev.brand !== curr.brand}>
+                  <Form.Item noStyle shouldUpdate={(prev, curr) => prev.category !== curr.category}>
                     {() => (
-                      <Form.Item name="subcategory" label="Subcategory" rules={[{ required: true, message: 'Select subcategory' }]}>
-                        <Select placeholder={form.getFieldValue('category') ? 'Select subcategory...' : 'Select category first'} showSearch optionFilterProp="label"
+                      <Form.Item name="subcategory" label="Subcategory">
+                        <Select
+                          placeholder={form.getFieldValue('category') ? 'Select subcategory...' : 'Select category first'}
+                          showSearch optionFilterProp="label" allowClear
                           disabled={!form.getFieldValue('category')}
                           options={getFilteredSubcategories().map(s => ({ value: s._id, label: s.name }))}
                           onChange={handleSubcategoryChange}
-                          notFoundContent={form.getFieldValue('category') ? 'No subcategories for this category' : 'Select a category first'} />
+                          notFoundContent={form.getFieldValue('category') ? 'No subcategories under this category' : 'Select a category first'} />
                       </Form.Item>
                     )}
                   </Form.Item>
                 </Col>
               </Row>
+
+              {/* Category-defined specifications.
+                  Rendered from the selected category's own definitions, so a tile shows
+                  size / finish / surface and a cement bag shows grade / pack size / setting
+                  time — one form serving every vertical instead of a column per vertical. */}
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.category !== curr.category || prev.subcategory !== curr.subcategory}>
+                {() => {
+                  const nodeId = deepestSelectedNode();
+                  if (!nodeId) return null;
+
+                  // Where the fields actually are, so the empty state can say so rather than
+                  // just "none here". Three genuinely different situations:
+                  //   Tiles              -> its fields are the tile block further down the form
+                  //   a parent category  -> its fields are on its subcategories, pick one
+                  //   anything else      -> nothing defined yet, add them in Brand & Category Setup
+                  const categoryId = form.getFieldValue('category');
+                  const subcategoryId = form.getFieldValue('subcategory');
+                  const selectedCategory = (filterOptions.departments || []).find((d) => d._id === categoryId);
+                  // Matched on the STABLE key, never the name. Renaming the category is safe;
+                  // a hand-made "Tiles" is a different category and correctly gets no tile block.
+                  const isTiles = selectedCategory?.systemKey === 'tiles';
+                  const subcategoriesWithFields = (!subcategoryId && categoryId)
+                    ? (filterOptions.categories || [])
+                      .filter((c) => String(c.category) === String(categoryId) && attributeIndex[String(c._id)] > 0)
+                      .map((c) => c.name)
+                    : [];
+
+                  return (
+                    <Card
+                      size="small"
+                      className="mb-4"
+                      title={<span className="text-sm">Specifications</span>}
+                      extra={<span className="text-xs text-gray-400">{categoryAttributes.length} field{categoryAttributes.length === 1 ? '' : 's'}</span>}
+                    >
+                      {loadingAttributes ? (
+                        <div className="py-6 text-center"><Spin /></div>
+                      ) : categoryAttributes.length === 0 ? (
+                        isTiles ? (
+                          <Alert
+                            type="success"
+                            showIcon
+                            message="Tiles has its own fields"
+                            description="Scroll down to Tile Specifications — size, finish, surface, pcs/box and the auto-calculated sqft/box."
+                          />
+                        ) : subcategoriesWithFields.length > 0 ? (
+                          <Alert
+                            type="info"
+                            showIcon
+                            message="Pick a subcategory to fill in its details"
+                            description={`${subcategoriesWithFields.length} of this category's subcategories have their own fields — ${subcategoriesWithFields.slice(0, 6).join(', ')}${subcategoriesWithFields.length > 6 ? ' and more' : ''}. Choose one above and its fields appear here.`}
+                          />
+                        ) : (
+                          <Alert
+                            type="info"
+                            showIcon
+                            message="No specifications for this category yet"
+                            description="Add them in Brand & Category Setup — on the category itself, or on one of its subcategories."
+                          />
+                        )
+                      ) : (
+                        <Row gutter={16}>
+                          {categoryAttributes.map((a) => (
+                            <Col xs={24} md={12} lg={8} key={a.key}>
+                              <Form.Item
+                                name={['attributes', a.key]}
+                                label={a.unit ? `${a.label} (${a.unit})` : a.label}
+                                rules={a.required ? [{ required: true, message: `${a.label} is required` }] : []}
+                                extra={a.help || undefined}
+                              >
+                                {renderAttributeInput(a)}
+                              </Form.Item>
+                            </Col>
+                          ))}
+                        </Row>
+                      )}
+                    </Card>
+                  );
+                }}
+              </Form.Item>
+
+              {/* Auto-calculation, when this category has one.
+                  Reads the fields above and writes a read-only result — e.g. a granite slab's
+                  square feet, which is what the customer is actually billed for. Driven by
+                  src/utils/productCalculations.js, so a new category needs one entry there,
+                  not another hardcoded block here. */}
+              <Form.Item
+                noStyle
+                shouldUpdate={(prev, curr) => prev.attributes !== curr.attributes || prev.category !== curr.category}
+              >
+                {() => {
+                  const category = (filterOptions.departments || []).find((d) => d._id === form.getFieldValue('category'));
+                  const rule = ruleForCategory(category);
+                  if (!rule) return null;
+                  const attributes = form.getFieldValue('attributes') || {};
+                  const { value, missing } = computeFor(rule, attributes);
+                  return (
+                    <Card size="small" className="mb-4" title={<span className="text-sm">{rule.title}</span>}>
+                      <Alert type="info" showIcon className="mb-3" message={rule.note} />
+                      <Row gutter={16} align="middle">
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            name={['attributes', rule.output.key]}
+                            label={(
+                              <span>
+                                {rule.output.label}
+                                {rule.output.unit ? ` (${rule.output.unit})` : ''}
+                                <span className="text-[10px] font-normal text-green-600 ml-1">auto-calculated</span>
+                              </span>
+                            )}
+                            extra={missing.length ? `Waiting for: ${missing.join(', ')}` : undefined}
+                          >
+                            <InputNumber className="w-full bg-green-50" readOnly />
+                          </Form.Item>
+                        </Col>
+                        <Col xs={24} md={12}>
+                          <span className="text-sm text-gray-600">
+                            {value === null
+                              ? (missing.length
+                                ? 'Fill the fields above and this calculates itself.'
+                                : 'Enter the values above to calculate.')
+                              : `= ${value} ${rule.output.unit || ''}`}
+                          </span>
+                        </Col>
+                      </Row>
+                    </Card>
+                  );
+                }}
+              </Form.Item>
 
               {/* Row 2: Product Code, Item Name, HSN */}
               <Row gutter={16}>
@@ -633,6 +898,19 @@ const ProductMaster = () => {
                 </Row>
               </div>
 
+              {/* Tile-only fields.
+                  The Pcs/Box → SqFt/Box auto-calculation is genuinely tile-specific, so Tiles
+                  keeps its own block. EVERY other vertical gets its fields from its own
+                  attribute definitions, shown in the Specifications card above — which is why
+                  this block must not render for Cement, Sanitaryware and the rest. */}
+              <Form.Item noStyle shouldUpdate={(prev, curr) => prev.category !== curr.category}>
+                {() => {
+                  const categoryId = form.getFieldValue('category');
+                  const category = (filterOptions.departments || []).find((d) => d._id === categoryId);
+                  const isTiles = category?.systemKey === 'tiles';
+                  if (!isTiles) return null;
+                  return (
+                    <>
               <Divider className="my-4" />
 
               {/* Row 4: Tile Specifications */}
@@ -666,6 +944,10 @@ const ProductMaster = () => {
                 </Col>
                 <Col span={4}><Form.Item name="weightPerBox" label="Weight/Box (Kg)"><InputNumber min={0} step={0.1} className="w-full" /></Form.Item></Col>
               </Row>
+                    </>
+                  );
+                }}
+              </Form.Item>
 
               <Divider className="my-4" />
 
@@ -839,6 +1121,10 @@ const ProductMaster = () => {
                   <PreviewItem label="Status" value={previewData.status} />
                 </div>
 
+                {/* Only for products that actually carry tile data. A cement bag has none,
+                    so an empty "Tile Specifications" table would just be noise. */}
+                {previewData.tileSize && (
+                  <>
                 <Divider className="my-3" />
                 <h4 className="font-semibold text-gray-700 text-sm">Tile Specifications</h4>
                 <div className="grid grid-cols-4 gap-4 text-sm">
@@ -862,6 +1148,8 @@ const ProductMaster = () => {
                   <PreviewItem label="SqFt/Box" value={previewData.sqftPerBox} />
                   <PreviewItem label="Weight/Box" value={previewData.weightPerBox} />
                 </div>
+                  </>
+                )}
 
                 <Divider className="my-3" />
                 <h4 className="font-semibold text-gray-700 text-sm">Pricing (₹)</h4>
@@ -952,6 +1240,8 @@ const ViewProductModal = ({ product, onClose }) => {
             <PreviewItem label="Sales Type" value={product.salesType} />
             <PreviewItem label="Product Type" value={product.productType} />
           </div>
+          {/* Only shown when this product actually has tile data. */}
+          {product.tileSize && (
           <div className="border-t pt-4 mt-4">
             <h4 className="font-semibold text-gray-700 text-sm mb-3">Tile Specifications</h4>
             <div className="grid grid-cols-4 gap-4 text-sm">
@@ -976,6 +1266,7 @@ const ViewProductModal = ({ product, onClose }) => {
               <PreviewItem label="Weight/Box" value={product.weightPerBox} />
             </div>
           </div>
+          )}
           <div className="border-t pt-4 mt-4">
             <h4 className="font-semibold text-gray-700 text-sm mb-3">Pricing (₹)</h4>
             <div className="grid grid-cols-4 gap-4 text-sm">

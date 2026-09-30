@@ -4,6 +4,7 @@ import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag, me
 import { DownloadOutlined, PrinterOutlined, ReloadOutlined, SearchOutlined, SettingOutlined, TagOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
+import { brandsOf, categoriesFor, departmentsOf, subcategoriesFor } from '../../utils/taxonomy.js';
 
 const money = (value) => Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
 const activeType = (item) => item?.isActive !== false && item?.status !== 'inactive';
@@ -17,7 +18,7 @@ const PriceListPage = () => {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 50, total: 0 });
-  const [filters, setFilters] = useState({ search: '', brand: undefined, category: undefined, subcategory: undefined });
+  const [filters, setFilters] = useState({ search: '', department: undefined, brand: undefined, category: undefined, subcategory: undefined });
   const [filterOptions, setFilterOptions] = useState({ brands: [], categories: [], subcategories: [] });
 
   useEffect(() => {
@@ -48,6 +49,9 @@ const PriceListPage = () => {
     page, limit,
     status: 'active',
     search: filters.search || undefined,
+    // `department` scopes the API to everything beneath it, so it is sent as well as
+    // narrowing the dropdowns locally.
+    department: filters.department,
     brand: filters.brand,
     category: filters.category,
     subcategory: filters.subcategory,
@@ -149,7 +153,7 @@ const PriceListPage = () => {
     { title: 'Override setup', width: 135, fixed: 'right', render: (_, product) => <Button type="link" size="small" icon={<SettingOutlined />} onClick={() => openPricing(product)}>Configure target</Button> },
   ];
 
-  const resetFilters = () => setFilters({ search: '', brand: undefined, category: undefined, subcategory: undefined });
+  const resetFilters = () => setFilters({ search: '', department: undefined, brand: undefined, category: undefined, subcategory: undefined });
 
   return (
     <div>
@@ -165,11 +169,13 @@ const PriceListPage = () => {
       </Row>
 
       <div className="bg-white border border-gray-200 rounded-lg p-3 mb-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-6 gap-2">
           <Input prefix={<SearchOutlined />} placeholder="Product name or code" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} allowClear />
-          <Select placeholder="All brands" value={filters.brand} onChange={(value) => setFilters((current) => ({ ...current, brand: value, category: undefined, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.brands || []).map((item) => ({ value: item._id, label: item.name }))} />
-          <Select placeholder="All categories" value={filters.category} onChange={(value) => setFilters((current) => ({ ...current, category: value, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.categories || []).filter((item) => !filters.brand || (item.brand?._id || item.brand) === filters.brand).map((item) => ({ value: item._id, label: item.name }))} />
-          <Select placeholder="All subcategories" value={filters.subcategory} onChange={(value) => setFilters((current) => ({ ...current, subcategory: value }))} allowClear showSearch optionFilterProp="label" options={(filterOptions.subcategories || []).filter((item) => !filters.category || (item.category?._id || item.category) === filters.category).map((item) => ({ value: item._id, label: item.name }))} />
+          {/* Cascade follows the taxonomy; brand is its own axis, not the entry point. */}
+          <Select placeholder="All departments" value={filters.department} onChange={(value) => setFilters((current) => ({ ...current, department: value, category: undefined, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={departmentsOf(filterOptions).map((item) => ({ value: item._id, label: item.name }))} />
+          <Select placeholder="All categories" value={filters.category} onChange={(value) => setFilters((current) => ({ ...current, category: value, subcategory: undefined }))} allowClear showSearch optionFilterProp="label" options={categoriesFor(filterOptions, filters.department).map((item) => ({ value: item._id, label: item.name }))} />
+          <Select placeholder="All subcategories" value={filters.subcategory} onChange={(value) => setFilters((current) => ({ ...current, subcategory: value }))} allowClear showSearch optionFilterProp="label" options={subcategoriesFor(filterOptions, filters.category).map((item) => ({ value: item._id, label: item.name }))} />
+          <Select placeholder="All brands" value={filters.brand} onChange={(value) => setFilters((current) => ({ ...current, brand: value }))} allowClear showSearch optionFilterProp="label" options={brandsOf(filterOptions).map((item) => ({ value: item._id, label: item.name }))} />
           <Button onClick={resetFilters}>Clear filters</Button>
         </div>
       </div>
