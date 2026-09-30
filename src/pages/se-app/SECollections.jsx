@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, DatePicker } from 'antd';
 import { DollarOutlined, UserOutlined, ReloadOutlined, SearchOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -33,7 +33,7 @@ export default function SECollections() {
 
       const [paymentsRes, usersRes] = await Promise.all([
         salesService.getPayments(params),
-        userService.getUsers({ role: 'sales_executive', limit: 100 }),
+        seMonitoringService.executives(),
       ]);
 
       const allPayments = paymentsRes?.data || paymentsRes?.payments || [];

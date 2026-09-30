@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, Modal, Form, InputNumber, DatePicker, Progress, message, Tooltip, Popconfirm, Alert } from 'antd';
 import { UserOutlined, ReloadOutlined, SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, PauseCircleOutlined, PlayCircleOutlined, LockOutlined } from '@ant-design/icons';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
 import api from '../../config/api';
+import { useAuth } from '../../context/AuthContext.jsx';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -48,6 +49,11 @@ const apiMessage = (err, fallback) => err?.message || fallback;
 
 export default function SETargetManagement() {
   const [targets, setTargets] = useState([]);
+  // Reading targets needs incentive.rules.view; authoring needs incentive.rules.manage.
+  // A viewer without the write permission used to get a full set of Create/Edit/Delete
+  // buttons that each 403'd on click.
+  const { hasPermission } = useAuth();
+  const canAuthorTargets = hasPermission('incentive.rules.manage');
   const [summary, setSummary] = useState(null);
   const [metrics, setMetrics] = useState(METRIC_FALLBACK);
   const [salesExecs, setSalesExecs] = useState([]);
@@ -69,7 +75,7 @@ export default function SETargetManagement() {
 
   const loadSEs = async () => {
     try {
-      const usersRes = await userService.getUsers({ role: 'sales_executive', limit: 100 });
+      const usersRes = await seMonitoringService.executives();
       setSalesExecs(usersRes?.data || usersRes?.users || []);
     } catch {
       // The interceptor has already told the user; the SE dropdown simply stays empty.
@@ -287,6 +293,13 @@ export default function SETargetManagement() {
             </Tooltip>
           );
         }
+        if (!canAuthorTargets) {
+          return (
+            <Tooltip title="Your role can view targets but not change them.">
+              <Tag icon={<LockOutlined />} color="default">View only</Tag>
+            </Tooltip>
+          );
+        }
         return (
           <Space>
             <Tooltip title="Edit">
@@ -327,9 +340,11 @@ export default function SETargetManagement() {
         </div>
         <Space>
           <Button icon={<ReloadOutlined />} onClick={loadTargets} loading={loading}>Refresh</Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
-            New Target
-          </Button>
+          {canAuthorTargets && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+              New Target
+            </Button>
+          )}
         </Space>
       </div>
 

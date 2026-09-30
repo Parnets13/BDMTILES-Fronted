@@ -1259,14 +1259,15 @@ const menuConfig = {
     title: 'Sales Executive App',
     icon: Users2,
     hasSubmenu: true,
-    modulePermissions: ['sales.executive.app', 'se.attendance.view', 'dealer.assignment.manage'],
+    modulePermissions: ['se.attendance.view', 'attendance.master', 'dealer.assignment.manage', 'reports.sales'],
     items: [
       {
         id: 'se-attendance',
         title: 'Attendance',
         icon: CheckCircle,
         path: '/se-app/attendance',
-        permission: 'se.attendance.view',
+        // Page reads /hrms/attendance, guarded by attendance.master.
+        permission: 'attendance.master',
       },
       {
         id: 'se-live-tracking',
@@ -1287,36 +1288,42 @@ const menuConfig = {
         title: 'Dealer Assignment',
         icon: Users2,
         path: '/se-app/dealer-assignment',
-        permission: 'dealer.assignment.manage',
+        // Reads the dealer list (dealer.master) and writes assignments
+        // (dealer.assignment.manage) — any-of, matching the endpoints it calls.
+        permissions: ['dealer.master', 'dealer.assignment.manage'],
       },
       {
         id: 'se-route-plan',
         title: 'Route Plan',
         icon: MapPin,
         path: '/se-app/route-plan',
-        permission: 'se.route.plan',
+        // Page reads /masters/routes, guarded by route.master.
+        permission: 'route.master',
       },
       {
         id: 'se-dealer-insights',
         title: 'Dealer Insights',
         icon: TrendingUp,
         path: '/se-app/dealer-insights',
-        permission: 'se.dealer.insights',
+        // Page reads /reports/dealer-performance, guarded by reports.sales.
+        permission: 'reports.sales',
       },
       {
         id: 'se-collections',
         title: 'Collections',
         icon: Wallet,
         path: '/se-app/collections',
-        permission: 'se.collections.view',
+        // Page reads /payments, guarded by payment.
+        permission: 'payment',
       },
       {
         id: 'se-targets',
         title: 'Targets',
         icon: Target,
         path: '/se-app/targets',
-        // Matches the /targets API guard. se.targets.view is the executive's own
-        // read on the mobile app, not permission to author targets for others.
+        // Page reads /targets/meta and /targets, both guarded by incentive.rules.view.
+        // Authoring (POST/PUT) needs incentive.rules.manage, which the page surfaces
+        // as read-only when absent.
         permission: 'incentive.rules.view',
       },
       {
@@ -1324,7 +1331,8 @@ const menuConfig = {
         title: 'Expenses',
         icon: Receipt,
         path: '/se-app/expenses',
-        permission: 'sales.executive.app',
+        // Page reads /expenses and approves via /expenses/:id/approve.
+        permission: 'expense.management',
       },
     ],
   },

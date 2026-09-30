@@ -7,7 +7,7 @@ import {
   UserOutlined, ShopOutlined, EnvironmentOutlined, ReloadOutlined, SearchOutlined,
   ClockCircleOutlined, CheckCircleOutlined, LoginOutlined,
 } from '@ant-design/icons';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
 import api from '../../config/api';
 import dayjs from 'dayjs';
 
@@ -102,7 +102,7 @@ export default function SEDealerVisits() {
   }, [buildParams]);
 
   useEffect(() => {
-    userService.getUsers({ role: 'sales_executive', limit: 100 })
+    seMonitoringService.executives()
       .then((res) => setSalesExecs(res?.data || res?.users || []))
       .catch(() => { /* the interceptor reports it; the filter just stays empty */ });
   }, []);

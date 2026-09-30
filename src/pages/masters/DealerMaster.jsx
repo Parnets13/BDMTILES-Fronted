@@ -361,7 +361,20 @@ const DealerMaster = () => {
                       <Form.Item
                         name="assignedSalesExecutive"
                         label="Assign Sales Executive"
-                        extra="Active Sales Executive users from User Management"
+                        // Required on create only. A dealer's operating branch is derived
+                        // from their executive, and the catalogue is branch-scoped — with
+                        // nobody assigned the dealer logs in to products that have no price
+                        // and all read "Out of stock", with no error shown anywhere. The
+                        // API refuses such a create outright (422), so marking it required
+                        // here turns that into a message on the field instead of a failed
+                        // save. On edit it stays optional: an existing dealer must remain
+                        // editable even when the assignment needs fixing separately.
+                        rules={editingDealer
+                          ? []
+                          : [{ required: true, message: 'Assign the Sales Executive this dealer belongs to.' }]}
+                        extra={editingDealer
+                          ? 'Active Sales Executive users from User Management'
+                          : 'Required — this dealer’s pricing and stock come from their Sales Executive’s branch'}
                       >
                         <Select
                           placeholder="Select Sales Executive"

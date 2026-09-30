@@ -3,7 +3,7 @@ import { Table, Card, DatePicker, Select, Tag, Row, Col, Statistic, Space, Butto
 import { UserOutlined, ClockCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import hrmsService from '../../services/hrmsService';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
 
 const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
@@ -31,7 +31,7 @@ export default function SEAttendanceViewer() {
 
       const [attRes, usersRes] = await Promise.all([
         hrmsService.getAttendance(params),
-        userService.getUsers({ role: 'sales_executive', limit: 100 }),
+        seMonitoringService.executives(),
       ]);
 
       const rows = attRes?.data || attRes?.attendance || [];

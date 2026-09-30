@@ -8,6 +8,16 @@ import api from '../config/api.js';
  * renderer layered on top; it is never the source of truth.
  */
 const seMonitoringService = {
+  /**
+   * The branch's sales executives — id and name only.
+   *
+   * Every `/se-app/*` viewer used to call `/users` here just to fill a filter
+   * dropdown. `/users` is gated on `users.manage`, which none of those pages imply,
+   * so each one loaded and then failed on its first request. This endpoint is gated
+   * on `sales.executive.app` and returns nothing beyond what a dropdown needs.
+   */
+  executives: () => api.get('/sales-executive/directory/executives'),
+
   /** Where each executive was last seen, plus battery and staleness. */
   live: () => api.get('/sales-executive/monitoring/live'),
 

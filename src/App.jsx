@@ -650,17 +650,19 @@ const App = () => {
         />
 
         {/* Sales Executive App */}
-        <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEAttendanceViewer /></ProtectedRoute>} />
+        <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="attendance.master"><SEAttendanceViewer /></ProtectedRoute>} />
         <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="se.attendance.view"><SELiveTracking /></ProtectedRoute>} />
         <Route path="/se-app/dealer-visits" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerVisits /></ProtectedRoute>} />
-        <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredPermission="dealer.assignment.manage"><SEDealerAssignment /></ProtectedRoute>} />
-        <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="se.route.plan"><SERoutePlan /></ProtectedRoute>} />
-        <Route path="/se-app/dealer-insights" element={<ProtectedRoute requiredPermission="se.dealer.insights"><SEDealerInsights /></ProtectedRoute>} />
-        <Route path="/se-app/collections" element={<ProtectedRoute requiredPermission="se.collections.view"><SECollections /></ProtectedRoute>} />
+        {/* Reads the dealer list (dealer.master) and writes assignments
+            (dealer.assignment.manage) — any-of, matching the two endpoints it calls. */}
+        <Route path="/se-app/dealer-assignment" element={<ProtectedRoute requiredAnyPermissions={['dealer.master', 'dealer.assignment.manage']}><SEDealerAssignment /></ProtectedRoute>} />
+        <Route path="/se-app/route-plan" element={<ProtectedRoute requiredPermission="route.master"><SERoutePlan /></ProtectedRoute>} />
+        <Route path="/se-app/dealer-insights" element={<ProtectedRoute requiredPermission="reports.sales"><SEDealerInsights /></ProtectedRoute>} />
+        <Route path="/se-app/collections" element={<ProtectedRoute requiredPermission="payment"><SECollections /></ProtectedRoute>} />
         {/* Authoring screen, not the executive's own view — gated on the incentive rule
             permission the /targets API enforces, so an SE cannot set their own target. */}
         <Route path="/se-app/targets" element={<ProtectedRoute requiredPermission="incentive.rules.view"><SETargetManagement /></ProtectedRoute>} />
-        <Route path="/se-app/expenses" element={<ProtectedRoute requiredPermission="sales.executive.app"><SEExpenseViewer /></ProtectedRoute>} />
+        <Route path="/se-app/expenses" element={<ProtectedRoute requiredPermission="expense.management"><SEExpenseViewer /></ProtectedRoute>} />
 
         {/* Delivery Executive App */}
         <Route path="/de-app/assignment" element={<ProtectedRoute requiredPermission="de.assignment.manage"><DEAssignment /></ProtectedRoute>} />

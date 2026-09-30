@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, Modal, Form, DatePicker, message } from 'antd';
 import { UserOutlined, ReloadOutlined, SearchOutlined, PlusOutlined, EnvironmentOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -23,7 +23,7 @@ export default function SERoutePlan() {
     try {
       const [routesRes, usersRes] = await Promise.all([
         masterService.getRoutes({ limit: 500 }),
-        userService.getUsers({ role: 'sales_executive', limit: 100 }),
+        seMonitoringService.executives(),
       ]);
       setRoutes(routesRes?.data || routesRes?.routes || []);
       setSalesExecs(usersRes?.data || usersRes?.users || []);

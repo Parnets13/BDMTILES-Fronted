@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Table, Card, Select, Tag, Row, Col, Statistic, Space, Button, Input, Typography, DatePicker, Modal, Descriptions, message } from 'antd';
 import { FileTextOutlined, UserOutlined, ReloadOutlined, SearchOutlined, EyeOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import api from '../../config/api';
-import userService from '../../services/userService';
+import seMonitoringService from '../../services/seMonitoringService';
+import { useAuth } from '../../context/AuthContext.jsx';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -15,6 +16,9 @@ const statusColor = { submitted: 'gold', approved: 'green', rejected: 'red', pai
 
 export default function SEExpenseViewer() {
   const [expenses, setExpenses] = useState([]);
+  const { hasPermission } = useAuth();
+  // Reading expenses needs expense.management; approving needs expense.approve.
+  const canApproveExpenses = hasPermission('expense.approve');
   const [salesExecs, setSalesExecs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [seFilter, setSeFilter] = useState('all');
@@ -37,7 +41,7 @@ export default function SEExpenseViewer() {
 
       const [expRes, usersRes] = await Promise.all([
         api.get('/expenses', { params }),
-        userService.getUsers({ role: 'sales_executive', limit: 100 }),
+        seMonitoringService.executives(),
       ]);
 
       let allExpenses = expRes?.data || [];
@@ -165,7 +169,10 @@ export default function SEExpenseViewer() {
       render: (_, r) => (
         <Space>
           <Button size="small" icon={<EyeOutlined />} onClick={() => { setSelected(r); setDetailModal(true); }} />
-          {r.status === 'submitted' && (
+          {/* Approving needs expense.approve; reading needs expense.management. A
+              viewer without the approve permission used to see two buttons that
+              each 403'd. */}
+          {r.status === 'submitted' && canApproveExpenses && (
             <>
               <Button size="small" icon={<CheckOutlined />} type="primary" style={{ background: '#52c41a', borderColor: '#52c41a' }}
                 onClick={() => approveExpense(r._id)} />
