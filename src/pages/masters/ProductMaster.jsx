@@ -9,6 +9,7 @@ import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import getImageUrl from '../../utils/imageUrl.js';
 import { useConfirm } from '../../components/ConfirmModal.jsx';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
+import { API_ORIGIN } from '../../config/api.js';
 
 const TILE_SIZES = [
   // Mosaic / small
@@ -47,13 +48,126 @@ export const SQFT_PER_TILE = {
   '1600x1600':27.6000, '1600x3200':55.2000,
 };
 
+/**
+ * Square feet of one tile, from its "WxH" size in millimetres.
+ *
+ * Computed rather than read from SQFT_PER_TILE below, because the admin can now add a tile size
+ * at runtime and the table cannot cover a size that did not exist when it was written. Two of
+ * the table's entries were also hand-rounded away from the correct value (1600x1600 is 27.5556,
+ * not 27.6), so computing is both more general and more accurate.
+ */
+export const sqftPerTile = (size) => {
+  const match = /^\s*(\d+(?:\.\d+)?)\s*[xX×]\s*(\d+(?:\.\d+)?)\s*$/.exec(String(size || ''));
+  if (!match) return null;
+  const metres = (Number(match[1]) / 1000) * (Number(match[2]) / 1000);
+  return Math.round(metres * 10.7639 * 10000) / 10000;
+};
+
 /** Auto-compute sqftPerBox = sqftPerTile × pcsPerBox. Returns null if either is unknown. */
 export const calcSqftPerBox = (tileSize, pcsPerBox) => {
-  const sqftPerTile = SQFT_PER_TILE[tileSize];
-  if (!sqftPerTile || !pcsPerBox || pcsPerBox <= 0) return null;
-  return Math.round(sqftPerTile * pcsPerBox * 100) / 100; // 2 decimal places
+  const perTile = sqftPerTile(tileSize) ?? SQFT_PER_TILE[tileSize];
+  if (!perTile || !pcsPerBox || pcsPerBox <= 0) return null;
+  return Math.round(perTile * pcsPerBox * 100) / 100; // 2 decimal places
 };
+
+/**
+ * Application is a MULTI-SELECT in the form but a single string in the database.
+ *
+ * The customer website and the dealer app both filter it with a regex against a string
+ * (`new RegExp(applicationArea, 'i')`) and list distinct values for their facet, so changing the
+ * field to an array would break both. Comma-joining keeps every existing consumer working while
+ * letting one tile declare several areas, which is the common case — a 600x600 vitrified tile is
+ * a floor tile, a wall tile and a bathroom tile at once.
+ *
+ * LIMITATION: the website's "By Application" facet lists the joined string as one value, so
+ * "Floor, Wall" shows as a single filter option rather than two. Fixing that properly means an
+ * array field plus a facet that unions both — a change to the shop API, so it is left alone here.
+ */
+export const splitApplications = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return String(value || '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
+export const joinApplications = (value) => {
+  if (Array.isArray(value)) return value.filter(Boolean).join(', ');
+  return String(value || '').trim();
+};
+
+/**
+ * The format each addable field expects, mirrored from the server's config/productOptions.js.
+ *
+ * Mirrored rather than fetched so the form can state the expected format BEFORE the admin
+ * submits, instead of bouncing them off the API. The server re-validates and normalises — it is
+ * the authority; this only saves a round trip on the common mistake.
+ *
+ * Only fields where a free-text value would actually break something have a rule. Tile Size is
+ * the one that matters: SqFt/Box is computed by parsing "WxH", so a size stored as "1010"
+ * silently produces no calculation at all.
+ */
+const OPTION_HINTS = {
+  tileSize: 'Width x height in mm — for example 600x600 or 10x10.',
+  thickness: 'A measurement in mm — for example 10mm.',
+  antiSkid: 'R followed by a number — for example R10.',
+  grade: 'A short code of up to 3 letters or digits — for example A or AA1.',
+};
+
+/** Client-side pre-check. Returns an error message, or null when the value looks right. */
+const optionValueError = (field, rawValue) => {
+  const value = String(rawValue || '').trim().replace(/\s+/g, ' ');
+  if (!value) return 'Enter a value to add.';
+  if (field === 'tileSize') {
+    return /^\d+(?:\.\d+)?\s*[xX×*]\s*\d+(?:\.\d+)?$/.test(value) ? null : OPTION_HINTS.tileSize;
+  }
+  if (field === 'thickness') {
+    return /^\d+(?:\.\d+)?\s*(mm|cm)?$/i.test(value) ? null : OPTION_HINTS.thickness;
+  }
+  if (field === 'antiSkid') {
+    return /^r\s*\d{1,2}$/i.test(value) ? null : OPTION_HINTS.antiSkid;
+  }
+  if (field === 'grade') {
+    return /^[A-Za-z0-9]{1,3}$/.test(value) ? null : OPTION_HINTS.grade;
+  }
+  return null;
+};
+
+/**
+ * A specification dropdown with a "+" beside it.
+ *
+ * The "+" sits outside the dropdown rather than as a footer row inside it: these lists run to
+ * 30+ entries, and an add action that only appears at the bottom of a scrolled list is easy to
+ * miss. It is a plain Button so it also works with the keyboard.
+ */
+const SpecSelect = ({ name, label, options, mode, placeholder, tooltip, rules, onChange, onAdd }) => (
+  <Form.Item label={label} tooltip={tooltip} required={Boolean(rules?.length)}>
+    <Space.Compact style={{ width: '100%' }}>
+      <Form.Item name={name} noStyle rules={rules}>
+        <Select
+          mode={mode}
+          placeholder={placeholder}
+          allowClear
+          showSearch
+          optionFilterProp="label"
+          options={(options || []).map((value) => ({ value, label: value }))}
+          style={{ width: '100%' }}
+          onChange={onChange}
+        />
+      </Form.Item>
+      <Tooltip title={`Add a new ${label.toLowerCase()}`}>
+        <Button icon={<PlusOutlined />} onClick={() => onAdd(name, label)} />
+      </Tooltip>
+    </Space.Compact>
+  </Form.Item>
+);
 const FINISHES = ['Glossy','Matt','Sugar','Carving','Satin','Rustic','Polished','Lapato','High Gloss','Anti-Skid','Rocker','Book Match'];
+// Fallbacks for the dropdowns that used to be free-text inputs. The server list
+// (/products/options) supersedes these; they exist so the form still works if that call fails.
+const SURFACES = ['Smooth','Rough','Textured','Structured','Matt','Polished'];
+const COLOURS = ['White','Ivory','Beige','Grey','Charcoal','Black','Brown','Blue','Green','Pink','Yellow','Multi Colour'];
+const THICKNESSES = ['6mm','7mm','8mm','9mm','10mm','12mm','15mm','20mm'];
+const GRADES = ['A','B','C'];
 const UNITS = ['Box','Piece','SqFt','Kg','Meter','Litre','Set','Nos'];
 const GST_RATES = [0, 5, 12, 18, 28];
 const TILE_TYPES = ['Ceramic','Vitrified','GVT','PGVT','Double Charge','Full Body','Porcelain','Slab','Natural Stone','Granite','Marble'];
@@ -86,6 +200,102 @@ const ProductMaster = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [form] = Form.useForm();
 
+  // Specification dropdown lists, served by the API as `{ tileSize: [...], finish: [...], ... }`.
+  // Empty until the fetch lands, and each field falls back to the constant above in the
+  // meantime, so the form is usable even if this request fails.
+  const [specOptions, setSpecOptions] = useState({});
+  // The values this branch ADDED, as `{ _id, field, value }`. Only these can be removed — the
+  // built-in ones live in the backend's config and are not rows at all.
+  const [customOptions, setCustomOptions] = useState([]);
+  // The "+" flow: which list is being added to, the value typed so far, and any format error.
+  const [addOptionTarget, setAddOptionTarget] = useState(null);
+  const [newOptionValue, setNewOptionValue] = useState('');
+  // Tile size is entered as two numbers rather than one string, so "1010" cannot be typed at all.
+  const [newSizeWidth, setNewSizeWidth] = useState('');
+  const [newSizeHeight, setNewSizeHeight] = useState('');
+  const [newOptionError, setNewOptionError] = useState('');
+  const [savingOption, setSavingOption] = useState(false);
+
+  const optionsFor = useCallback(
+    (field, fallback) => specOptions[field] || fallback || [],
+    [specOptions],
+  );
+
+  const openAddOption = useCallback((field, label) => {
+    setNewOptionValue('');
+    setNewSizeWidth('');
+    setNewSizeHeight('');
+    setNewOptionError('');
+    setAddOptionTarget({ field, label });
+  }, []);
+
+  /** Save a new dropdown value, then put it straight on the form — they added it to use it. */
+  const submitNewOption = async () => {
+    if (!addOptionTarget) return;
+    const field = addOptionTarget.field;
+
+    // Tile size is two numbers, so the malformed "1010" cannot be produced in the first place.
+    let raw;
+    if (field === 'tileSize') {
+      if (!newSizeWidth || !newSizeHeight) {
+        setNewOptionError('Enter both width and height.');
+        return;
+      }
+      raw = `${newSizeWidth}x${newSizeHeight}`;
+    } else {
+      raw = newOptionValue;
+    }
+
+    // Check the format here first: the server would reject it anyway, and the admin should see
+    // why without waiting for a round trip.
+    const invalid = optionValueError(field, raw);
+    if (invalid) { setNewOptionError(invalid); return; }
+
+    setNewOptionError('');
+    setSavingOption(true);
+    try {
+      const res = await productService.addSpecOption(field, raw);
+      if (!res.success) throw new Error(res.message);
+      // The API returns every list, so one response refreshes all ten dropdowns.
+      setSpecOptions(res.data || {});
+      setCustomOptions(res.custom || []);
+      message.success(res.message || 'Added.');
+
+      // Use the value the SERVER normalised, not what was typed — "600 x 600" is stored and
+      // selected as "600x600", and the form must match or the selection would look empty.
+      const added = res.added || raw;
+      if (field === 'applicationArea') {
+        const current = splitApplications(form.getFieldValue(field));
+        if (!current.includes(added)) form.setFieldsValue({ [field]: [...current, added] });
+      } else {
+        form.setFieldsValue({ [field]: added });
+      }
+      setAddOptionTarget(null);
+    } catch (error) {
+      setNewOptionError(error.message || 'Could not add that value.');
+    } finally {
+      setSavingOption(false);
+    }
+  };
+
+  /**
+   * Remove an option this branch added.
+   *
+   * The server refuses while products still use it and says how many, so that message is passed
+   * straight through — "used by 3 products" tells the admin what to do; "could not remove" does not.
+   */
+  const removeOption = async (id) => {
+    try {
+      const res = await productService.deleteSpecOption(id);
+      if (!res.success) throw new Error(res.message);
+      setSpecOptions(res.data || {});
+      setCustomOptions(res.custom || []);
+      message.success(res.message || 'Removed.');
+    } catch (error) {
+      message.error(error.message || 'Could not remove that value.');
+    }
+  };
+
   // Load filter options
   useEffect(() => {
     productService.getFilterOptions().then(res => {
@@ -94,6 +304,12 @@ const ProductMaster = () => {
     productService.getStats().then(res => {
       if (res.success) setStats(res.data);
     }).catch(() => {});
+    productService.getSpecOptions().then(res => {
+      if (res.success) {
+        setSpecOptions(res.data || {});
+        setCustomOptions(res.custom || []);
+      }
+    }).catch(() => { /* the constants above remain as the fallback */ });
   }, []);
 
   // Fetch products
@@ -142,6 +358,9 @@ const ProductMaster = () => {
         subcategory: product.subcategory?._id || product.subcategory || undefined,
         // Category-defined specs. A plain object maps straight onto Product.attributes.
         attributes: product.attributes || {},
+        // Application is a multi-select here but a single string in the database, so split it
+        // for the control. The reverse happens in handleSave.
+        applicationArea: splitApplications(product.applicationArea),
         // Convert arrays to editable string format for the textarea fields
         videos: Array.isArray(product.videos) ? product.videos.join('\n') : (product.videos || ''),
       });
@@ -223,11 +442,12 @@ const ProductMaster = () => {
       const existingUrls = imagePreviews
         .filter(src => !src.startsWith('blob:'))            // kept existing images
         .map(src => {
-          // Strip the API origin prefix so we store relative paths in the DB
-          const apiOrigin = (import.meta.env.VITE_API_BASE_URL || '')
-            .replace(/\/api\/v1\/?$/, '');
-          return apiOrigin && src.startsWith(apiOrigin)
-            ? src.slice(apiOrigin.length)
+          // Strip the API origin prefix so we store relative paths in the DB.
+          // Uses the resolved origin rather than re-deriving it from the base URL:
+          // the base URL is now relative (/api/v1), so the old derivation produced
+          // an empty prefix and leaked absolute onrender.com URLs into the database.
+          return API_ORIGIN && src.startsWith(API_ORIGIN)
+            ? src.slice(API_ORIGIN.length)
             : src;
         });
       const imageUrls = [...existingUrls, ...newImageUrls];
@@ -235,6 +455,9 @@ const ProductMaster = () => {
       const productData = {
         ...values,
         images: imageUrls,
+        // The multi-select holds an array; the database, the shop filter and the dealer app all
+        // expect one comma-joined string. See splitApplications for why.
+        applicationArea: joinApplications(values.applicationArea),
         // Convert textarea newline-separated strings back to arrays for the backend
         videos: typeof values.videos === 'string'
           ? values.videos.split('\n').map(v => v.trim()).filter(Boolean)
@@ -913,36 +1136,56 @@ const ProductMaster = () => {
                     <>
               <Divider className="my-4" />
 
-              {/* Row 4: Tile Specifications */}
+              {/* Five per row. 24 does not divide by 5, so these use `flex="0 0 20%"` rather
+                  than a Col span — antd's span grid only divides the row into whole 24ths, and
+                  span={4.8} silently produces no width class at all. */}
+
+              {/* Row 1 — the main specification */}
               <Row gutter={16}>
-                <Col span={4}><Form.Item name="tileSize" label="Tile Size"><Select placeholder="Size" allowClear showSearch options={TILE_SIZES.map(s => ({ value: s, label: s }))} onChange={handleTileSizeChange} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="finish" label="Finish"><Select placeholder="Finish" allowClear showSearch options={FINISHES.map(f => ({ value: f, label: f }))} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="colour" label="Colour"><Input placeholder="Colour" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="surface" label="Surface"><Input placeholder="Surface" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="thickness" label="Thickness"><Input placeholder="e.g. 10mm" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="grade" label="Grade"><Select allowClear placeholder="Grade" options={[{value:'A',label:'A'},{value:'B',label:'B'},{value:'C',label:'C'}]} /></Form.Item></Col>
-              </Row>
-              <Row gutter={16}>
-                <Col span={4}><Form.Item name="tileType" label="Tile Type"><Select placeholder="Type" allowClear showSearch options={TILE_TYPES.map(t => ({ value: t, label: t }))} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="applicationArea" label="Application"><Select placeholder="Area" allowClear showSearch options={APPLICATION_AREAS.map(a => ({ value: a, label: a }))} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="antiSkidRating" label="Anti-Skid"><Select placeholder="Rating" allowClear options={ANTI_SKID.map(a => ({ value: a, label: a || 'None' }))} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="countryOfOrigin" label="Origin"><Select showSearch allowClear options={ORIGINS.map(o => ({ value: o, label: o }))} /></Form.Item></Col>
-                <Col span={4}><Form.Item name="waterAbsorption" label="Water Absorption" tooltip="e.g. <0.5% — shown on product spec table"><Input placeholder="e.g. <0.5%" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="breakingStrength" label="Breaking Strength" tooltip="e.g. 2000N — structural strength rating"><Input placeholder="e.g. 2000N" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="manufacturer" label="Manufacturer"><Input placeholder="If different from brand" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="barcode" label="Barcode"><Input placeholder="Barcode/EAN" /></Form.Item></Col>
+                <Col flex="0 0 20%"><SpecSelect name="tileSize" label="Tile Size" placeholder="Size" options={optionsFor('tileSize', TILE_SIZES)} onChange={handleTileSizeChange} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="tileType" label="Tile Type" placeholder="Type" options={optionsFor('tileType', TILE_TYPES)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="finish" label="Finish" placeholder="Finish" options={optionsFor('finish', FINISHES)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="surface" label="Surface" placeholder="Surface" options={optionsFor('surface', SURFACES)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="antiSkidRating" label="Anti-Skid" placeholder="Rating" options={optionsFor('antiSkid', ANTI_SKID.filter(Boolean))} onAdd={openAddOption} /></Col>
               </Row>
 
+              {/* Row 2 */}
               <Row gutter={16}>
-                <Col span={6}><Form.Item name="design" label="Design"><Input placeholder="Design name" /></Form.Item></Col>
-                <Col span={6}><Form.Item name="collection" label="Collection"><Input placeholder="Collection" /></Form.Item></Col>
-                <Col span={4}><Form.Item name="piecesPerBox" label="Pcs/Box"><InputNumber min={0} className="w-full" onChange={handlePcsPerBoxChange} /></Form.Item></Col>
-                <Col span={4}>
+                <Col flex="0 0 20%"><SpecSelect name="grade" label="Grade" placeholder="Grade" options={optionsFor('grade', GRADES)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="colour" label="Colour" placeholder="Colour" options={optionsFor('colour', COLOURS)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="thickness" label="Thickness" placeholder="e.g. 10mm" options={optionsFor('thickness', THICKNESSES)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><SpecSelect name="countryOfOrigin" label="Origin" placeholder="Origin" options={optionsFor('origin', ORIGINS)} onAdd={openAddOption} /></Col>
+                <Col flex="0 0 20%"><Form.Item name="waterAbsorption" label="Water Absorption" tooltip="e.g. <0.5% — shown on product spec table"><Input placeholder="e.g. <0.5%" /></Form.Item></Col>
+              </Row>
+
+              {/* Row 3 — packing, plus the remaining measured specs */}
+              <Row gutter={16}>
+                <Col flex="0 0 20%"><Form.Item name="piecesPerBox" label="Pcs/Box"><InputNumber min={0} className="w-full" onChange={handlePcsPerBoxChange} /></Form.Item></Col>
+                <Col flex="0 0 20%">
                   <Form.Item name="sqftPerBox" label={<span>SqFt/Box <span className="text-[10px] font-normal text-green-600 ml-1">auto-calculated</span></span>}>
                     <InputNumber min={0} step={0.01} className="w-full bg-green-50" readOnly />
                   </Form.Item>
                 </Col>
-                <Col span={4}><Form.Item name="weightPerBox" label="Weight/Box (Kg)"><InputNumber min={0} step={0.1} className="w-full" /></Form.Item></Col>
+                <Col flex="0 0 20%"><Form.Item name="weightPerBox" label="Weight/Box (Kg)"><InputNumber min={0} step={0.1} className="w-full" /></Form.Item></Col>
+                <Col flex="0 0 20%"><Form.Item name="breakingStrength" label="Breaking Strength" tooltip="e.g. 2000N — structural strength rating"><Input placeholder="e.g. 2000N" /></Form.Item></Col>
+                <Col flex="0 0 20%"><Form.Item name="manufacturer" label="Manufacturer"><Input placeholder="If different from brand" /></Form.Item></Col>
+              </Row>
+
+              {/* Row 4 — Application takes FOUR slots (80%) because it is the only multi-select
+                  here and has to show several chips side by side. */}
+              <Row gutter={16}>
+                <Col flex="0 0 20%"><Form.Item name="barcode" label="Barcode"><Input placeholder="Barcode/EAN" /></Form.Item></Col>
+                <Col flex="0 0 80%">
+                  <SpecSelect
+                    name="applicationArea"
+                    label="Application"
+                    mode="multiple"
+                    placeholder="Select one or more areas"
+                    options={optionsFor('application', APPLICATION_AREAS)}
+                    onAdd={openAddOption}
+                    tooltip="A tile usually serves several areas — pick all that apply"
+                  />
+                </Col>
               </Row>
                     </>
                   );
@@ -1086,6 +1329,110 @@ const ProductMaster = () => {
           </div>
         </div>
 
+        {/* Add / remove specification options — opened by the "+" beside each dropdown */}
+        <Modal
+          title={addOptionTarget ? `${addOptionTarget.label} options` : 'Options'}
+          open={Boolean(addOptionTarget)}
+          onOk={submitNewOption}
+          onCancel={() => setAddOptionTarget(null)}
+          okText="Add"
+          confirmLoading={savingOption}
+          width={460}
+          destroyOnHidden
+        >
+          {(() => {
+            if (!addOptionTarget) return null;
+            const isTileSize = addOptionTarget.field === 'tileSize';
+            const hint = OPTION_HINTS[addOptionTarget.field];
+            const addedHere = customOptions.filter(row => row.field === addOptionTarget.field);
+            return (
+              <>
+                <p className="text-sm text-gray-500 mb-3">
+                  Saved for this branch, and it appears in the dropdown from next time.
+                </p>
+
+                {/* Tile size is two numbers, so a malformed value like "1010" cannot be typed. */}
+                {isTileSize ? (
+                  <div className="flex items-center gap-2">
+                    <InputNumber
+                      autoFocus
+                      min={1}
+                      className="flex-1"
+                      placeholder="Width (mm)"
+                      value={newSizeWidth}
+                      onChange={(v) => { setNewSizeWidth(v); if (newOptionError) setNewOptionError(''); }}
+                      onPressEnter={submitNewOption}
+                    />
+                    <span className="text-gray-400 font-bold">×</span>
+                    <InputNumber
+                      min={1}
+                      className="flex-1"
+                      placeholder="Height (mm)"
+                      value={newSizeHeight}
+                      onChange={(v) => { setNewSizeHeight(v); if (newOptionError) setNewOptionError(''); }}
+                      onPressEnter={submitNewOption}
+                    />
+                  </div>
+                ) : (
+                  <Input
+                    autoFocus
+                    status={newOptionError ? 'error' : undefined}
+                    value={newOptionValue}
+                    onChange={(event) => {
+                      setNewOptionValue(event.target.value);
+                      if (newOptionError) setNewOptionError('');
+                    }}
+                    onPressEnter={submitNewOption}
+                    placeholder={`New ${addOptionTarget.label.toLowerCase()}`}
+                    maxLength={60}
+                    showCount
+                  />
+                )}
+
+                {/* The expected format, stated up front so a mistake is caught before submitting.
+                    Replaced by the specific error once there is one. */}
+                {newOptionError || hint ? (
+                  <p className={`text-xs mt-2 ${newOptionError ? 'text-red-500' : 'text-gray-400'}`}>
+                    {newOptionError || hint}
+                  </p>
+                ) : null}
+
+                {/* Only what this branch added. A built-in option is not a database row, so
+                    there is nothing to delete — saying that beats an empty section. */}
+                <div className="mt-5 pt-4 border-t border-gray-100">
+                  <div className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                    Added by you{addedHere.length ? ` (${addedHere.length})` : ''}
+                  </div>
+                  {addedHere.length === 0 ? (
+                    <p className="text-xs text-gray-400">
+                      Nothing added yet. Built-in options cannot be removed.
+                    </p>
+                  ) : (
+                    <Space direction="vertical" size={4} className="w-full">
+                      {addedHere.map(row => (
+                        <div key={row._id} className="flex items-center justify-between border border-gray-200 rounded px-2 py-1">
+                          <span className="text-sm text-gray-800">{row.value}</span>
+                          <Popconfirm
+                            title={`Remove "${row.value}"?`}
+                            description="Only possible while no product uses it."
+                            onConfirm={() => removeOption(row._id)}
+                            okButtonProps={{ danger: true }}
+                            okText="Remove"
+                          >
+                            <Tooltip title="Remove">
+                              <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+                            </Tooltip>
+                          </Popconfirm>
+                        </div>
+                      ))}
+                    </Space>
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </Modal>
+
         {/* Preview Modal */}
         {showPreview && previewData && (
           <>
@@ -1128,17 +1475,17 @@ const ProductMaster = () => {
                 <Divider className="my-3" />
                 <h4 className="font-semibold text-gray-700 text-sm">Tile Specifications</h4>
                 <div className="grid grid-cols-4 gap-4 text-sm">
-                  <PreviewItem label="Size" value={previewData.tileSize} />
-                  <PreviewItem label="Finish" value={previewData.finish} />
-                  <PreviewItem label="Colour" value={previewData.colour} />
-                  <PreviewItem label="Surface" value={previewData.surface} />
-                  <PreviewItem label="Thickness" value={previewData.thickness} />
-                  <PreviewItem label="Grade" value={previewData.grade} />
-                  <PreviewItem label="Design" value={previewData.design} />
-                  <PreviewItem label="Collection" value={previewData.collection} />
+                  {/* Same order as the form: size/type/finish, surface/anti-skid/grade, then the rest.
+                      Design and Collection were removed — the business has no use for them. */}
+                  <PreviewItem label="Tile Size" value={previewData.tileSize} />
                   <PreviewItem label="Tile Type" value={previewData.tileType} />
-                  <PreviewItem label="Application" value={previewData.applicationArea} />
+                  <PreviewItem label="Finish" value={previewData.finish} />
+                  <PreviewItem label="Surface" value={previewData.surface} />
                   <PreviewItem label="Anti-Skid" value={previewData.antiSkidRating} />
+                  <PreviewItem label="Grade" value={previewData.grade} />
+                  <PreviewItem label="Colour" value={previewData.colour} />
+                  <PreviewItem label="Thickness" value={previewData.thickness} />
+                  <PreviewItem label="Application" value={previewData.applicationArea} />
                   <PreviewItem label="Origin" value={previewData.countryOfOrigin} />
                   <PreviewItem label="Water Absorption" value={previewData.waterAbsorption} />
                   <PreviewItem label="Breaking Strength" value={previewData.breakingStrength} />
@@ -1246,16 +1593,14 @@ const ViewProductModal = ({ product, onClose }) => {
             <h4 className="font-semibold text-gray-700 text-sm mb-3">Tile Specifications</h4>
             <div className="grid grid-cols-4 gap-4 text-sm">
               <PreviewItem label="Tile Size" value={product.tileSize} />
-              <PreviewItem label="Finish" value={product.finish} />
-              <PreviewItem label="Colour" value={product.colour} />
-              <PreviewItem label="Surface" value={product.surface} />
-              <PreviewItem label="Thickness" value={product.thickness} />
-              <PreviewItem label="Grade" value={product.grade} />
-              <PreviewItem label="Design" value={product.design} />
-              <PreviewItem label="Collection" value={product.collection} />
               <PreviewItem label="Tile Type" value={product.tileType} />
-              <PreviewItem label="Application" value={product.applicationArea} />
+              <PreviewItem label="Finish" value={product.finish} />
+              <PreviewItem label="Surface" value={product.surface} />
               <PreviewItem label="Anti-Skid" value={product.antiSkidRating} />
+              <PreviewItem label="Grade" value={product.grade} />
+              <PreviewItem label="Colour" value={product.colour} />
+              <PreviewItem label="Thickness" value={product.thickness} />
+              <PreviewItem label="Application" value={product.applicationArea} />
               <PreviewItem label="Origin" value={product.countryOfOrigin} />
               <PreviewItem label="Water Absorption" value={product.waterAbsorption} />
               <PreviewItem label="Breaking Strength" value={product.breakingStrength} />

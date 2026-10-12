@@ -9,6 +9,26 @@
   command = "npm run build"
   publish = "dist"
 
+# API proxy. Rules are matched top to bottom and the first match wins, so this
+# MUST stay above the SPA fallback — otherwise /api/* would be rewritten to
+# index.html and every request would return the app shell.
+#
+# Why this exists: the refresh token is an httpOnly cookie scoped to
+# /api/v1/auth. Calling the API on its own domain (onrender.com) from this origin
+# made that cookie THIRD-PARTY, and browsers drop third-party cookies (Safari by
+# default, Chrome and Brave increasingly). The silent token refresh therefore
+# always failed, so the first request after the 15-minute access token expired
+# signed the user out — which users hit on Save/Add, because filling the form is
+# what takes the time. Proxying makes the cookie first-party.
+#
+# 200 = proxy (not a redirect), so the browser keeps talking to this origin.
+# force = false lets a locally-defined /api path still win in previews.
+[[redirects]]
+  from = "/api/*"
+  to = "https://bdmtiles-backend-tm6p.onrender.com/api/:splat"
+  status = 200
+  force = false
+
 # SPA fallback. This mirrors public/_redirects; either alone is sufficient, both
 # are kept so the rule survives whether Netlify reads the toml or the generated
 # _redirects file. 200 keeps the requested URL in the address bar (unlike a 301/302).

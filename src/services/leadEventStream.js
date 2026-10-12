@@ -1,4 +1,4 @@
-import api, { refreshAccessToken } from '../config/api.js';
+import { API_ABSOLUTE_BASE_URL, refreshAccessToken } from '../config/api.js';
 
 const parseEventBlock = (block) => {
   let event = 'message';
@@ -19,7 +19,11 @@ export const subscribeToLeadEvents = ({ onEvent, onStateChange }) => {
     try {
       const token = localStorage.getItem('bdmtiles_token');
       const branchId = localStorage.getItem('bdmtiles_active_branch');
-      const response = await fetch(`${api.defaults.baseURL}/leads/events`, {
+      // Deliberately the ABSOLUTE base, not the same-origin one: this response is a
+      // long-lived stream, and an edge proxy (the Netlify /api/* redirect) may buffer
+      // it, which would silently downgrade live lead updates to the fallback poll.
+      // It authenticates with the bearer header below, so cross-site is fine.
+      const response = await fetch(`${API_ABSOLUTE_BASE_URL}/leads/events`, {
         method: 'GET',
         credentials: 'include',
         headers: {

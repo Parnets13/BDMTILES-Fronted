@@ -10,6 +10,9 @@ export const createIdempotencyKey = () => globalThis.crypto?.randomUUID?.()
 // instead of being silently logged to the console only.
 // ═══════════════════════════════════════════════════════════════
 const ERROR_TITLES = {
+  // Status 0 is our own sentinel for "no HTTP response at all" — a dropped
+  // connection, a CORS rejection or a timeout.
+  0: 'Connection Problem',
   400: 'Invalid Request',
   401: 'Session Expired',
   403: 'Access Denied',
@@ -87,18 +90,59 @@ function showGlobalError(status, serverMessage, url) {
   });
 }
 
-const PRODUCTION_API_URL = 'https://bdmtiles-backend-tm6p.onrender.com/api/v1';
-const DEVELOPMENT_API_URL = 'http://localhost:5000/api/v1';
+const PRODUCTION_ORIGIN = 'https://bdmtiles-backend-tm6p.onrender.com';
+const DEVELOPMENT_ORIGIN = 'http://localhost:5000';
 
-const getApiBaseUrl = () => import.meta.env.VITE_API_BASE_URL
-  || (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1'
-    ? PRODUCTION_API_URL
-    : DEVELOPMENT_API_URL);
+const isLocalHost = () => ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
-const API_BASE_URL = getApiBaseUrl();
+const configuredBaseUrl = String(import.meta.env.VITE_API_BASE_URL || '').trim();
+// If someone deliberately points the app at an absolute API, the origin follows it.
+const configuredOrigin = /^https?:\/\//i.test(configuredBaseUrl)
+  ? configuredBaseUrl.replace(/\/api\/v1\/?$/, '')
+  : '';
 
-// Server origin (without the /api/v1 suffix) — used to resolve /uploads/... image URLs.
-export const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
+/**
+ * Absolute backend origin.
+ *
+ * Used by the two things that CANNOT go through the same-origin proxy below: the
+ * socket.io handshake (a Netlify redirect cannot upgrade a websocket) and the
+ * absolute /uploads/... image URLs. Neither is credentialed — the socket carries
+ * its own token in the handshake — so reaching the API cross-site is fine here.
+ */
+export const API_ORIGIN = (
+  import.meta.env.VITE_API_ORIGIN
+  || configuredOrigin
+  || (isLocalHost() ? DEVELOPMENT_ORIGIN : PRODUCTION_ORIGIN)
+).replace(/\/+$/, '');
+
+/**
+ * Request base URL for every axios call — RELATIVE on purpose.
+ *
+ * The refresh token is an httpOnly cookie scoped to `/api/v1/auth`. While the app
+ * called the API on a different registrable domain (Netlify page -> onrender.com
+ * API) that cookie was THIRD-PARTY, and browsers drop those (Safari by default,
+ * Chrome and Brave increasingly). The silent refresh therefore always failed, so
+ * the first request after the 15-minute access token expired signed the user out
+ * — most visibly on a Save/Add POST, because filling the form is what took the time.
+ *
+ * Serving the API under this app's own origin makes the cookie first-party and the
+ * refresh reliable: Netlify proxies /api/* to the backend (netlify.toml and
+ * public/_redirects) and the Vite dev server proxies /api to localhost:5000.
+ * Set VITE_API_BASE_URL only if you deliberately want a cross-origin API.
+ */
+const API_BASE_URL = configuredBaseUrl || '/api/v1';
+
+/**
+ * Absolute equivalent of API_BASE_URL.
+ *
+ * For transports that must NOT be proxied through a CDN edge: the lead event
+ * stream is a long-lived response and an edge proxy may buffer it, which would
+ * silently degrade live lead updates to the fallback poll. It authenticates with
+ * a bearer header rather than a cookie, so it works cross-site.
+ */
+export const API_ABSOLUTE_BASE_URL = /^https?:\/\//i.test(configuredBaseUrl)
+  ? configuredBaseUrl
+  : `${API_ORIGIN}${API_BASE_URL}`;
 
 /** Resolve a possibly-relative upload path (e.g. /uploads/web/x.jpg) to an absolute URL. */
 export const resolveUploadUrl = (url) => {
@@ -128,22 +172,55 @@ const refreshClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+// One retry, for transient failures only. A definitive 401 is never retried: the
+// session is gone and the user needs to see that immediately.
+const REFRESH_ATTEMPTS = 2;
+const REFRESH_RETRY_DELAY_MS = 800;
+
+/**
+ * A 401 from the refresh endpoint is the ONLY answer that means "the session is
+ * really over". Everything else — a CORS rejection, a dropped connection, a
+ * 502/503 while the API restarts — is transient, and treating it as a dead session
+ * signed the user out and threw away whatever was in the form they were submitting.
+ */
+const isSessionRejection = (error) => error?.response?.status === 401;
+
 export const refreshAccessToken = () => {
   if (!refreshPromise) {
-    refreshPromise = refreshClient.post('/auth/refresh-token')
-      .then(({ data }) => {
-        if (!data?.success || !data.token) throw new Error('Session refresh failed');
-        localStorage.setItem('bdmtiles_token', data.token);
-        if (data.user) localStorage.setItem('bdmtiles_user', JSON.stringify(data.user));
-        window.dispatchEvent(new CustomEvent('bdmtiles:auth-refreshed', { detail: data }));
-        return data;
-      })
-      .catch((error) => {
+    refreshPromise = (async () => {
+      let lastError;
+      for (let attempt = 1; attempt <= REFRESH_ATTEMPTS; attempt += 1) {
+        try {
+          const { data } = await refreshClient.post('/auth/refresh-token');
+          // A 200 with no token is as final as a 401 — there is nothing to retry against.
+          if (!data?.success || !data.token) {
+            throw Object.assign(new Error('Session refresh failed'), { response: { status: 401 } });
+          }
+          localStorage.setItem('bdmtiles_token', data.token);
+          if (data.user) localStorage.setItem('bdmtiles_user', JSON.stringify(data.user));
+          window.dispatchEvent(new CustomEvent('bdmtiles:auth-refreshed', { detail: data }));
+          return data;
+        } catch (error) {
+          lastError = error;
+          if (isSessionRejection(error)) break;
+          if (attempt < REFRESH_ATTEMPTS) {
+            await new Promise((resolve) => { setTimeout(resolve, REFRESH_RETRY_DELAY_MS); });
+          }
+        }
+      }
+
+      if (isSessionRejection(lastError)) {
+        // The single authoritative unauthorized notification for the whole app.
+        // The reason rides on the event because clearStoredAuth() below has already
+        // removed the token by the time the listener runs — so the listener cannot
+        // work out "was the user signed in?" for itself.
         clearStoredAuth();
-        window.dispatchEvent(new Event('bdmtiles:auth-unauthorized'));
-        throw error;
-      })
-      .finally(() => { refreshPromise = null; });
+        window.dispatchEvent(new CustomEvent('bdmtiles:auth-unauthorized', {
+          detail: { reason: 'session_expired' },
+        }));
+      }
+      throw lastError;
+    })().finally(() => { refreshPromise = null; });
   }
   return refreshPromise;
 };
@@ -164,6 +241,12 @@ api.interceptors.request.use(
     if (config.data instanceof FormData) {
       config.headers?.delete?.('Content-Type');
       delete config.headers?.['Content-Type'];
+      // Multipart uploads go straight to the API instead of through the same-origin
+      // proxy: they are large and long-lived (video uploads allow 10 minutes), and an
+      // edge proxy may cap the request body. They authenticate with the bearer header,
+      // not a cookie, so there is nothing to gain from proxying them — and this keeps
+      // the behaviour that already worked.
+      config.baseURL = API_ABSOLUTE_BASE_URL;
     }
     if (token) config.headers.Authorization = `Bearer ${token}`;
     // Web Management (storefront CMS) content is global — never branch-scoped —
@@ -196,8 +279,26 @@ api.interceptors.response.use(
         config.headers = config.headers || {};
         config.headers.Authorization = `Bearer ${refreshed.token}`;
         return api(config);
-      } catch {
-        // refreshAccessToken performs the single authoritative unauthorized notification.
+      } catch (refreshError) {
+        if (isSessionRejection(refreshError)) {
+          // refreshAccessToken already cleared the session and raised the single
+          // authoritative "session expired" notification.
+        } else {
+          // Transient — a 502/503/504 while the API restarts, or a dropped connection.
+          // We never reached the server, so the 401 below is NOT authoritative.
+          //
+          // It must be flagged, because the fall-through still sets
+          // `error.status = 401` and AuthContext.checkAuth signs the user out on
+          // exactly that. Without this flag a gateway timeout on the refresh became
+          // a hard logout — with a perfectly valid token still sitting in
+          // localStorage.
+          error.sessionUnverified = true;
+          showGlobalError(
+            0,
+            'We could not verify your session. Check your connection and try again.',
+            config.url
+          );
+        }
       }
     }
 

@@ -7,6 +7,42 @@ const AuthContext = createContext();
 const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
 
 const branchId = (branch) => String(branch?._id || branch || '');
+
+/**
+ * The cached session, as written by `applyUser` and removed by `clearAuth`.
+ *
+ * Hydrating from it is what stops a slow or unreachable API from looking like a
+ * sign-out. The token and the user were still on disk, but with `user` left null
+ * the app rendered the login screen — so a 504 on boot read as "it logged me out"
+ * even though nothing had been cleared. Guarded because a truncated or
+ * hand-edited localStorage value must not crash the provider.
+ */
+const readStoredUser = () => {
+  try {
+    const raw = localStorage.getItem('bdmtiles_user');
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Which branch the session should be scoped to.
+ *
+ * Pulled out of `applyUser` so the cached session can be seeded with the same
+ * rule on the very first render — if `activeBranch` stayed null the app would
+ * send no X-Branch-Id header and every branch-scoped call would 428.
+ */
+const resolveActiveBranch = (nextUser) => {
+  const branches = (nextUser?.assignedBranches || []).filter((branch) => branch?.status !== 'inactive');
+  const savedId = localStorage.getItem(ACTIVE_BRANCH_KEY);
+  const defaultId = branchId(nextUser?.defaultBranch);
+  return branches.find((branch) => branchId(branch) === savedId)
+    || branches.find((branch) => branchId(branch) === defaultId)
+    || branches[0]
+    || null;
+};
+
 const LEGACY_PERMISSION_ALIASES = {
   'lead.management': ['lead.view', 'lead.create', 'lead.update', 'lead.assign', 'lead.app', 'lead.respond', 'lead.followup', 'lead.convert', 'lead.delete'],
   'cheque.management': ['cheque.view', 'cheque.create', 'cheque.deposit', 'cheque.clear', 'cheque.bounce', 'cheque.return'],
@@ -20,20 +56,21 @@ export const useAuth = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Seeded from the cached session so the app is signed in from the first render,
+  // before `/auth/me` answers. Previously both started null, so a 504 or a slow
+  // cold start left `user` null and App rendered the login routes.
+  const [user, setUser] = useState(() => (
+    localStorage.getItem('bdmtiles_token') ? readStoredUser() : null
+  ));
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('bdmtiles_token'));
-  const [activeBranch, setActiveBranchState] = useState(null);
+  const [activeBranch, setActiveBranchState] = useState(() => (
+    localStorage.getItem('bdmtiles_token') ? resolveActiveBranch(readStoredUser()) : null
+  ));
   const [branchEpoch, setBranchEpoch] = useState(0);
 
   const applyUser = useCallback((nextUser) => {
-    const branches = (nextUser?.assignedBranches || []).filter((branch) => branch?.status !== 'inactive');
-    const savedId = localStorage.getItem(ACTIVE_BRANCH_KEY);
-    const defaultId = branchId(nextUser?.defaultBranch);
-    const selected = branches.find((branch) => branchId(branch) === savedId)
-      || branches.find((branch) => branchId(branch) === defaultId)
-      || branches[0]
-      || null;
+    const selected = resolveActiveBranch(nextUser);
 
     setUser(nextUser);
     setActiveBranchState(selected);
@@ -78,17 +115,30 @@ export const AuthProvider = ({ children }) => {
       if (!nextUser) clearAuth();
     } catch (error) {
       console.error('Auth check failed:', error.message);
-      if (error.status === 401) clearAuth();
+      // Only an AUTHORITATIVE 401 ends the session. A 502/503/504 while the API
+      // restarts, or a dropped connection, says nothing about the session — the
+      // interceptor flags those as `sessionUnverified`. Signing out here is what
+      // turned a gateway timeout into a logout, because it also discarded a
+      // still-valid token that was sitting in localStorage.
+      if (error.status === 401 && !error.sessionUnverified) {
+        clearAuth();
+      } else {
+        message.warning('We could not reach the server. Some data may be out of date.');
+      }
     } finally {
       setLoading(false);
     }
   }, [clearAuth, refreshUser]);
 
   useEffect(() => {
-    const handleUnauthorized = () => {
+    const handleUnauthorized = (event) => {
       // Tell the user why the app is sending them back to login, instead of
       // silently clearing the session and leaving blank/failed screens behind.
-      if (localStorage.getItem('bdmtiles_token')) {
+      //
+      // The reason comes from the event rather than from localStorage: the caller
+      // clears the stored token BEFORE dispatching, so the old "is there still a
+      // token?" check was always false and this message never actually appeared.
+      if (event?.detail?.reason === 'session_expired') {
         message.warning('Your session has expired. Please sign in again.');
       }
       clearAuth();

@@ -9,6 +9,24 @@ const productService = {
   getStats: () => api.get('/products/stats'),
   getFilterOptions: () => api.get('/products/filter-options'),
 
+  /**
+   * Every specification dropdown's list — the built-in seeds plus anything this branch has
+   * added. Returns `{ tileSize: [...], finish: [...], ... }`, keyed by Product field name.
+   */
+  getSpecOptions: () => api.get('/products/options'),
+
+  /**
+   * Add a value to one dropdown. Resolves to the WHOLE refreshed option map, so the caller
+   * updates every list from one response instead of following up with a second GET.
+   */
+  addSpecOption: (field, value) => api.post('/products/options', { field, value }),
+
+  /**
+   * Remove a value this branch added. Refused with 409 while products still use it — the
+   * message names the count, so surface it rather than a generic failure.
+   */
+  deleteSpecOption: (id) => api.delete(`/products/options/${id}`),
+
   // Shared API client removes the JSON content type so the browser can add the multipart boundary.
   uploadImages: (files) => {
     const formData = new FormData();

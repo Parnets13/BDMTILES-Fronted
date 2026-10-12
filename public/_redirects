@@ -1,3 +1,13 @@
+# Rules are matched top to bottom and the first match wins, so the API proxy MUST
+# come before the SPA fallback — otherwise /api/* would be served index.html.
+#
+# The API is proxied through this origin so the bdmtiles_refresh cookie is
+# FIRST-PARTY. Called directly it was a third-party cookie, which browsers drop
+# (Safari by default, Chrome/Brave increasingly); the silent token refresh then
+# always failed and users were signed out on the first request after the
+# 15-minute access token expired — most visibly on Save/Add.
+/api/*    https://bdmtiles-backend-tm6p.onrender.com/api/:splat    200
+
 # SPA fallback: this is a client-side-routed React app (BrowserRouter), so paths
 # like /dashboard, /sales-orders, etc. only exist in the browser router, not as
 # files on Netlify. Without this rule a hard reload or a shared deep link 404s.
