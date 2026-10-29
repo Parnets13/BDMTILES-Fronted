@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip } from 'antd';
-import { SearchOutlined, ReloadOutlined, EyeOutlined, PrinterOutlined, FileTextOutlined, SendOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Alert, Empty, Spin } from 'antd';
+import { SearchOutlined, ReloadOutlined, EyeOutlined, PrinterOutlined, FileTextOutlined, SendOutlined, CloseCircleOutlined, PlusOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import salesService from '../../services/salesService.js';
 import getImageUrl from '../../utils/imageUrl.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
@@ -16,6 +16,7 @@ const InvoiceManager = () => {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState(undefined);
   const [viewInvoice, setViewInvoice] = useState(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const loadStats = () => { salesService.getInvoiceStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {}); };
   useEffect(() => { loadStats(); }, []);
@@ -35,7 +36,9 @@ const InvoiceManager = () => {
     { title: 'Invoice #', dataIndex: 'invoiceNumber', width: 130, render: v => <span className="text-xs font-mono text-blue-600 font-medium">{v}</span> },
     { title: 'Date', dataIndex: 'invoiceDate', width: 95, render: v => <span className="text-xs">{new Date(v).toLocaleDateString('en-IN')}</span> },
     { title: 'SO #', dataIndex: 'orderNumber', width: 110, render: v => <span className="text-xs font-mono">{v || '—'}</span> },
-    { title: 'Dispatch', dataIndex: 'dispatchNumbers', width: 130, render: values => <span className="text-xs">{values?.join(', ') || 'Legacy invoice'}</span> },
+    { title: 'Dispatch', dataIndex: 'dispatchNumbers', width: 130, render: (values, r) => (
+      <span className="text-xs">{values?.length ? values.join(', ') : (r.stockDispatchedAt ? 'Legacy invoice' : 'Awaiting dispatch')}</span>
+    )},
     { title: 'Buyer', key: 'buyer', width: 180, render: (_, r) => (
       <div><div className="text-sm font-medium truncate max-w-[170px]">{r.buyerName}</div>
         <div className="text-xs text-gray-400">{r.buyerCode} · {r.buyerGstin || 'No GSTIN'}</div></div>
@@ -61,6 +64,7 @@ const InvoiceManager = () => {
           <h1 className="text-2xl font-bold text-gray-800">Invoices</h1>
           <p className="text-sm text-gray-500 mt-0.5">GST Tax Invoices generated after full stock-consumed dispatch</p>
         </div>
+        <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Create Invoice</Button>
       </div>
 
       <Row gutter={12} className="mb-4">
@@ -89,6 +93,8 @@ const InvoiceManager = () => {
       </div>
 
       {viewInvoice && <InvoicePrintModal invoiceId={viewInvoice} onClose={() => setViewInvoice(null)} />}
+      <CreateInvoiceModal open={createOpen} onClose={() => setCreateOpen(false)}
+        onCreated={() => { fetchInvoices(); loadStats(); }} />
     </div>
   );
 };
@@ -164,7 +170,7 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
               <div className="flex justify-between"><span className="text-gray-500">Invoice #:</span><span className="font-medium">{inv.invoiceNumber}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Date:</span><span>{new Date(inv.invoiceDate).toLocaleDateString('en-IN')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">SO #:</span><span>{inv.orderNumber || '—'}</span></div>
-              <div className="flex justify-between"><span className="text-gray-500">Dispatch:</span><span>{inv.dispatchNumbers?.join(', ') || 'Legacy invoice'}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Dispatch:</span><span>{inv.dispatchNumbers?.length ? inv.dispatchNumbers.join(', ') : (inv.stockDispatchedAt ? 'Legacy invoice' : 'Awaiting dispatch')}</span></div>
               <div className="flex justify-between"><span className="text-gray-500">Type:</span><span className="capitalize">{inv.invoiceType?.replace('_', ' ')}</span></div>
             </div>
           </div>
@@ -278,6 +284,137 @@ const InvoicePrintModal = ({ invoiceId, onClose }) => {
             <div className="sign">For BDM TILES<br/>Authorized Signatory</div>
           </div>
         </div>
+      </div>
+    </Modal>
+  );
+};
+
+// ═══════════════════════════════════════════════
+// CREATE INVOICE — warehouse-driven dropdown
+// ═══════════════════════════════════════════════
+const STAGE_COLORS = {
+  ready_for_dispatch: 'green',
+  packed: 'cyan',
+  sorted: 'purple',
+};
+
+const CreateInvoiceModal = ({ open, onClose, onCreated }) => {
+  const [loading, setLoading] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [selectedId, setSelectedId] = useState(undefined);
+  const [generating, setGenerating] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await salesService.getInvoicePendingOrders({ limit: 200 });
+      if (res.success) setRows(res.data || []);
+    } catch (err) { message.error(err.message); }
+    finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedId(undefined);
+    load();
+  }, [open, load]);
+
+  const selected = rows.find(row => row._id === selectedId) || null;
+
+  const generate = async () => {
+    if (!selected) return;
+    setGenerating(true);
+    try {
+      const res = await salesService.generateInvoiceFromSalesOrder(selected._id);
+      if (res.success) {
+        message.success(`Invoice ${res.data?.invoiceNumber || ''} generated for ${selected.orderNumber}`);
+        onCreated?.();
+        onClose();
+      }
+    } catch (err) { message.error(err.message); }
+    finally { setGenerating(false); }
+  };
+
+  const toOption = row => ({
+    value: row._id,
+    // `label` is what the closed select renders — without it antd falls back to
+    // the raw ObjectId. optionRender only styles the open dropdown list.
+    label: `${(row.pickListNumbers || []).join(', ')} · ${row.dealerName}`,
+    search: `${(row.pickListNumbers || []).join(' ')} ${row.orderNumber} ${row.dealerName} ${row.dealerCode} ${row.route || ''}`.toLowerCase(),
+    row,
+  });
+
+  // One flat list, newest stage first — no "ready to invoice" bucket. Every row
+  // is a Sorting List record and keeps its real sorting status.
+  const options = rows.map(toOption);
+
+  return (
+    <Modal open={open} onCancel={onClose} width={760}
+      title={<span className="font-bold"><FileTextOutlined className="mr-2 text-blue-600" />Create Invoice</span>}
+      footer={<Space>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button type="primary" icon={<CheckCircleOutlined />} loading={generating}
+          disabled={!selected?.eligible} onClick={generate}>Generate GST Invoice</Button>
+      </Space>}>
+
+      <div className="space-y-3 mt-2">
+        <p className="text-xs text-gray-500">
+          Pick lists appear here as soon as sorting is verified and completed (the stage where the
+          Sorting List shows <b>Pack</b>). The invoice is raised from the sorted quantities.
+        </p>
+
+        <Select
+          showSearch allowClear className="w-full" value={selectedId} onChange={setSelectedId}
+          loading={loading} placeholder={loading ? 'Loading sorting queue...' : 'Search pick list, SO # or dealer...'}
+          optionFilterProp="search"
+          filterOption={(input, option) => !input || String(option?.search || '').includes(String(input).toLowerCase())}
+          options={options}
+          notFoundContent={loading ? <Spin size="small" /> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No pick lists in the sorting queue" />}
+          optionRender={option => {
+            const row = option.data.row;
+            return (
+              <div className="flex items-center justify-between gap-3 py-0.5">
+                <div className="min-w-0">
+                  <div className="text-xs font-mono text-blue-600 font-medium">{(row.pickListNumbers || []).join(', ')}</div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {row.orderNumber} · {row.dealerName}{row.route ? ` · ${row.route}` : ''}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Tag color={STAGE_COLORS[row.stage]} className="m-0">{row.stageLabel}</Tag>
+                  <span className="text-xs font-semibold text-gray-700">₹{(row.orderValue || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            );
+          }}
+        />
+
+        {selected && (
+          <div className="border rounded-lg p-3 bg-gray-50 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs text-blue-600 font-medium">{(selected.pickListNumbers || []).join(', ')}</span>
+              <Tag className="capitalize">{String(selected.orderStatus || '').replace(/_/g, ' ')}</Tag>
+              <Tag color={STAGE_COLORS[selected.stage]}>{selected.stageLabel}</Tag>
+              <span className="ml-auto text-right leading-tight">
+                <span className="block text-[10px] uppercase text-gray-400">Order value</span>
+                <span className="text-sm font-bold text-gray-800">₹{(selected.orderValue || 0).toLocaleString()}</span>
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+              <div><div className="text-gray-400">Sales order</div><div className="font-mono">{selected.orderNumber}</div></div>
+              <div><div className="text-gray-400">Dealer</div><div className="font-medium">{selected.dealerName}</div></div>
+              <div><div className="text-gray-400">GSTIN</div><div className="font-mono">{selected.dealerGstin || '—'}</div></div>
+              <div><div className="text-gray-400">Route</div><div>{selected.route || 'Unassigned'}</div></div>
+              <div><div className="text-gray-400">Boxes</div><div>{selected.boxes || '—'}</div></div>
+              <div><div className="text-gray-400">Picked qty</div><div>{selected.pickedQty || '—'}</div></div>
+              <div><div className="text-gray-400">Sorted lines</div><div>{selected.sortedLines} / {selected.totalLines}</div></div>
+              <div><div className="text-gray-400">Sorted value (pre-tax)</div><div>₹{(selected.sortedValue || 0).toLocaleString()}</div></div>
+            </div>
+            {selected.eligible
+              ? <Alert type="success" showIcon message="Sorting complete — the invoice will be raised from the sorted quantities." />
+              : <Alert type="warning" showIcon message="Not invoiceable yet" description={selected.blockReason} />}
+          </div>
+        )}
       </div>
     </Modal>
   );

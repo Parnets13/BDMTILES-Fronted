@@ -62,6 +62,7 @@ const salesService = {
   getInvoices: (params) => api.get('/invoices', { params }),
   getInvoice: (id) => api.get(`/invoices/${id}`),
   getInvoiceStats: () => api.get('/invoices/stats'),
+  getInvoicePendingOrders: (params) => api.get('/invoices/pending-orders', { params }),
   generateInvoiceFromSalesOrder: (salesOrderId, idempotencyKey = createIdempotencyKey()) => api.post(
     `/invoices/generate-from-so/${salesOrderId}`,
     undefined,
