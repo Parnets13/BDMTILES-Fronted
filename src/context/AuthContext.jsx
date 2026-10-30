@@ -6,7 +6,31 @@ import { stopRealtime } from '../lib/realtime.js';
 const AuthContext = createContext();
 const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
 
+/**
+ * Sentinel id for the header's "All Branches" option.
+ *
+ * It is persisted and sent as `X-Branch-Id` exactly like a real branch id, so no
+ * transport code needs a special case. The API answers it with data from every
+ * branch the user may read, and refuses writes until a real branch is picked.
+ */
+export const ALL_BRANCHES_ID = 'all';
+
+const ALL_BRANCHES_OPTION = Object.freeze({
+  _id: ALL_BRANCHES_ID,
+  name: 'All Branches',
+  branchCode: '',
+  status: 'active',
+  allBranches: true,
+});
+
 const branchId = (branch) => String(branch?._id || branch || '');
+
+/** Owners/super admins always qualify; anyone assigned more than one branch does too. */
+const canViewAllBranches = (user) => {
+  if (!user) return false;
+  if (user.role === 'super_admin' || user.role === 'owner') return true;
+  return (user.assignedBranches || []).filter((branch) => branch?.status !== 'inactive').length > 1;
+};
 
 /**
  * The cached session, as written by `applyUser` and removed by `clearAuth`.
@@ -36,6 +60,7 @@ const readStoredUser = () => {
 const resolveActiveBranch = (nextUser) => {
   const branches = (nextUser?.assignedBranches || []).filter((branch) => branch?.status !== 'inactive');
   const savedId = localStorage.getItem(ACTIVE_BRANCH_KEY);
+  if (savedId === ALL_BRANCHES_ID && canViewAllBranches(nextUser)) return { ...ALL_BRANCHES_OPTION };
   const defaultId = branchId(nextUser?.defaultBranch);
   return branches.find((branch) => branchId(branch) === savedId)
     || branches.find((branch) => branchId(branch) === defaultId)
@@ -216,6 +241,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   const setActiveBranch = (nextBranchId) => {
+    if (String(nextBranchId) === ALL_BRANCHES_ID) {
+      if (!canViewAllBranches(user)) return false;
+      localStorage.setItem(ACTIVE_BRANCH_KEY, ALL_BRANCHES_ID);
+      setActiveBranchState({ ...ALL_BRANCHES_OPTION });
+      setBranchEpoch((epoch) => epoch + 1);
+      window.dispatchEvent(new CustomEvent('bdmtiles:branch-changed', { detail: ALL_BRANCHES_OPTION }));
+      return true;
+    }
     const selected = (user?.assignedBranches || []).find((branch) => branchId(branch) === String(nextBranchId));
     if (!selected || selected.status === 'inactive') return false;
     localStorage.setItem(ACTIVE_BRANCH_KEY, branchId(selected));
@@ -256,6 +289,8 @@ export const AuthProvider = ({ children }) => {
       hasAnyPermission,
       activeBranch,
       activeBranchId: branchId(activeBranch),
+      canViewAllBranches: canViewAllBranches(user),
+      isAllBranches: branchId(activeBranch) === ALL_BRANCHES_ID,
       setActiveBranch,
       branchEpoch,
       isAuthenticated: !!user,

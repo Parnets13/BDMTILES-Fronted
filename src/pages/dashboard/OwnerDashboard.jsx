@@ -125,17 +125,19 @@ const UnavailableSection = ({ title, section }) => (
 
 const OwnerDashboard = () => {
   const navigate = useNavigate();
-  const { user, activeBranch, hasPermission, hasAnyPermission } = useAuth();
+  const { activeBranch, isAllBranches, hasPermission, hasAnyPermission } = useAuth();
   const [data, setData] = useState(null);
-  const [scope, setScope] = useState('branch');
+  // The header branch selector is the single source of truth for scope. This page
+  // used to carry its own "Selected branch / All branches" toggle, which could
+  // disagree with the header and silently report one branch while the header said
+  // All Branches.
+  const scope = isAllBranches ? 'all' : 'branch';
   // Profitability is the one section with its own date window (the rest report
   // fixed periods named in the card itself).
   const [profitPeriod, setProfitPeriod] = useState('month');
   const [profitRange, setProfitRange] = useState(null);
   const [loading, setLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(null);
-  const isGlobalRole = ['owner', 'super_admin'].includes(user?.role);
-
   // A half-picked custom range sends nothing, so the server keeps its default
   // (current month) instead of rejecting an incomplete request.
   const profitParams = useMemo(() => {
@@ -220,13 +222,6 @@ const OwnerDashboard = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {isGlobalRole && (
-            <Segmented
-              value={scope}
-              onChange={setScope}
-              options={[{ label: 'Selected branch', value: 'branch' }, { label: 'All branches', value: 'all' }]}
-            />
-          )}
           <Button icon={<ReloadOutlined />} onClick={load} loading={loading}>Refresh</Button>
         </div>
       </div>

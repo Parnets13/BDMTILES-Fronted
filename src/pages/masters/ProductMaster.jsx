@@ -371,7 +371,7 @@ const ProductMaster = () => {
       applyCalculation(form.getFieldsValue());
     } else {
       form.resetFields();
-      form.setFieldsValue({ gst: 18, unit: 'Box', inventoryBaseUom: 'Box', inventoryUomVersion: 1, uomConversions: [{ uom: 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }], status: 'active', salesType: 'Regular Sale', productType: 'Regular Product' });
+      form.setFieldsValue({ gst: 18, unit: 'Box', inventoryBaseUom: 'Box', inventoryUomVersion: 1, uomConversions: [{ uom: 'Box', toBaseFactor: 1, precision: 6, allowFraction: true, version: 1 }], status: 'active', salesType: 'Regular Sale', productType: 'Regular Product', onlineVisible: true, dealerVisible: true });
       setCategoryAttributes([]);
     }
     setDrawerOpen(true);
@@ -1232,8 +1232,8 @@ const ProductMaster = () => {
                 <Col span={4}><Form.Item name="isNewArrival" label="New Arrival" valuePropName="checked"><Switch /></Form.Item></Col>
                 <Col span={4}><Form.Item name="isFeatured" label="Featured" valuePropName="checked"><Switch /></Form.Item></Col>
                 <Col span={4}><Form.Item name="isDealOfWeek" label="Deal of the Week" valuePropName="checked"><Switch /></Form.Item></Col>
-                <Col span={4}><Form.Item name="onlineVisible" label="Online Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
-                <Col span={4}><Form.Item name="dealerVisible" label="Dealer Visible" valuePropName="checked"><Switch defaultChecked /></Form.Item></Col>
+                <Col span={4}><Form.Item name="onlineVisible" label="Online Visible" valuePropName="checked"><Switch /></Form.Item></Col>
+                <Col span={4}><Form.Item name="dealerVisible" label="Dealer Visible" valuePropName="checked"><Switch /></Form.Item></Col>
               </Row>
               <Row gutter={16}>
                 <Col span={4}><Form.Item name="rating" label="Rating (0-5)" tooltip="Average customer rating shown on the website"><InputNumber min={0} max={5} step={0.1} className="w-full" placeholder="e.g. 4.5" /></Form.Item></Col>

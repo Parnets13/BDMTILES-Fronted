@@ -5,10 +5,11 @@ import notificationService from '../../services/notificationService.js';
 import { Menu, Bell, Building2 } from 'lucide-react';
 
 const Header = ({ onMenuToggle }) => {
-  const { user, activeBranchId, setActiveBranch, hasPermission } = useAuth();
+  const { user, activeBranchId, setActiveBranch, hasPermission, canViewAllBranches } = useAuth();
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
   const branches = user?.assignedBranches || [];
+  const isAllBranches = activeBranchId === 'all';
 
   useEffect(() => {
     if (!activeBranchId || !hasPermission('notification.inbox')) return;
@@ -60,9 +61,16 @@ const Header = ({ onMenuToggle }) => {
               aria-label="Active branch"
               value={activeBranchId}
               onChange={(event) => setActiveBranch(event.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-800 outline-none focus:border-[#FF5F03]"
-              disabled={branches.length === 1}
+              className={`w-full rounded-lg border px-3 py-2 text-sm font-medium outline-none focus:border-[#FF5F03] ${
+                isAllBranches
+                  ? 'border-[#FF5F03] bg-orange-50 text-[#B84300]'
+                  : 'border-gray-200 bg-gray-50 text-gray-800'
+              }`}
+              title={isAllBranches ? 'Showing data from every branch you can access. Pick a branch to make changes.' : 'Active branch'}
             >
+              {canViewAllBranches && (
+                <option value="all">All Branches</option>
+              )}
               {branches.map((branch) => (
                 <option key={branch._id} value={branch._id}>
                   {branch.branchCode ? `${branch.branchCode} — ` : ''}{branch.name}

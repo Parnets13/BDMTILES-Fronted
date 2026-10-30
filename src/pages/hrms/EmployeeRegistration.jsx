@@ -167,7 +167,9 @@ const EmployeeRegistration = () => {
   };
 
   const newEmployeeDefaults = () => ({
-    branchId: activeBranchId,
+    // A new employee must belong to one real branch; "All Branches" is a read
+    // scope, so fall back to the user's default branch instead of pre-filling 'all'.
+    branchId: activeBranchId === 'all' ? (user?.defaultBranch?._id || '') : activeBranchId,
     status: 'Active',
     gender: 'Male',
     employmentType: 'Full Time',

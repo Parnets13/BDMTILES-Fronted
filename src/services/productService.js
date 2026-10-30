@@ -36,6 +36,10 @@ const productService = {
 
   // Bulk price update — brand/category/product-wise
   bulkPriceUpdate: (data) => api.post('/products/bulk-price-update', data),
+
+  // Bulk min stock / reorder level update — up to 500 rows at once
+  // `updates` is [{ productId, minStockLevel?, reorderLevel? }]
+  bulkMinStockUpdate: (updates) => api.patch('/products/bulk-min-stock', { updates }),
 };
 
 export default productService;
