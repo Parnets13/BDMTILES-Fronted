@@ -163,6 +163,7 @@ const clearStoredAuth = () => {
   localStorage.removeItem('bdmtiles_token');
   localStorage.removeItem('bdmtiles_user');
   localStorage.removeItem('bdmtiles_active_branch');
+  localStorage.removeItem('bdmtiles_active_company');
 };
 
 const refreshClient = axios.create({
@@ -234,10 +235,29 @@ const api = axios.create({
   },
 });
 
+/**
+ * Company scope is a list: one branch can serve several companies, so the header
+ * lets the user tick more than one. Stored as a JSON array; a bare id or a
+ * comma-separated string from the single-company release still parses.
+ */
+const parseCompanyIds = (raw) => {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+  } catch {
+    // Not JSON — fall through to the legacy comma/plain-id form.
+  }
+  return String(raw).split(',').map((id) => id.trim()).filter(Boolean);
+};
+
+export const readActiveCompanyIds = () => parseCompanyIds(localStorage.getItem('bdmtiles_active_company'));
+
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('bdmtiles_token');
     const activeBranchId = localStorage.getItem('bdmtiles_active_branch');
+    const activeCompanyIds = readActiveCompanyIds();
     if (config.data instanceof FormData) {
       config.headers?.delete?.('Content-Type');
       delete config.headers?.['Content-Type'];
@@ -255,6 +275,14 @@ api.interceptors.request.use(
     const isBranchless = url.startsWith('/auth/') || url.startsWith('/web-management');
     if (activeBranchId && !isBranchless) {
       config.headers['X-Branch-Id'] = activeBranchId;
+    }
+    // Company scope is expressed as a set of branches server-side, so it rides
+    // alongside the branch header. 'all' is the sentinel for "no company filter".
+    // The company master itself is global — scoping it by company would hide the
+    // very list the switcher is built from — so it never carries this header.
+    const isCompanyMaster = url.startsWith('/masters/companies');
+    if (activeCompanyIds.length && !isBranchless && !isCompanyMaster) {
+      config.headers['X-Company-Id'] = activeCompanyIds.join(',');
     }
     return config;
   },

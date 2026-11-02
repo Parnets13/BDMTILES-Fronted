@@ -1,10 +1,11 @@
 import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import { message } from 'antd';
-import api from '../config/api.js';
+import api, { readActiveCompanyIds } from '../config/api.js';
 import { stopRealtime } from '../lib/realtime.js';
 
 const AuthContext = createContext();
 const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
+const ACTIVE_COMPANY_KEY = 'bdmtiles_active_company';
 
 /**
  * Sentinel id for the header's "All Branches" option.
@@ -15,6 +16,9 @@ const ACTIVE_BRANCH_KEY = 'bdmtiles_active_branch';
  */
 export const ALL_BRANCHES_ID = 'all';
 
+/** Sentinel for the header's "All Companies" option — means "do not filter". */
+export const ALL_COMPANIES_ID = 'all';
+
 const ALL_BRANCHES_OPTION = Object.freeze({
   _id: ALL_BRANCHES_ID,
   name: 'All Branches',
@@ -24,6 +28,23 @@ const ALL_BRANCHES_OPTION = Object.freeze({
 });
 
 const branchId = (branch) => String(branch?._id || branch || '');
+
+/** Company ids linked to a branch (Branch.companies is many-to-many). */
+const branchCompanyIds = (branch) => (branch?.companies || [])
+  .map((company) => branchId(company))
+  .filter(Boolean);
+
+/**
+ * A branch is in scope when it is linked to at least one of the selected
+ * companies. An empty list means "All Companies" — no filter.
+ */
+const branchInCompanies = (branch, companyIds) => {
+  if (!companyIds?.length) return true;
+  const linked = branchCompanyIds(branch);
+  return companyIds.some((id) => linked.includes(String(id)));
+};
+
+const readStoredCompanies = () => readActiveCompanyIds();
 
 /** Owners/super admins always qualify; anyone assigned more than one branch does too. */
 const canViewAllBranches = (user) => {
@@ -57,15 +78,30 @@ const readStoredUser = () => {
  * rule on the very first render — if `activeBranch` stayed null the app would
  * send no X-Branch-Id header and every branch-scoped call would 428.
  */
-const resolveActiveBranch = (nextUser) => {
-  const branches = (nextUser?.assignedBranches || []).filter((branch) => branch?.status !== 'inactive');
+const resolveActiveBranch = (nextUser, companyIds = readStoredCompanies()) => {
+  const branches = (nextUser?.assignedBranches || [])
+    .filter((branch) => branch?.status !== 'inactive')
+    // Company scope first: a branch outside the selected companies would be
+    // rejected by the API, so it must never be chosen here.
+    .filter((branch) => branchInCompanies(branch, companyIds));
   const savedId = localStorage.getItem(ACTIVE_BRANCH_KEY);
-  if (savedId === ALL_BRANCHES_ID && canViewAllBranches(nextUser)) return { ...ALL_BRANCHES_OPTION };
+  if (savedId === ALL_BRANCHES_ID && canViewAllBranches(nextUser) && branches.length) return { ...ALL_BRANCHES_OPTION };
   const defaultId = branchId(nextUser?.defaultBranch);
   return branches.find((branch) => branchId(branch) === savedId)
     || branches.find((branch) => branchId(branch) === defaultId)
     || branches[0]
     || null;
+};
+
+/**
+ * Only companies the user still has a linked branch in are kept; a stale
+ * selection would otherwise scope every request to nothing.
+ */
+const validStoredCompanies = (nextUser) => {
+  const stored = readStoredCompanies();
+  if (!stored.length) return [];
+  const linked = new Set((nextUser?.assignedBranches || []).flatMap(branchCompanyIds));
+  return stored.filter((id) => linked.has(String(id)));
 };
 
 const LEGACY_PERMISSION_ALIASES = {
@@ -89,15 +125,26 @@ export const AuthProvider = ({ children }) => {
   ));
   const [loading, setLoading] = useState(true);
   const [token, setToken] = useState(localStorage.getItem('bdmtiles_token'));
-  const [activeBranch, setActiveBranchState] = useState(() => (
-    localStorage.getItem('bdmtiles_token') ? resolveActiveBranch(readStoredUser()) : null
+  const [activeBranch, setActiveBranchState] = useState(() => {
+    if (!localStorage.getItem('bdmtiles_token')) return null;
+    const storedUser = readStoredUser();
+    return resolveActiveBranch(storedUser, validStoredCompanies(storedUser));
+  });
+  // Which companies the header is scoped to. Empty = All Companies.
+  const [activeCompanyIds, setActiveCompanyIds] = useState(() => (
+    localStorage.getItem('bdmtiles_token') ? validStoredCompanies(readStoredUser()) : []
   ));
+  const [companies, setCompanies] = useState([]);
   const [branchEpoch, setBranchEpoch] = useState(0);
 
   const applyUser = useCallback((nextUser) => {
-    const selected = resolveActiveBranch(nextUser);
+    const companyIds = validStoredCompanies(nextUser);
+    const selected = resolveActiveBranch(nextUser, companyIds);
 
     setUser(nextUser);
+    setActiveCompanyIds(companyIds);
+    if (companyIds.length) localStorage.setItem(ACTIVE_COMPANY_KEY, JSON.stringify(companyIds));
+    else localStorage.removeItem(ACTIVE_COMPANY_KEY);
     setActiveBranchState(selected);
     if (selected) localStorage.setItem(ACTIVE_BRANCH_KEY, branchId(selected));
     else localStorage.removeItem(ACTIVE_BRANCH_KEY);
@@ -119,10 +166,28 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setToken(null);
     setActiveBranchState(null);
+    setActiveCompanyIds([]);
+    setCompanies([]);
     localStorage.removeItem('bdmtiles_token');
     localStorage.removeItem('bdmtiles_user');
     localStorage.removeItem(ACTIVE_BRANCH_KEY);
+    localStorage.removeItem(ACTIVE_COMPANY_KEY);
   }, []);
+
+  /**
+   * Company list for the header switcher. It is scope control, not master data,
+   * so it is fetched once per session from a lookup endpoint that every signed-in
+   * user may read. Failures are silent — without companies the header simply
+   * shows "All Companies" and behaves exactly as before.
+   */
+  useEffect(() => {
+    if (!user) { setCompanies([]); return undefined; }
+    let cancelled = false;
+    api.get('/masters/companies/lookup')
+      .then((response) => { if (!cancelled) setCompanies(response?.data || []); })
+      .catch(() => { if (!cancelled) setCompanies([]); });
+    return () => { cancelled = true; };
+  }, [user?._id]);
 
   const refreshUser = useCallback(async () => {
     const response = await api.get('/auth/me');
@@ -258,6 +323,34 @@ export const AuthProvider = ({ children }) => {
     return true;
   };
 
+  /**
+   * Switch company scope. Accepts an array of ids (empty = All Companies); a bare
+   * id is still accepted. The branch is re-resolved inside the new branch set in
+   * the same tick, because the API rejects a branch outside the selected companies
+   * and `branchEpoch` remounts the layout to refetch everything.
+   */
+  const setActiveCompanies = (nextCompanyIds) => {
+    const ids = [...new Set((Array.isArray(nextCompanyIds) ? nextCompanyIds : [nextCompanyIds])
+      .map((id) => String(id || ''))
+      .filter((id) => id && id !== ALL_COMPANIES_ID))];
+    if (ids.length) localStorage.setItem(ACTIVE_COMPANY_KEY, JSON.stringify(ids));
+    else localStorage.removeItem(ACTIVE_COMPANY_KEY);
+    setActiveCompanyIds(ids);
+
+    const branches = (user?.assignedBranches || [])
+      .filter((branch) => branch?.status !== 'inactive' && branchInCompanies(branch, ids));
+    const nextBranch = canViewAllBranches(user) && branches.length
+      ? { ...ALL_BRANCHES_OPTION }
+      : branches[0] || null;
+
+    setActiveBranchState(nextBranch);
+    if (nextBranch) localStorage.setItem(ACTIVE_BRANCH_KEY, branchId(nextBranch));
+    else localStorage.removeItem(ACTIVE_BRANCH_KEY);
+    setBranchEpoch((epoch) => epoch + 1);
+    window.dispatchEvent(new CustomEvent('bdmtiles:branch-changed', { detail: nextBranch }));
+    return true;
+  };
+
   const hasPermission = (permission) => {
     if (!user) return false;
     if (user.role === 'super_admin' || user.role === 'owner') return true;
@@ -292,6 +385,14 @@ export const AuthProvider = ({ children }) => {
       canViewAllBranches: canViewAllBranches(user),
       isAllBranches: branchId(activeBranch) === ALL_BRANCHES_ID,
       setActiveBranch,
+      // Company scope (header switcher). An empty list means All Companies.
+      companies,
+      activeCompanyIds,
+      activeCompanies: companies.filter((company) => activeCompanyIds.includes(String(company._id))),
+      companyBranches: (user?.assignedBranches || [])
+        .filter((branch) => branch?.status !== 'inactive' && branchInCompanies(branch, activeCompanyIds)),
+      isAllCompanies: activeCompanyIds.length === 0,
+      setActiveCompanies,
       branchEpoch,
       isAuthenticated: !!user,
       isSuperAdmin: user?.role === 'super_admin',

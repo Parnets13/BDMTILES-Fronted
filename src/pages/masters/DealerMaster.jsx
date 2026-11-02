@@ -5,6 +5,7 @@ import masterService from '../../services/masterService.js';
 import dealerEmployeeTargetService from '../../services/dealerEmployeeTargetService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
 
 const DealerMaster = () => {
   const { hasPermission } = useAuth();
@@ -326,8 +327,9 @@ const DealerMaster = () => {
                   <Col span={6}><Form.Item name="alternateMobile" label="Alt Mobile"><Input placeholder="Alternate" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="email" label="Email"><Input placeholder="Email" /></Form.Item></Col>
                   <Col span={6}><Form.Item name="gstin" label="GSTIN"
-                    rules={[{ pattern: /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}[Z]{1}[A-Z0-9]{1}$/, message: 'Invalid GSTIN (e.g. 29ABCDE1234F1Z5)' }]}>
-                    <Input placeholder="29ABCDE1234F1Z5" maxLength={15} style={{ textTransform: 'uppercase' }} onChange={e => e.target.value = e.target.value.toUpperCase()} />
+                    normalize={normalizeGstinInput}
+                    rules={[gstinFormRule()]}>
+                    <Input placeholder="e.g. 29ABCDE1234F1Z5" maxLength={15} className="font-mono uppercase" />
                   </Form.Item></Col>
                 </Row>
                 <Row gutter={16}>
@@ -373,7 +375,7 @@ const DealerMaster = () => {
                           ? []
                           : [{ required: true, message: 'Assign the Sales Executive this dealer belongs to.' }]}
                         extra={editingDealer
-                          ? 'Active Sales Executive users from User Management'
+                          ? 'Active Sales Executives from User Management'
                           : 'Required — this dealer’s pricing and stock come from their Sales Executive’s branch'}
                       >
                         <Select
@@ -383,7 +385,10 @@ const DealerMaster = () => {
                           optionFilterProp="label"
                           options={options.salesExecutives.map(user => ({
                             value: user._id,
-                            label: `${user.name}${user.phone ? ` · ${user.phone}` : ''}${user.status === 'Inactive' ? ' · Inactive (current)' : ''}`,
+                            // Inactive executives stay visible (an existing assignment must
+                            // not look like a missing person) but cannot be picked.
+                            label: `${user.name}${user.phone ? ` · ${user.phone}` : ''}${user.status === 'Inactive' ? ' · Inactive' : ''}`,
+                            disabled: user.status !== 'Active',
                           }))}
                         />
                       </Form.Item>

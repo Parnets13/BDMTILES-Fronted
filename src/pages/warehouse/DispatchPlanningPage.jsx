@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Pagination, Checkbox } from 'antd';
+import { Table, Button, Input, InputNumber, Select, Tag, Space, message, Modal, Row, Col, Card, Statistic, Tooltip, Pagination, Checkbox, Alert } from 'antd';
 import { PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined, CarOutlined, CheckCircleOutlined, CloseCircleOutlined, RocketOutlined, TruckOutlined } from '@ant-design/icons';
 import api from '../../config/api.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
@@ -239,6 +239,13 @@ const expiryNote = (vehicle) => {
 
 // ═══════════════════════════════════════════════
 const CreateTripModal = ({ open, onClose, onSuccess }) => {
+  // The header only filters what you see; creating is always allowed. When it is on
+  // All Branches the API records the trip against the user's default branch, so say
+  // which one that is instead of silently guessing.
+  const { isAllBranches, user } = useAuth();
+  const writeBranchName = user?.defaultBranch?.name
+    || user?.assignedBranches?.[0]?.name
+    || 'your default branch';
   const [loading, setLoading] = useState(false);
   const [readyOrders, setReadyOrders] = useState([]);
   const [vehicles, setVehicles] = useState([]);
@@ -318,6 +325,14 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
   return (
     <Modal title="Create Dispatch Trip" open={open} onCancel={handleClose} width={850} footer={null} destroyOnHidden>
       <div className="space-y-4 mt-4">
+        {isAllBranches && (
+          <Alert
+            type="info"
+            showIcon
+            message={`This trip will be recorded in ${writeBranchName}`}
+            description="You are viewing all branches. To record it against another branch, pick that branch in the header first."
+          />
+        )}
         {/* Vehicle & Driver */}
         <div className="grid grid-cols-4 gap-3">
           <div>
@@ -438,7 +453,14 @@ const CreateTripModal = ({ open, onClose, onSuccess }) => {
 
         <div className="flex justify-end gap-2 pt-3 border-t">
           <Button onClick={handleClose}>Cancel</Button>
-          <Button type="primary" onClick={handleSubmit} loading={loading} icon={<CarOutlined />}>Create Trip</Button>
+          <Button
+            type="primary"
+            onClick={handleSubmit}
+            loading={loading}
+            icon={<CarOutlined />}
+          >
+            Create Trip
+          </Button>
         </div>
       </div>
     </Modal>

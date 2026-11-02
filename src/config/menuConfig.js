@@ -43,6 +43,7 @@ import {
   BookMarked,
   Smartphone,
   Building2,
+  Landmark,
   Clock,
   Briefcase,
   ReceiptIcon,
@@ -235,7 +236,7 @@ const menuConfig = {
     title: 'Master Management',
     icon: Package,
     hasSubmenu: true,
-    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage', 'stock.view'],
+    modulePermissions: ['product.master', 'price.list', 'dealer.discounts', 'category.setup', 'dealer.type', 'dealer.category', 'expense.category', 'region.master', 'route.master', 'branch.master', 'company.master', 'warehouse.master', 'vehicle.master', 'dealer.master', 'customer.master', 'supplier.master', 'wallet.manage', 'stock.view'],
     items: [
       {
         id: 'product-master',
@@ -306,6 +307,13 @@ const menuConfig = {
         icon: MapPin,
         path: '/masters/routes',
         permission: 'route.master',
+      },
+      {
+        id: 'company-master',
+        title: 'Company Master',
+        icon: Landmark,
+        path: '/masters/companies',
+        permission: 'company.master',
       },
       {
         id: 'branch-master',

@@ -61,6 +61,13 @@ const masterService = {
   getBranchSettings: (id) => api.get(`/masters/branches/${id}/settings`),
   updateBranchSettings: (id, data) => api.put(`/masters/branches/${id}/settings`, data),
 
+  // Companies (legal entities)
+  getCompanies: (params) => api.get('/masters/companies', { params }),
+  getCompany: (id) => api.get(`/masters/companies/${id}`),
+  createCompany: (data) => api.post('/masters/companies', data),
+  updateCompany: (id, data) => api.put(`/masters/companies/${id}`, data),
+  deleteCompany: (id) => api.delete(`/masters/companies/${id}`),
+
   // Warehouses
   getWarehouses: (params) => api.get('/masters/warehouses', { params }),
   createWarehouse: (data) => api.post('/masters/warehouses', data),

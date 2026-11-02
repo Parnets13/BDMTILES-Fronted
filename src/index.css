@@ -13,9 +13,16 @@
   }
 }
 
-/* Remove scrollbar from Ant Design Modal body */
+/* Remove scrollbar from Ant Design Modal body.
+   The exception below lets a single long form opt back in by adding the
+   `company-modal` class: without it, `overflow: visible !important` wins over any
+   inline style, the body cannot clip, and the last rows paint on top of the footer. */
 .ant-modal .ant-modal-body {
   overflow: visible !important;
+}
+.ant-modal.company-modal .ant-modal-body {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
 }
 .ant-modal-wrap {
   overflow: auto !important;

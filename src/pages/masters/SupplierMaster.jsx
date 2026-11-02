@@ -3,6 +3,7 @@ import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, message, P
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
+import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
 
 const SupplierMaster = () => {
   const [suppliers, setSuppliers] = useState([]);
@@ -121,8 +122,9 @@ const SupplierMaster = () => {
                 </Row>
                 <Row gutter={16}>
                   <Col span={8}><Form.Item name="gstin" label="GSTIN"
-                    rules={[{ pattern: /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[A-Z0-9]{1}[Z]{1}[A-Z0-9]{1}$/, message: 'Invalid GSTIN format (e.g. 29ABCDE1234F1Z5)' }]}>
-                    <Input placeholder="29ABCDE1234F1Z5" maxLength={15} style={{ textTransform: 'uppercase' }} onChange={e => e.target.value = e.target.value.toUpperCase()} />
+                    normalize={normalizeGstinInput}
+                    rules={[gstinFormRule()]}>
+                    <Input placeholder="e.g. 29ABCDE1234F1Z5" maxLength={15} className="font-mono uppercase" />
                   </Form.Item></Col>
                   <Col span={8}><Form.Item name="pan" label="PAN"><Input placeholder="PAN" /></Form.Item></Col>
                   <Col span={8}><Form.Item name="transportDetails" label="Transport"><Input placeholder="Transport details" /></Form.Item></Col>

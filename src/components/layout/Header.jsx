@@ -2,14 +2,30 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext.jsx';
 import notificationService from '../../services/notificationService.js';
-import { Menu, Bell, Building2 } from 'lucide-react';
+import { Select } from 'antd';
+import { Menu, Bell, Building2, Briefcase } from 'lucide-react';
 
 const Header = ({ onMenuToggle }) => {
-  const { user, activeBranchId, setActiveBranch, hasPermission, canViewAllBranches } = useAuth();
+  const {
+    user, activeBranchId, setActiveBranch, hasPermission, canViewAllBranches,
+    companies, activeCompanyIds, setActiveCompanies, companyBranches,
+  } = useAuth();
   const navigate = useNavigate();
   const [unreadCount, setUnreadCount] = useState(0);
-  const branches = user?.assignedBranches || [];
+  // Company selection already filters the branch list; when no company is picked
+  // this is every branch the user is assigned to.
+  const branches = companyBranches || [];
   const isAllBranches = activeBranchId === 'all';
+
+  /** How many of the user's branches this company can use — 0 disables the option. */
+  const branchCountFor = (companyId) => (user?.assignedBranches || [])
+    .filter((branch) => branch?.status !== 'inactive'
+      && (branch.companies || []).map(String).includes(String(companyId)))
+    .length;
+
+  // The GST number is always shown: the same legal entity can hold several
+  // registrations, and the name alone does not identify which one is selected.
+  const companyLabel = (company) => `${company.legalName} — ${company.gstin}`;
 
   useEffect(() => {
     if (!activeBranchId || !hasPermission('notification.inbox')) return;
@@ -52,21 +68,53 @@ const Header = ({ onMenuToggle }) => {
         </div>
       </div>
 
-      {/* Active business branch */}
-      <div className="flex-1 flex justify-center px-3">
+      {/* Active company + branch: company narrows the branches, branch narrows the data */}
+      <div className="flex-1 flex justify-center items-center gap-2 px-3 flex-wrap">
+        {companies.length > 0 && (
+          <div className="flex items-center gap-2" title="Scope the whole app to one or more companies">
+            <Briefcase size={17} className="shrink-0 text-[#FF5F03]" />
+            {/* Multi-select: one branch can serve several companies, and antd
+                renders the dropdown options with checkboxes. */}
+            <Select
+              mode="multiple"
+              allowClear
+              aria-label="Active companies"
+              value={activeCompanyIds}
+              onChange={setActiveCompanies}
+              placeholder="All Companies"
+              maxTagCount={2}
+              maxTagPlaceholder={(omitted) => `+${omitted.length} more`}
+              optionFilterProp="label"
+              popupMatchSelectWidth={430}
+              style={{ minWidth: 260, maxWidth: 380 }}
+              options={companies.map((company) => {
+                // A company with no linked branch would scope every screen to
+                // nothing, so it is disabled — and says why instead of just dimming.
+                const branchCount = branchCountFor(company._id);
+                return {
+                  value: company._id,
+                  label: branchCount === 0
+                    ? `${companyLabel(company)} — no branches linked`
+                    : companyLabel(company),
+                  disabled: branchCount === 0,
+                };
+              })}
+            />
+          </div>
+        )}
+
         {branches.length > 0 ? (
-          <label className="flex items-center gap-2 text-sm text-gray-600 max-w-xs w-full">
+          <label className="flex items-center gap-2 text-sm text-gray-600 max-w-xs" title={isAllBranches ? 'Showing data from every branch. New records are saved to your default branch.' : 'Active branch'}>
             <Building2 size={17} className="shrink-0 text-[#FF5F03]" />
             <select
               aria-label="Active branch"
-              value={activeBranchId}
+              value={activeBranchId || ''}
               onChange={(event) => setActiveBranch(event.target.value)}
               className={`w-full rounded-lg border px-3 py-2 text-sm font-medium outline-none focus:border-[#FF5F03] ${
                 isAllBranches
                   ? 'border-[#FF5F03] bg-orange-50 text-[#B84300]'
                   : 'border-gray-200 bg-gray-50 text-gray-800'
               }`}
-              title={isAllBranches ? 'Showing data from every branch you can access. Pick a branch to make changes.' : 'Active branch'}
             >
               {canViewAllBranches && (
                 <option value="all">All Branches</option>
@@ -79,7 +127,11 @@ const Header = ({ onMenuToggle }) => {
             </select>
           </label>
         ) : (
-          <span className="text-xs text-amber-700">Create or assign a business branch</span>
+          <span className="text-xs text-amber-700">
+            {activeCompanyIds.length === 0
+              ? 'Create or assign a business branch'
+              : 'No branches linked to the selected companies'}
+          </span>
         )}
       </div>
 

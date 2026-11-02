@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select,
-  Space, Statistic, Table, Tag, message,
+  Space, Statistic, Table, Tag, Tooltip, message,
 } from 'antd';
 import {
   BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined,
@@ -10,6 +10,7 @@ import {
 import RecordDetailModal from '../../components/RecordDetailModal.jsx';
 import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
 
 const STATES = [
   ['29', 'Karnataka'], ['27', 'Maharashtra'], ['24', 'Gujarat'], ['33', 'Tamil Nadu'],
@@ -19,6 +20,7 @@ const STATES = [
 
 const initialValues = {
   status: 'active',
+  companies: [],
   fiscalYearStartMonth: 4,
   timezone: 'Asia/Kolkata',
   reorderFallbackLevel: 10,
@@ -38,6 +40,31 @@ const BranchPage = () => {
   const [viewRecord, setViewRecord] = useState(null);
   const [open, setOpen] = useState(false);
   const [pagination, setPagination] = useState({ current: 1, pageSize: 20, total: 0 });
+  const [companyOptions, setCompanyOptions] = useState([]);
+
+  // Companies that can be linked to a branch. Loaded once — the list is short and
+  // a branch form should not refetch it every time it opens. Inactive companies are
+  // included so an existing link never shows up as a bare id.
+  useEffect(() => {
+    let cancelled = false;
+    masterService.getCompanies({ limit: 200 })
+      .then((response) => {
+        if (cancelled) return;
+        setCompanyOptions((response.data || []).map((company) => ({
+          value: company._id,
+          // The tag shows the legal name; the dropdown renders both names plus the
+          // GSTIN, because one legal entity can hold several registrations.
+          label: `${company.legalName} (${company.gstin})`,
+          searchText: `${company.legalName} ${company.tradeName || ''} ${company.gstin}`,
+          legalName: company.legalName,
+          tradeName: company.tradeName,
+          gstin: company.gstin,
+          inactive: company.status === 'inactive',
+        })));
+      })
+      .catch(() => { if (!cancelled) setCompanyOptions([]); });
+    return () => { cancelled = true; };
+  }, []);
 
   const load = useCallback(async (page = 1, pageSize = 20) => {
     setLoading(true);
@@ -74,6 +101,8 @@ const BranchPage = () => {
       form.setFieldsValue({
         ...initialValues,
         ...branch,
+        // The API returns populated company documents; the multi-select needs ids.
+        companies: (branch.companies || []).map((company) => company?._id || company).filter(Boolean),
         fiscalYearStartMonth: branch.settings?.fiscalYearStartMonth || 4,
         timezone: branch.settings?.timezone || 'Asia/Kolkata',
         invoiceTerms: branch.settings?.invoiceTerms || '',
@@ -149,6 +178,19 @@ const BranchPage = () => {
     { title: 'Legal Name', dataIndex: 'legalName', render: (value) => value || '—' },
     { title: 'Location', render: (_, record) => [record.city, record.state].filter(Boolean).join(', ') || '—' },
     { title: 'GSTIN', dataIndex: 'gstin', render: (value) => value || '—' },
+    {
+      title: 'Companies',
+      width: 110,
+      render: (_, record) => {
+        const list = record.companies || [];
+        if (!list.length) return <span className="text-gray-400">—</span>;
+        return (
+          <Tooltip title={list.map((company) => company?.legalName).filter(Boolean).join(', ')}>
+            <Tag color="blue">{list.length}</Tag>
+          </Tooltip>
+        );
+      },
+    },
     {
       title: 'Status', dataIndex: 'status', width: 100,
       render: (value) => <Tag color={value === 'active' ? 'green' : 'default'}>{value?.toUpperCase()}</Tag>,
@@ -228,6 +270,21 @@ const BranchPage = () => {
             ],
           },
           {
+            title: 'Companies',
+            fields: [
+              {
+                label: 'Linked companies',
+                span: 3,
+                type: 'list',
+                value: (viewRecord.companies || [])
+                  .map((company) => (company?.tradeName
+                    ? `${company.legalName} (${company.tradeName})`
+                    : company?.legalName))
+                  .filter(Boolean),
+              },
+            ],
+          },
+          {
             title: 'Address & Contact',
             fields: [
               { label: 'Address', value: viewRecord.address, span: 3 },
@@ -262,9 +319,44 @@ const BranchPage = () => {
             <Col span={8}><Form.Item name="status" label="Status"><Select options={[{ value: 'active', label: 'Active' }, { value: 'inactive', label: 'Inactive' }]} /></Form.Item></Col>
           </Row>
           <Row gutter={16}>
-            <Col span={12}><Form.Item name="gstin" label="GSTIN"><Input maxLength={15} /></Form.Item></Col>
+            <Col span={12}>
+              <Form.Item
+                name="gstin"
+                label="GSTIN"
+                normalize={normalizeGstinInput}
+                rules={[gstinFormRule()]}
+              >
+                <Input placeholder="e.g. 29ABCDE1234F1Z5" maxLength={15} className="font-mono uppercase" />
+              </Form.Item>
+            </Col>
             <Col span={12}><Form.Item name="pan" label="PAN"><Input maxLength={10} /></Form.Item></Col>
           </Row>
+          <Form.Item
+            name="companies"
+            label="Companies"
+            tooltip="Companies registered under this branch. More than one can trade from the same branch."
+            extra="Pick every company that bills or trades from this branch."
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              showSearch
+              optionFilterProp="searchText"
+              placeholder="Select companies"
+              maxTagCount="responsive"
+              options={companyOptions}
+              optionRender={(option) => (
+                <div className="leading-tight">
+                  <div className="text-sm text-gray-800">{option.data.legalName}</div>
+                  <div className="text-xs text-gray-500">
+                    {option.data.tradeName ? `Trade name: ${option.data.tradeName} · ` : ''}
+                    {option.data.gstin}
+                    {option.data.inactive ? ' · inactive' : ''}
+                  </div>
+                </div>
+              )}
+            />
+          </Form.Item>
           <Form.Item name="address" label="Address"><Input.TextArea rows={2} /></Form.Item>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="city" label="City"><Input /></Form.Item></Col>

@@ -36,6 +36,7 @@ import RoutePage from './pages/masters/RoutePage.jsx';
 import SupplierMaster from './pages/masters/SupplierMaster.jsx';
 import WarehousePage from './pages/masters/WarehousePage.jsx';
 import BranchPage from './pages/masters/BranchPage.jsx';
+import CompanyPage from './pages/masters/CompanyPage.jsx';
 import ExpenseCategoryPage from './pages/masters/ExpenseCategoryPage.jsx';
 import SalesOrderDashboard from './pages/sales/SalesOrderDashboard.jsx';
 import SalesReturnPage from './pages/sales/SalesReturnPage.jsx';
@@ -372,6 +373,14 @@ const App = () => {
           element={
             <ProtectedRoute requiredPermission="route.master">
               <RoutePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/masters/companies"
+          element={
+            <ProtectedRoute requiredPermission="company.master">
+              <CompanyPage />
             </ProtectedRoute>
           }
         />

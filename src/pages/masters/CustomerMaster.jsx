@@ -4,6 +4,7 @@ import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, ReloadOutli
 import api from '../../config/api.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
+import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -374,8 +375,13 @@ const CustomerMaster = () => {
           {isNonRetail && (
             <Row gutter={16}>
               <Col span={12}>
-                <Form.Item name="gstin" label="GSTIN">
-                  <Input />
+                <Form.Item
+                  name="gstin"
+                  label="GSTIN"
+                  normalize={normalizeGstinInput}
+                  rules={[gstinFormRule()]}
+                >
+                  <Input placeholder="e.g. 29ABCDE1234F1Z5" maxLength={15} className="font-mono uppercase" />
                 </Form.Item>
               </Col>
               <Col span={12}>
