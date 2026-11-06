@@ -40,6 +40,15 @@ const productService = {
   // Bulk min stock / reorder level update — up to 500 rows at once
   // `updates` is [{ productId, minStockLevel?, reorderLevel? }]
   bulkMinStockUpdate: (updates) => api.patch('/products/bulk-min-stock', { updates }),
+
+  /**
+   * Bulk import products from a CSV file + optional image files.
+   * `formData` must be a FormData with:
+   *   - field "csv"    → one .csv file (product template)
+   *   - field "images" → zero or more image files
+   * Returns { success, created, skipped, errors, data }
+   */
+  bulkImport: (formData) => api.post('/products/bulk-import', formData),
 };
 
 export default productService;

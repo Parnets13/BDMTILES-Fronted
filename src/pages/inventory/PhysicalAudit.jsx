@@ -23,7 +23,7 @@ export default function PhysicalAudit() {
   const { hasPermission } = useAuth();
   const [rows, setRows] = useState([]); const [stats, setStats] = useState({}); const [warehouses, setWarehouses] = useState([]);
   const [filters, setFilters] = useState({ search: '', status: undefined, warehouse: undefined, page: 1, limit: 20 });
-  const [pagination, setPagination] = useState({}); const [loading, setLoading] = useState(false); const [actionLoading, setActionLoading] = useState(false);
+  const [pagination, setPagination] = useState({ currentPage: 1, totalItems: 0, itemsPerPage: 20 }); const [loading, setLoading] = useState(false); const [actionLoading, setActionLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false); const [createForm, setCreateForm] = useState({ warehouse: undefined, scope: 'full_warehouse', stockIds: [], remarks: '' });
   const [scopeStock, setScopeStock] = useState([]); const [scopeLoading, setScopeLoading] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false); const [mode, setMode] = useState('view'); const [document, setDocument] = useState(null);
@@ -37,7 +37,7 @@ export default function PhysicalAudit() {
     setLoading(true);
     try {
       const [list, summary] = await Promise.all([purchaseService.getPhysicalAudits(filters), purchaseService.getPhysicalAuditStats({ warehouse: filters.warehouse })]);
-      setRows(list.data || []); setPagination(list.pagination || {}); setStats(summary.data?.byStatus || {});
+      setRows(list.data || []); setPagination({ currentPage: Math.max(1, list.pagination?.currentPage || 1), totalItems: list.pagination?.totalItems || 0, itemsPerPage: list.pagination?.itemsPerPage || 20 }); setStats(summary.data?.byStatus || {});
     } catch (error) { message.error(error.message || 'Unable to load physical audits.'); }
     finally { setLoading(false); }
   }, [filters]);

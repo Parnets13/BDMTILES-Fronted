@@ -64,7 +64,7 @@ export default function StockAdjustmentPage() {
     setLoading(true);
     try {
       const [list, summary] = await Promise.all([purchaseService.getStockAdjustments(filters), purchaseService.getStockAdjustmentStats()]);
-      setRows(list.data || []); setPagination(list.pagination || {}); setStats(summary.data?.byStatus || {});
+      setRows(list.data || []); setPagination({ currentPage: Math.max(1, list.pagination?.currentPage || 1), totalItems: list.pagination?.totalItems || 0, itemsPerPage: list.pagination?.itemsPerPage || 20 }); setStats(summary.data?.byStatus || {});
     } catch (error) { message.error(error.message || 'Unable to load stock adjustments.'); }
     finally { setLoading(false); }
   }, [filters]);

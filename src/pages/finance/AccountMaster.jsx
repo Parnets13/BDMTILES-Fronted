@@ -39,7 +39,7 @@ const AccountMaster = () => {
       const res = await api.get('/vouchers/accounts/list', { params: { page, limit: pageSize, search, group: groupFilter } });
       if (res.success) {
         setAccounts(res.data || []);
-        if (res.pagination) setPagination(p => ({ ...p, current: res.pagination.currentPage, total: res.pagination.totalItems, pageSize }));
+        if (res.pagination) setPagination(p => ({ ...p, current: Math.max(1, res.pagination.currentPage || 1), total: res.pagination.totalItems || 0, pageSize }));
       }
     } catch {
       setAccounts([]);

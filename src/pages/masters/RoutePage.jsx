@@ -60,7 +60,7 @@ const RoutePage = () => {
       });
       if (res.success) {
         setRoutes(res.data || []);
-        if (res.pagination) setPagination(p => ({ ...p, current: res.pagination.currentPage, total: res.pagination.totalItems, pageSize }));
+        if (res.pagination) setPagination(p => ({ ...p, current: Math.max(1, res.pagination.currentPage || 1), total: res.pagination.totalItems || 0, pageSize }));
       }
     } catch { setRoutes([]); }
     finally { setLoading(false); }

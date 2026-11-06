@@ -62,7 +62,7 @@ const WarehousePage = () => {
       });
       if (res.success) {
         setWarehouses(res.data || []);
-        if (res.pagination) setPagination(p => ({ ...p, current: res.pagination.currentPage, total: res.pagination.totalItems, pageSize }));
+        if (res.pagination) setPagination(p => ({ ...p, current: Math.max(1, res.pagination.currentPage || 1), total: res.pagination.totalItems || 0, pageSize }));
         // Compute stats from full response if possible
         const data = res.data || [];
         setStats({

@@ -39,6 +39,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
   const [selectedDealer, setSelectedDealer] = useState(null);
   const [dealerLoading, setDealerLoading] = useState(false);
   const [customer, setCustomer] = useState({ name: '', phone: '', address: '' });
+  const [aliasName, setAliasName] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [summary, setSummary] = useState({});
@@ -267,6 +268,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     else { setScope('dealer'); setDealerType(value); }
     setSelectedDealer(null);
     setDealerSearch('');
+    setAliasName('');
     setCustomer({ name: '', phone: '', address: '' });
   };
 
@@ -342,6 +344,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     setDealerType(dealerTypes[0]?._id);
     setSelectedDealer(null);
     setDealerSearch('');
+    setAliasName('');
     setCustomer({ name: '', phone: '', address: '' });
     setBrowserOpen(false);
     setItems([]);
@@ -361,6 +364,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     if (validUntil.startOf('day').isBefore(quotationDate.startOf('day'))) { message.error('Valid until cannot be before quotation date'); return; }
     if (scope === 'dealer' && !selectedDealer) { message.error('Select a registered dealer'); return; }
     if (scope === 'walk_in' && !customer.name.trim()) { message.error('Enter the walk-in customer name'); return; }
+    if (!aliasName.trim()) { message.error('Alias name is required'); return; }
     if (!items.length) { message.error('Add at least one product'); return; }
     setSubmitting(true);
     try {
@@ -372,6 +376,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
         customerName: customer.name || undefined,
         customerPhone: customer.phone || undefined,
         customerAddress: customer.address || undefined,
+        aliasName: aliasName.trim() || undefined,
         quotationDate: form.quotationDate,
         validUntil: form.validUntil,
         freightCharges: Number(form.freightCharges || 0),
@@ -487,173 +492,237 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
         open={open}
         onCancel={handleClose}
         width={1280}
-        style={{ top: 20 }}
-        styles={{ body: { maxHeight: 'calc(100vh - 170px)', overflowY: 'auto' } }}
+        style={{ top: 12 }}
+        styles={{ body: { padding: 0, height: 'calc(100vh - 120px)', overflow: 'hidden', display: 'flex', flexDirection: 'column' } }}
         destroyOnHidden
-        footer={[
-          <Button key="cancel" onClick={handleClose}>Cancel</Button>,
-          <Button key="create" type="primary" icon={<PlusOutlined />} onClick={handleSubmit} loading={submitting} disabled={prefillLoading || Boolean(prefillError) || Boolean(alreadyLinkedQuotation)}>Create Quotation</Button>,
-        ]}
+        footer={null}
       >
-        <div className="mt-4 space-y-4">
-          {prefillLoading ? <Alert type="info" showIcon message="Loading approved dealer order request…" /> : null}
-          {prefillError ? <Alert type="error" showIcon message="Could not prepare quotation" description={prefillError} /> : null}
-          {alreadyLinkedQuotation ? <Alert type="success" showIcon message={`Quotation ${alreadyLinkedQuotation.quotationNumber || ''} already exists`} description={`This request was already linked successfully. Current quotation status: ${alreadyLinkedQuotation.status || 'created'}. Close this window to view it in the quotation list.`} /> : null}
-          {requestMode && !prefillError && !alreadyLinkedQuotation ? <Alert type="success" showIcon message={`Approved request ${sourceRequestNumber || ''}`} description="Dealer, products and quantities are locked. Rates, discounts, GST and totals are recalculated from current server rules." /> : null}
-          <Alert
-            type="info"
-            showIcon
-            icon={<SafetyCertificateOutlined />}
-            message="Pricing is controlled by the selected customer"
-            description="Rates, discounts, GST and minimum-price checks are resolved by the server and recalculated when the quotation is saved."
-          />
+        {/* Two-column: scrollable left + sticky right */}
+        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
 
-          <Card size="small" title="Customer & pricing audience">
-            <div className="mb-4">
-              <div className="mb-1.5 text-xs text-gray-500">Customer type</div>
-              <div className="flex flex-wrap gap-2">
-                {dealerTypes.map((type) => (
-                  <Button key={type._id} disabled={requestMode} type={scope === 'dealer' && dealerType === type._id ? 'primary' : 'default'} onClick={() => changeTarget(type._id)}>
-                    {type.name}<span className="ml-1 text-[10px] opacity-60">{type.pricingTier}</span>
-                  </Button>
+          {/* ── LEFT — scrollable ── */}
+          <div style={{ flex: 1, overflowY: 'auto', padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Alerts */}
+            {prefillLoading && <Alert type="info" showIcon message="Loading approved dealer order request…" />}
+            {prefillError && <Alert type="error" showIcon message="Could not prepare quotation" description={prefillError} />}
+            {alreadyLinkedQuotation && <Alert type="success" showIcon message={`Quotation ${alreadyLinkedQuotation.quotationNumber || ''} already exists`} description={`This request was already linked. Status: ${alreadyLinkedQuotation.status || 'created'}. Close to view it.`} />}
+            {requestMode && !prefillError && !alreadyLinkedQuotation && <Alert type="success" showIcon message={`Approved request ${sourceRequestNumber || ''}`} description="Dealer, products and quantities are locked. Rates are recalculated from current server rules." />}
+
+            {/* Customer & pricing audience */}
+            <Card size="small" title="Customer & pricing audience">
+              <div className="mb-3">
+                <div className="mb-1.5 text-xs text-gray-500">Customer type</div>
+                <div className="flex flex-wrap gap-2">
+                  {dealerTypes.map((type) => (
+                    <Button key={type._id} disabled={requestMode}
+                      type={scope === 'dealer' && dealerType === type._id ? 'primary' : 'default'}
+                      onClick={() => changeTarget(type._id)}
+                      className="flex flex-col items-center"
+                      style={{ height: 'auto', padding: '4px 14px', lineHeight: 1.3 }}>
+                      <span className="text-sm font-medium leading-tight">{type.name}</span>
+                      <span className="text-[10px] opacity-50 leading-tight">{type.pricingTier}</span>
+                    </Button>
+                  ))}
+                  <Button disabled={requestMode} type={scope === 'walk_in' ? 'primary' : 'default'} onClick={() => changeTarget('walk_in')}>Walk-in Retail</Button>
+                </div>
+              </div>
+              {scope === 'dealer' ? (
+                <>
+                  <Row gutter={[12, 8]} align="middle">
+                    <Col xs={24} lg={12}>
+                      <label htmlFor="quotation-customer" className="mb-1 block text-xs text-gray-500">Registered customer</label>
+                      <Select id="quotation-customer" aria-label="Registered customer"
+                        showSearch filterOption={false} onSearch={setDealerSearch} loading={dealerLoading}
+                        disabled={requestMode} value={selectedDealer?._id} onChange={selectDealer} className="w-full"
+                        placeholder={`Search registered ${selectedType?.name || 'dealer'}`}
+                        options={dealers.map((d) => ({ value: d._id, label: `${d.businessName} (${d.dealerCode || 'No code'})` }))}
+                      />
+                    </Col>
+                    <Col xs={24} lg={12}>
+                      {selectedDealer ? (
+                        <div className="rounded-lg border border-green-100 bg-green-50 px-3 py-2">
+                          <div className="text-sm font-semibold text-gray-800">{selectedDealer.businessName}</div>
+                          <div className="text-xs text-gray-500">{selectedDealer.dealerCode || 'No code'} · {selectedDealer.dealerType?.name || selectedType?.name} · {selectedDealer.dealerType?.pricingTier || selectedType?.pricingTier}</div>
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">Select a registered customer to enable product browsing.</div>
+                      )}
+                    </Col>
+                  </Row>
+
+                  {/* Alias Name — mandatory */}
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                    <label htmlFor="quotation-alias" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                      Alias Name
+                      <span className="text-red-500">*</span>
+                      <span className="font-normal text-gray-400 text-[10px]">shown on the quotation document</span>
+                    </label>
+                    <Input
+                      id="quotation-alias"
+                      value={aliasName}
+                      onChange={(e) => setAliasName(e.target.value)}
+                      placeholder="e.g. site name, project ref or short customer label…"
+                      size="middle"
+                      status={aliasName.trim() ? '' : 'error'}
+                      suffix={
+                        aliasName.trim()
+                          ? <span className="text-[11px] text-green-600 font-medium">✓ set</span>
+                          : <span className="text-[11px] text-red-400 font-medium">required</span>
+                      }
+                    />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Row gutter={[12, 8]}>
+                    <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Customer name *</label><Input value={customer.name} onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))} placeholder="Enter customer name" /></Col>
+                    <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Phone</label><Input value={customer.phone} onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))} placeholder="Optional" /></Col>
+                    <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Address</label><Input value={customer.address} onChange={(e) => setCustomer((c) => ({ ...c, address: e.target.value }))} placeholder="Optional" /></Col>
+                  </Row>
+
+                  {/* Alias Name — mandatory, same as dealer scope */}
+                  <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                    <label htmlFor="quotation-alias-walkin" className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-gray-700">
+                      Alias Name
+                      <span className="text-red-500">*</span>
+                      <span className="font-normal text-gray-400 text-[10px]">shown on the quotation document</span>
+                    </label>
+                    <Input
+                      id="quotation-alias-walkin"
+                      value={aliasName}
+                      onChange={(e) => setAliasName(e.target.value)}
+                      placeholder="e.g. site name, project ref or short customer label…"
+                      status={aliasName.trim() ? '' : 'error'}
+                      suffix={
+                        aliasName.trim()
+                          ? <span className="text-[11px] text-green-600 font-medium">✓ set</span>
+                          : <span className="text-[11px] text-red-400 font-medium">required</span>
+                      }
+                    />
+                  </div>
+                </>
+              )}
+            </Card>
+
+            {/* Quotation items */}
+            <Card size="small" styles={{ body: { padding: 0 } }} title="Quotation items" extra={(
+              <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady || requestMode} onClick={() => setBrowserOpen(true)}>
+                {requestMode ? `Approved Products (${items.length})` : `Browse Products${items.length ? ` (${items.length})` : ''}`}
+              </Button>
+            )}>
+              <div className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
+                {targetReady ? pricingLabel : 'Select the customer and pricing audience before adding products.'}
+              </div>
+              <Table rowKey="key" columns={columns} dataSource={items} pagination={false} loading={pricing}
+                size="small" scroll={{ x: 1160 }}
+                locale={{ emptyText: targetReady ? 'No items added. Use Browse Products to select from live branch inventory.' : 'Complete the customer section first.' }}
+              />
+            </Card>
+
+            {/* Quotation details */}
+            <Card size="small" title="Quotation details">
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label htmlFor="quotation-date" className="mb-1 block text-xs text-gray-500">Quotation date</label>
+                  <DatePicker id="quotation-date"
+                    value={form.quotationDate && dayjs(form.quotationDate).isValid() ? dayjs(form.quotationDate) : null}
+                    format="DD MMM YYYY" allowClear={false} className="w-full"
+                    onChange={(v) => { if (!v) return; const d = v.format('YYYY-MM-DD'); setForm((c) => ({ ...c, quotationDate: d, validUntil: dayjs(c.validUntil).isBefore(v, 'day') ? d : c.validUntil })); }}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="quotation-valid-until" className="mb-1 block text-xs text-gray-500">Valid until <span className="font-normal text-gray-400">(inclusive)</span></label>
+                  <DatePicker id="quotation-valid-until"
+                    value={form.validUntil && dayjs(form.validUntil).isValid() ? dayjs(form.validUntil) : null}
+                    format="DD MMM YYYY" allowClear={false} className="w-full"
+                    presets={validityPresets()}
+                    disabledDate={(d) => d.startOf('day').isBefore(dayjs(form.quotationDate).startOf('day'))}
+                    onChange={(v) => v && setForm((c) => ({ ...c, validUntil: v.format('YYYY-MM-DD') }))}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-4 gap-2 mb-3">
+                {[
+                  { id: 'q-freight', label: 'Freight', key: 'freightCharges' },
+                  { id: 'q-loading', label: 'Loading', key: 'loadingCharges' },
+                  { id: 'q-install', label: 'Installation', key: 'installationCharges' },
+                  { id: 'q-other',   label: 'Other', key: 'otherCharges' },
+                ].map(({ id, label, key }) => (
+                  <div key={key}>
+                    <label htmlFor={id} className="mb-1 block text-xs text-gray-500">{label}</label>
+                    <InputNumber id={id} min={0} prefix="₹" size="small" className="w-full"
+                      value={form[key]} onChange={(v) => setForm((c) => ({ ...c, [key]: v || 0 }))} />
+                  </div>
                 ))}
-                <Button disabled={requestMode} type={scope === 'walk_in' ? 'primary' : 'default'} onClick={() => changeTarget('walk_in')}>Walk-in Retail</Button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="q-remarks" className="mb-1 block text-xs text-gray-500">Remarks</label>
+                  <Input.TextArea id="q-remarks" rows={2} value={form.remarks}
+                    onChange={(e) => setForm((c) => ({ ...c, remarks: e.target.value }))}
+                    placeholder="Internal or customer remarks" />
+                </div>
+                <div>
+                  <label htmlFor="q-terms" className="mb-1 block text-xs text-gray-500">Terms & conditions</label>
+                  <Input.TextArea id="q-terms" rows={2} value={form.termsAndConditions}
+                    onChange={(e) => setForm((c) => ({ ...c, termsAndConditions: e.target.value }))}
+                    placeholder="Terms and conditions" />
+                </div>
+              </div>
+            </Card>
+
+            <Alert type="warning" showIcon
+              message="Stock shown during selection is a branch-wide snapshot. A quotation does not reserve a warehouse, shade or batch." />
+
+          </div>{/* end LEFT */}
+
+          {/* ── RIGHT — sticky summary + actions ── */}
+          <div style={{ width: 220, flexShrink: 0, borderLeft: '1px solid #f0f0f0', background: '#fff7ed', display: 'flex', flexDirection: 'column', padding: '16px 16px' }}>
+
+            <div style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>Summary</div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+                <span>Subtotal</span><span style={{ fontWeight: 600, color: '#111' }}>{money(summary.subtotal ?? summary.taxableAmount)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+                <span>Discount</span><span style={{ fontWeight: 600, color: '#111' }}>{money(summary.discountAmount ?? summary.totalDiscount)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+                <span>Tax (GST)</span><span style={{ fontWeight: 600, color: '#111' }}>{money(summary.taxAmount ?? summary.totalTax)}</span>
+              </div>
+              {(Number(form.freightCharges) + Number(form.loadingCharges) + Number(form.installationCharges) + Number(form.otherCharges)) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#9ca3af', fontSize: 11 }}>
+                  <span>Extra charges</span>
+                  <span>{money(Number(form.freightCharges) + Number(form.loadingCharges) + Number(form.installationCharges) + Number(form.otherCharges))}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #fed7aa', paddingTop: 12 }}>
+                <span style={{ fontWeight: 700, color: '#111', fontSize: 13 }}>Grand total</span>
+                <strong style={{ color: '#FF5F03', fontSize: 22, fontWeight: 800 }}>{money(total)}</strong>
               </div>
             </div>
 
-            {scope === 'dealer' ? (
-              <Row gutter={[12, 12]} align="middle">
-                <Col xs={24} lg={12}>
-                  <label htmlFor="quotation-customer" className="mb-1 block text-xs text-gray-500">Registered customer</label>
-                  <Select
-                    id="quotation-customer" aria-label="Registered customer"
-                    showSearch filterOption={false} onSearch={setDealerSearch} loading={dealerLoading}
-                    disabled={requestMode}
-                    value={selectedDealer?._id} onChange={selectDealer} className="w-full"
-                    placeholder={`Search registered ${selectedType?.name || 'dealer'}`}
-                    options={dealers.map((dealer) => ({ value: dealer._id, label: `${dealer.businessName} (${dealer.dealerCode || 'No code'})` }))}
-                  />
-                </Col>
-                <Col xs={24} lg={12}>
-                  {selectedDealer ? (
-                    <div className="rounded-lg border border-green-100 bg-green-50 px-3 py-2.5">
-                      <div className="text-sm font-semibold text-gray-800">{selectedDealer.businessName}</div>
-                      <div className="mt-0.5 text-xs text-gray-500">
-                        {selectedDealer.dealerCode || 'No customer code'} · {selectedDealer.dealerType?.name || selectedType?.name || 'Dealer type'} · {selectedDealer.dealerType?.pricingTier || selectedType?.pricingTier || 'Configured tier'}
-                      </div>
-                    </div>
-                  ) : <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-xs text-gray-500">Select a registered customer to enable product browsing.</div>}
-                </Col>
-              </Row>
-            ) : (
-              <Row gutter={[12, 12]}>
-                <Col xs={24} md={8}><label htmlFor="walk-in-name" className="mb-1 block text-xs text-gray-500">Customer name *</label><Input id="walk-in-name" value={customer.name} onChange={(event) => setCustomer((current) => ({ ...current, name: event.target.value }))} placeholder="Enter customer name" /></Col>
-                <Col xs={24} md={8}><label htmlFor="walk-in-phone" className="mb-1 block text-xs text-gray-500">Phone</label><Input id="walk-in-phone" value={customer.phone} onChange={(event) => setCustomer((current) => ({ ...current, phone: event.target.value }))} placeholder="Optional" /></Col>
-                <Col xs={24} md={8}><label htmlFor="walk-in-address" className="mb-1 block text-xs text-gray-500">Address</label><Input id="walk-in-address" value={customer.address} onChange={(event) => setCustomer((current) => ({ ...current, address: event.target.value }))} placeholder="Optional" /></Col>
-              </Row>
-            )}
-          </Card>
+            <p style={{ marginTop: 8, fontSize: 10, color: '#b0b7c3', lineHeight: 1.5 }}>
+              Recalculated from the server before creation.
+            </p>
 
-          <Card size="small" styles={{ body: { padding: 0 } }} title="Quotation items" extra={(
-            <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady || requestMode} onClick={() => setBrowserOpen(true)}>
-              {requestMode ? `Approved Products (${items.length})` : `Browse Products ${items.length ? `(${items.length})` : ''}`}
-            </Button>
-          )}>
-            <div className="border-b border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-              {targetReady ? pricingLabel : 'Select the customer and pricing audience before adding products.'}
+            <div style={{ flex: 1 }} />
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <Button type="primary" icon={<PlusOutlined />} size="large" block
+                onClick={handleSubmit} loading={submitting}
+                disabled={prefillLoading || Boolean(prefillError) || Boolean(alreadyLinkedQuotation)}
+                style={{ background: '#FF5F03', borderColor: '#FF5F03' }}>
+                Create Quotation
+              </Button>
+              <Button block onClick={handleClose}>Cancel</Button>
             </div>
-            <Table
-              rowKey="key" columns={columns} dataSource={items} pagination={false} loading={pricing}
-              size="small" scroll={{ x: 1160 }}
-              locale={{ emptyText: targetReady ? 'No items added. Use Browse Products to select from live branch inventory.' : 'Complete the customer section first.' }}
-            />
-          </Card>
 
-          <Alert
-            type="warning"
-            showIcon
-            message="Stock shown during selection is a branch-wide snapshot. A quotation does not reserve a warehouse, shade or batch."
-          />
+          </div>{/* end RIGHT */}
 
-          <Row gutter={[16, 16]}>
-            <Col xs={24} xl={17}>
-              <Card size="small" title="Quotation details" className="h-full">
-                <Row gutter={[12, 12]}>
-                  <Col xs={24} sm={12}>
-                    <label htmlFor="quotation-date" className="mb-1 block text-xs text-gray-500">Quotation date</label>
-                    <DatePicker
-                      id="quotation-date"
-                      value={form.quotationDate && dayjs(form.quotationDate).isValid() ? dayjs(form.quotationDate) : null}
-                      format="DD MMM YYYY"
-                      allowClear={false}
-                      className="w-full"
-                      onChange={(value) => {
-                        if (!value) return;
-                        const nextQuotationDate = value.format('YYYY-MM-DD');
-                        setForm((current) => ({
-                          ...current,
-                          quotationDate: nextQuotationDate,
-                          validUntil: dayjs(current.validUntil).isBefore(value, 'day') ? nextQuotationDate : current.validUntil,
-                        }));
-                      }}
-                    />
-                  </Col>
-                  <Col xs={24} sm={12}>
-                    <label htmlFor="quotation-valid-until" className="mb-1 block text-xs text-gray-500">Valid until (inclusive)</label>
-                    <DatePicker
-                      id="quotation-valid-until"
-                      value={form.validUntil && dayjs(form.validUntil).isValid() ? dayjs(form.validUntil) : null}
-                      format="DD MMM YYYY"
-                      allowClear={false}
-                      presets={validityPresets()}
-                      disabledDate={(date) => date.startOf('day').isBefore(dayjs(form.quotationDate).startOf('day'))}
-                      onChange={(value) => value && setForm((current) => ({ ...current, validUntil: value.format('YYYY-MM-DD') }))}
-                      className="w-full"
-                    />
-                    <div className="mt-1 text-[10px] text-gray-400">Valid through the end of the selected business date.</div>
-                  </Col>
-                  <Col xs={12} md={6}>
-                    <label htmlFor="quotation-freight" className="mb-1 block text-xs text-gray-500">Freight charges</label>
-                    <InputNumber id="quotation-freight" min={0} prefix="₹" value={form.freightCharges} onChange={(value) => setForm((current) => ({ ...current, freightCharges: value || 0 }))} className="w-full" />
-                  </Col>
-                  <Col xs={12} md={6}>
-                    <label htmlFor="quotation-loading" className="mb-1 block text-xs text-gray-500">Loading charges</label>
-                    <InputNumber id="quotation-loading" min={0} prefix="₹" value={form.loadingCharges} onChange={(value) => setForm((current) => ({ ...current, loadingCharges: value || 0 }))} className="w-full" />
-                  </Col>
-                  <Col xs={12} md={6}>
-                    <label htmlFor="quotation-installation" className="mb-1 block text-xs text-gray-500">Installation charges</label>
-                    <InputNumber id="quotation-installation" min={0} prefix="₹" value={form.installationCharges} onChange={(value) => setForm((current) => ({ ...current, installationCharges: value || 0 }))} className="w-full" />
-                  </Col>
-                  <Col xs={12} md={6}>
-                    <label htmlFor="quotation-other-charges" className="mb-1 block text-xs text-gray-500">Other charges</label>
-                    <InputNumber id="quotation-other-charges" min={0} prefix="₹" value={form.otherCharges} onChange={(value) => setForm((current) => ({ ...current, otherCharges: value || 0 }))} className="w-full" />
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <label htmlFor="quotation-remarks" className="mb-1 block text-xs text-gray-500">Remarks</label>
-                    <Input.TextArea id="quotation-remarks" rows={3} value={form.remarks} onChange={(event) => setForm((current) => ({ ...current, remarks: event.target.value }))} placeholder="Internal or customer remarks" />
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <label htmlFor="quotation-terms" className="mb-1 block text-xs text-gray-500">Terms & conditions</label>
-                    <Input.TextArea id="quotation-terms" rows={3} value={form.termsAndConditions} onChange={(event) => setForm((current) => ({ ...current, termsAndConditions: event.target.value }))} placeholder="Terms and conditions" />
-                  </Col>
-                </Row>
-              </Card>
-            </Col>
-            <Col xs={24} xl={7}>
-              <Card size="small" title="Quotation summary" className="h-full">
-                <div className="rounded-lg border border-orange-100 bg-orange-50 p-4">
-                  <div className="space-y-3 text-sm">
-                    <div className="flex justify-between text-gray-600"><span>Subtotal</span><span className="font-medium text-gray-800">{money(summary.subtotal ?? summary.taxableAmount)}</span></div>
-                    <div className="flex justify-between text-gray-600"><span>Discount</span><span className="font-medium text-gray-800">{money(summary.discountAmount ?? summary.totalDiscount)}</span></div>
-                    <div className="flex justify-between text-gray-600"><span>Tax</span><span className="font-medium text-gray-800">{money(summary.taxAmount ?? summary.totalTax)}</span></div>
-                    <div className="flex justify-between border-t border-orange-200 pt-3 text-base"><span className="font-semibold text-gray-800">Grand total</span><strong className="text-[#FF5F03]">{money(total)}</strong></div>
-                  </div>
-                </div>
-                <div className="mt-3 text-[11px] leading-5 text-gray-500">The final amount is recalculated from the server immediately before creation.</div>
-              </Card>
-            </Col>
-          </Row>
-        </div>
+        </div>{/* end two-column */}
       </Modal>
 
       <QuotationProductBrowser

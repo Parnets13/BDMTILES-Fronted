@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Table, Button, Input, Select, Tag, Space, message, Modal, Form } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Table, Button, Input, Select, Tag, Space, message, Modal, Form, Switch, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined, LockOutlined } from '@ant-design/icons';
 import masterService from '../../services/masterService.js';
 import DoubleConfirmDelete from '../../components/DoubleConfirmDelete.jsx';
 
@@ -110,21 +110,47 @@ const DealerTypePage = () => {
     } catch (err) { message.error(err.message); }
   };
 
+  const handleToggleStatus = async (record) => {
+    const next = record.status === 'active' ? 'inactive' : 'active';
+    try {
+      const res = await masterService.updateDealerType(record._id, { ...record, status: next });
+      if (res.success) {
+        message.success(`"${record.name}" set to ${next}`);
+        fetchTypes();
+      }
+    } catch (err) { message.error(err.message); }
+  };
+
   const columns = [
     { title: 'Type Name', dataIndex: 'name', width: 160,
-      render: v => <span className="text-sm font-semibold">{v}</span> },
-    { title: 'Pricing Tier', dataIndex: 'pricingTier', width: 140,
+      render: (v, r) => (
+        <Space size={6}>
+          <span className={`text-sm font-semibold ${r.status !== 'active' ? 'text-gray-400 line-through' : ''}`}>{v}</span>
+          {r.isDefault && <Tooltip title="System default — cannot be deleted"><Tag color="geekblue" className="text-[10px] px-1 py-0 leading-4"><LockOutlined /> Default</Tag></Tooltip>}
+        </Space>
+      )},
+    { title: 'Pricing Tier', dataIndex: 'pricingTier', width: 150,
       render: v => <Tag color="blue">{PRICING_TIERS.find(t => t.value === v)?.label || v || '—'}</Tag> },
     { title: 'Description', dataIndex: 'description', render: v => <span className="text-xs text-gray-500">{v || '—'}</span> },
-    { title: 'Status', dataIndex: 'status', width: 80,
-      render: v => <Tag color={v === 'active' ? 'green' : 'default'}>{v}</Tag> },
-    { title: 'Actions', width: 100,
+    { title: 'Status', dataIndex: 'status', width: 110,
+      render: (v, r) => (
+        <Switch
+          size="small"
+          checked={v === 'active'}
+          checkedChildren="Active"
+          unCheckedChildren="Inactive"
+          onChange={() => handleToggleStatus(r)}
+        />
+      )},
+    { title: 'Actions', width: 90,
       render: (_, r) => (
         <Space size="small">
           <Button type="text" size="small" icon={<EditOutlined />} onClick={() => handleEdit(r)} />
-          <DoubleConfirmDelete title="Delete Type" recordName={r.name}
-            onConfirm={() => handleDelete(r._id)}
-            trigger={<Button type="text" size="small" danger icon={<DeleteOutlined />} />} />
+          {!r.isDefault && (
+            <DoubleConfirmDelete title="Delete Type" recordName={r.name}
+              onConfirm={() => handleDelete(r._id)}
+              trigger={<Button type="text" size="small" danger icon={<DeleteOutlined />} />} />
+          )}
         </Space>
       )},
   ];

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Modal, Spin, Alert } from 'antd';
-import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, ShopOutlined } from '@ant-design/icons';
+import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, ShopOutlined, DownloadOutlined, UploadOutlined, FileTextOutlined, CheckCircleOutlined, CloseCircleOutlined, InboxOutlined } from '@ant-design/icons';
 import productService from '../../services/productService.js';
 import attributeService from '../../services/attributeService.js';
 import { categoriesFor, displayName } from '../../utils/taxonomy.js';
@@ -333,6 +333,291 @@ const ProductMaster = () => {
   }, [pagination.current, pagination.pageSize, search, filters]);
 
   useEffect(() => { fetchProducts(); }, [fetchProducts]);
+
+  // ── CSV Export ────────────────────────────────────────────────────────────
+  const [exporting, setExporting] = useState(false);
+
+  /**
+   * Export all products matching the current search/filters as a CSV.
+   *
+   * The CSV includes an "Image_Filename" column: this is the suggested filename the user
+   * should give to each product's primary image when uploading via the import flow.
+   * Format: <ProductCode>_image1.jpg, <ProductCode>_image2.jpg, ...
+   * If no images are attached yet, the column shows the placeholder so the user knows
+   * exactly what filename to use.
+   *
+   * Image names are shown as plain filenames (basename only) so the user can drop
+   * files matching those names into the import folder without any path confusion.
+   */
+  const handleExportCSV = async () => {
+    setExporting(true);
+    try {
+      // Fetch ALL matching products (no pagination) for a complete export.
+      const params = {
+        page: 1, limit: 10000, search,
+        ...Object.fromEntries(Object.entries(filters).filter(([_, v]) => v)),
+      };
+      const res = await productService.getProducts(params);
+      if (!res.success) { message.error('Could not load products for export.'); return; }
+
+      const rows = res.data;
+      if (!rows.length) { message.warning('No products to export.'); return; }
+
+      // CSV columns — ordered to match a typical product import template.
+      const headers = [
+        'Product_Code',
+        'Item_Name',
+        'Alias_Name',
+        'Brand',
+        'Category',
+        'Subcategory',
+        'HSN_Code',
+        'GST_%',
+        'Unit',
+        'Tile_Size',
+        'Finish',
+        'Colour',
+        'Design',
+        'Collection',
+        'Tile_Type',
+        'Application_Area',
+        'Grade',
+        'Surface',
+        'Thickness',
+        'Anti_Skid_Rating',
+        'Water_Absorption',
+        'Breaking_Strength',
+        'Pieces_Per_Box',
+        'Sqft_Per_Box',
+        'Weight_Per_Box',
+        'MRP',
+        'Purchase_Rate',
+        'Landing_Cost',
+        'Retail_Rate',
+        'Dealer_Rate',
+        'Wholesale_Rate',
+        'Distributor_Rate',
+        'Project_Rate',
+        'Builder_Rate',
+        'Min_Selling_Rate',
+        'Min_Stock_Level',
+        'Reorder_Level',
+        'Country_Of_Origin',
+        'Barcode',
+        'Status',
+        'Description',
+        // ── Image column ─────────────────────────────────────────────────
+        // All image filenames in ONE column, separated by " | "
+        // Example: img1.png | img2.png | img3.png
+        'Images',
+      ];
+
+      /** Escape a cell value for CSV: wrap in quotes, escape inner quotes. */
+      const cell = (v) => {
+        const s = v == null ? '' : String(v);
+        // Wrap in double quotes if the value contains comma, newline, or double-quote.
+        if (/[,"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+
+      /**
+       * Extract the basename of an image path.
+       * Stored paths look like "/uploads/products/TILE001_image1.jpg"
+       * or just "TILE001_image1.jpg". We always return the filename portion only.
+       */
+      const imageName = (p) => {
+        if (!p) return '';
+        return p.split('/').pop().split('\\').pop();
+      };
+
+      const csvLines = [headers.join(',')];
+
+      rows.forEach((p) => {
+        const code = p.productCode || '';
+        // All stored image basenames joined with " | ". If none, show a placeholder.
+        const imageNames = (p.images || []).map(imageName).filter(Boolean);
+        const imagesCell = imageNames.length
+          ? imageNames.join(' | ')
+          : (code ? `${code}_image1.jpg` : 'product_image1.jpg');
+
+        const rowValues = [
+          code,
+          p.itemName || '',
+          p.aliasName || '',
+          p.brand?.name || '',
+          p.category?.name || '',
+          p.subcategory?.name || '',
+          p.hsnCode || '',
+          p.gst ?? '',
+          p.unit || '',
+          p.tileSize || '',
+          p.finish || '',
+          p.colour || '',
+          p.design || '',
+          p.collection || '',
+          p.tileType || '',
+          p.applicationArea || '',
+          p.grade || '',
+          p.surface || '',
+          p.thickness || '',
+          p.antiSkidRating || '',
+          p.waterAbsorption || '',
+          p.breakingStrength || '',
+          p.piecesPerBox ?? '',
+          p.sqftPerBox ?? '',
+          p.weightPerBox ?? '',
+          p.mrp ?? '',
+          p.purchaseRate ?? '',
+          p.landingCost ?? '',
+          p.retailRate ?? '',
+          p.dealerRate ?? '',
+          p.wholesaleRate ?? '',
+          p.distributorRate ?? '',
+          p.projectRate ?? '',
+          p.builderRate ?? '',
+          p.minimumSellingRate ?? '',
+          p.minStockLevel ?? '',
+          p.reorderLevel ?? '',
+          p.countryOfOrigin || '',
+          p.barcode || '',
+          p.status || '',
+          p.description || '',
+          imagesCell,
+        ];
+
+        csvLines.push(rowValues.map(cell).join(','));
+      });
+
+      const csvContent = csvLines.join('\r\n');
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `product-master-${dateStr}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      message.success(`Exported ${rows.length} product${rows.length !== 1 ? 's' : ''} to CSV.`);
+    } catch (err) {
+      message.error(err.message || 'Export failed.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // ── Bulk Import ───────────────────────────────────────────────────────────
+  const [importOpen, setImportOpen] = useState(false);
+  const [importCsvFile, setImportCsvFile] = useState(null);    // File object for the CSV
+  const [importImageFiles, setImportImageFiles] = useState([]); // File objects for images
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);      // last import result summary
+
+  /**
+   * Download a blank CSV template — exactly the same columns as the Export CSV,
+   * but with two sample rows so the user understands the expected values.
+   */
+  const handleDownloadTemplate = () => {
+    const headers = [
+      'Product_Code','Item_Name','Alias_Name','Brand','Category','Subcategory',
+      'HSN_Code','GST_%','Unit',
+      'Tile_Size','Finish','Colour','Design','Collection','Tile_Type',
+      'Application_Area','Grade','Surface','Thickness',
+      'Anti_Skid_Rating','Water_Absorption','Breaking_Strength',
+      'Pieces_Per_Box','Sqft_Per_Box','Weight_Per_Box',
+      'MRP','Purchase_Rate','Landing_Cost','Retail_Rate','Dealer_Rate',
+      'Wholesale_Rate','Distributor_Rate','Project_Rate','Builder_Rate','Min_Selling_Rate',
+      'Min_Stock_Level','Reorder_Level','Country_Of_Origin','Barcode','Status','Description',
+      'Images',
+    ];
+
+    // Two sample rows — one tile, one plain product — to show what each column expects.
+    const samples = [
+      [
+        '','Ivory Glossy Floor Tile 600x600','',
+        'Kajaria','Tiles','Floor Tiles',
+        '6907','18','Box',
+        '600x600','Glossy','Ivory','','Classic Series','GVT',
+        'Floor','A','Polished','9mm',
+        'R10','<0.5%','2000N',
+        '4','2.583','22',
+        '750','480','510','650','580',
+        '520','490','560','530','460',
+        '100','80','India','','active','Premium glossy tile for living rooms',
+        'PROD001_image1.jpg | PROD001_image2.jpg | PROD001_image3.jpg',
+      ],
+      [
+        '','White Cement 50kg Bag','White Cement',
+        'Ultratech','Cement','',
+        '2523','18','Bag',
+        '','','White','','','',
+        '','','','',
+        '','','',
+        '1','','50',
+        '450','280','300','400','350',
+        '320','300','360','340','290',
+        '0','0','India','','active','50kg white cement bag',
+        'PROD002_image1.jpg',
+      ],
+    ];
+
+    const cell = (v) => {
+      const s = v == null ? '' : String(v);
+      if (/[,"\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    };
+
+    const lines = [
+      headers.join(','),
+      ...samples.map(r => r.map(cell).join(',')),
+    ];
+
+    const blob = new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'product-import-template.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    message.success('Template downloaded.');
+  };
+
+  /** Remove a staged image file by index */
+  const removeImportImage = (idx) => setImportImageFiles(prev => prev.filter((_, i) => i !== idx));
+
+  /** Run the import */
+  const handleImport = async () => {
+    if (!importCsvFile) { message.warning('Please select a CSV file first.'); return; }
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('csv', importCsvFile);
+      importImageFiles.forEach(f => fd.append('images', f));
+      const res = await productService.bulkImport(fd);
+      setImportResult(res);
+      if (res.success) {
+        if (res.created > 0) {
+          fetchProducts();
+          productService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+        }
+      }
+    } catch (err) {
+      setImportResult({ success: false, message: err.message || 'Import failed.' });
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const resetImportModal = () => {
+    setImportCsvFile(null);
+    setImportImageFiles([]);
+    setImportResult(null);
+  };
 
   // Preview state
   const [showPreview, setShowPreview] = useState(false);
@@ -754,6 +1039,12 @@ const ProductMaster = () => {
         </div>
         <Space>
           <ModuleRecycleBin module="product" title="Deleted Products" onRestore={fetchProducts} />
+          <Button
+            icon={<UploadOutlined />}
+            onClick={() => { resetImportModal(); setImportOpen(true); }}
+          >
+            Import Products
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large">
             Add New Product
           </Button>
@@ -822,6 +1113,152 @@ const ProductMaster = () => {
             showTotal: (t, r) => `${r[0]}-${r[1]} of ${t} products` }}
           onChange={(pag) => setPagination(prev => ({...prev, current: pag.current, pageSize: pag.pageSize}))} />
       </div>
+
+      {/* ── Bulk Import Modal ──────────────────────────────────────────────── */}
+      <Modal
+        open={importOpen}
+        onCancel={() => { if (!importing) { setImportOpen(false); resetImportModal(); } }}
+        title={<span className="text-base font-semibold">Import Products from CSV</span>}
+        width={680}
+        footer={null}
+        destroyOnClose
+      >
+        {/* Step 1 — Download template */}
+        <div className="mb-5 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <FileTextOutlined className="text-blue-500 text-xl mt-0.5" />
+            <div className="flex-1">
+              <div className="font-semibold text-blue-800 text-sm mb-1">Step 1 — Download the template</div>
+              <p className="text-xs text-blue-700 mb-3 leading-relaxed">
+                Download the CSV template, fill in your product details, and put all image filenames
+                in the <strong>Images</strong> column separated by <code> | </code><br />
+                Example: <code>img1.png | img2.png | img3.png</code>
+              </p>
+              <Button size="small" icon={<DownloadOutlined />} onClick={handleDownloadTemplate}>
+                Download Template (product-import-template.csv)
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Step 2 — Upload CSV */}
+        <div className="mb-4">
+          <div className="text-sm font-semibold text-gray-700 mb-2">Step 2 — Upload filled CSV file</div>
+          <label className={`flex flex-col items-center justify-center w-full h-28 border-2 border-dashed rounded-lg cursor-pointer transition-colors ${importCsvFile ? 'border-green-400 bg-green-50' : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'}`}>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) setImportCsvFile(f); e.target.value = ''; }}
+            />
+            {importCsvFile ? (
+              <div className="flex items-center gap-2 text-green-700">
+                <CheckCircleOutlined className="text-lg" />
+                <div>
+                  <div className="text-sm font-medium">{importCsvFile.name}</div>
+                  <div className="text-xs text-green-600">{(importCsvFile.size / 1024).toFixed(1)} KB — click to replace</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-center text-gray-500">
+                <InboxOutlined className="text-3xl mb-1 text-gray-400" />
+                <div className="text-sm">Click to select a CSV file</div>
+                <div className="text-xs text-gray-400">.csv, .xlsx, .xls</div>
+              </div>
+            )}
+          </label>
+        </div>
+
+        {/* Step 3 — Upload images */}
+        <div className="mb-5">
+          <div className="text-sm font-semibold text-gray-700 mb-1">Step 3 — Upload product images <span className="font-normal text-gray-400">(optional)</span></div>
+          <p className="text-xs text-gray-500 mb-2">
+            Select the image files whose names you entered in the <strong>Images</strong> column.
+            Filenames must match exactly (case-insensitive). Multiple images per product are separated by <code> | </code>.
+          </p>
+          <label className="flex items-center justify-center w-full h-20 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:border-blue-400 hover:bg-blue-50 transition-colors">
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => {
+                const newFiles = Array.from(e.target.files || []);
+                setImportImageFiles(prev => {
+                  const existing = new Set(prev.map(f => f.name));
+                  return [...prev, ...newFiles.filter(f => !existing.has(f.name))];
+                });
+                e.target.value = '';
+              }}
+            />
+            <div className="text-center text-gray-500">
+              <UploadOutlined className="text-xl mb-1 text-gray-400" />
+              <div className="text-sm">{importImageFiles.length > 0 ? 'Add more images' : 'Click to select images'}</div>
+            </div>
+          </label>
+
+          {importImageFiles.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2 max-h-36 overflow-y-auto p-1">
+              {importImageFiles.map((f, idx) => (
+                <div key={idx} className="flex items-center gap-1 bg-gray-100 rounded px-2 py-1 text-xs">
+                  <span className="truncate max-w-[140px] text-gray-700">{f.name}</span>
+                  <button type="button" onClick={() => removeImportImage(idx)} className="text-gray-400 hover:text-red-500 ml-1 leading-none">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Import result */}
+        {importResult && (
+          <div className="mb-4">
+            {importResult.success ? (
+              <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircleOutlined className="text-green-600" />
+                  <span className="font-semibold text-green-800 text-sm">{importResult.message}</span>
+                </div>
+                <div className="text-xs text-green-700">
+                  ✅ {importResult.created} product{importResult.created !== 1 ? 's' : ''} created
+                  {importResult.skipped > 0 && <span className="text-amber-700"> &nbsp;⚠️ {importResult.skipped} row{importResult.skipped !== 1 ? 's' : ''} skipped</span>}
+                </div>
+                {importResult.errors?.length > 0 && (
+                  <div className="mt-2 max-h-32 overflow-y-auto">
+                    {importResult.errors.map((e, i) => (
+                      <div key={i} className="text-xs text-red-600 flex gap-1">
+                        <span className="font-medium">Row {e.row}:</span>
+                        <span>{e.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2">
+                <CloseCircleOutlined className="text-red-500" />
+                <span className="text-sm text-red-700">{importResult.message}</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1 border-t border-gray-100">
+          <Button onClick={() => { setImportOpen(false); resetImportModal(); }} disabled={importing}>
+            {importResult?.success ? 'Close' : 'Cancel'}
+          </Button>
+          {!importResult?.success && (
+            <Button
+              type="primary"
+              icon={<UploadOutlined />}
+              loading={importing}
+              onClick={handleImport}
+              disabled={!importCsvFile}
+            >
+              {importing ? 'Importing…' : 'Import Products'}
+            </Button>
+          )}
+        </div>
+      </Modal>
 
       {/* View Product Modal */}
       <ViewProductModal product={viewProduct} onClose={() => setViewProduct(null)} />
