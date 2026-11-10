@@ -37,7 +37,7 @@ const CUSTOMER_TYPES = [
 
 const PRIORITY_COLORS = { low: 'default', medium: 'blue', high: 'orange', hot: 'red' };
 const STATUS_COLORS = {
-  new: 'default', assigned: 'cyan', accepted: 'blue', contacted: 'geekblue',
+  draft: 'default', new: 'default', assigned: 'cyan', accepted: 'blue', contacted: 'geekblue',
   qualified: 'purple', proposal_sent: 'orange', negotiation: 'gold',
   site_visit: 'lime', won: 'green', lost: 'red', on_hold: 'volcano',
 };
@@ -71,6 +71,8 @@ const LeadManagement = () => {
   const [overrideAvailability, setOverrideAvailability] = useState(false);
   const [overrideReason, setOverrideReason] = useState('');
   const [streamState, setStreamState] = useState('connecting');
+  // Track the last lead that was closed so we can surface a summary banner
+  const [lastClosed, setLastClosed] = useState(null);
 
   // Polling is only used when the authenticated fetch stream is unavailable.
   const pollingRef = useRef(null);
@@ -156,10 +158,16 @@ const LeadManagement = () => {
     } catch (err) { alertModal('Assign Failed', err.message, 'error'); }
   };
 
-  const handleStatusUpdate = async (id, status) => {
+  const handleStatusUpdate = async (id, status, extra = {}) => {
     try {
-      const res = await crmService.updateLeadStatus(id, { status });
-      if (res.success) { message.success(`Status → ${status}`); fetchLeads(); fetchStats(); }
+      const res = await crmService.updateLeadStatus(id, { status, ...extra });
+      if (res.success) {
+        message.success(`Status → ${status}`);
+        if (['won', 'lost', 'on_hold'].includes(status)) {
+          setLastClosed(res.data || { leadNumber: id, status, ...extra });
+        }
+        fetchLeads(); fetchStats();
+      }
     } catch (err) { message.error(err.message); }
   };
 
@@ -199,12 +207,30 @@ const LeadManagement = () => {
       </div>
     )},
     { title: 'Value', dataIndex: 'estimatedValue', width: 80, render: v => v ? <span className="text-xs font-medium">₹{v.toLocaleString()}</span> : '—' },
-    { title: 'Created', dataIndex: 'createdAt', width: 85, render: v => <span className="text-[10px]">{dayjs(v).format('DD/MM/YY')}</span> },
+    { title: 'Created', dataIndex: 'createdAt', width: 110, render: v => (
+      <div className="leading-tight">
+        <div className="text-[10px]">{dayjs(v).format('DD MMM YYYY')}</div>
+        <div className="text-[9px] text-gray-400">{dayjs(v).format('hh:mm A')}</div>
+      </div>
+    )},
     { title: 'Actions', width: 150, fixed: 'right', render: (_, r) => (
       <Space size="small">
         <Tooltip title="View"><Button type="text" size="small" icon={<EyeOutlined />} className="text-blue-500" onClick={() => loadLeadDetail(r._id)} /></Tooltip>
-        {canAssign && !['won', 'lost'].includes(r.status) && (
+        {canAssign && !['won', 'lost'].includes(r.status) && r.status !== 'draft' && (
           <Tooltip title={r.assignedTo ? 'Reassign lead' : 'Assign to SE'}><Button type="text" size="small" icon={<UserAddOutlined />} className="text-orange-500" onClick={() => { setAssignModal(r); setSelectedSE(''); setOverrideAvailability(false); setOverrideReason(''); }} /></Tooltip>
+        )}
+        {r.status === 'draft' && canCreate && (
+          <Tooltip title="Publish draft into pipeline">
+            <Button type="text" size="small" className="text-blue-500"
+              onClick={async () => {
+                try {
+                  await crmService.publishDraft(r._id);
+                  message.success('Draft published — lead is now in the pipeline.');
+                  fetchLeads(); fetchStats();
+                } catch (err) { message.error(err.message); }
+              }}
+            >Publish</Button>
+          </Tooltip>
         )}
         {canDelete && <Tooltip title="Delete"><Button type="text" size="small" danger icon={<CloseCircleOutlined />} onClick={() => handleDelete(r._id)} /></Tooltip>}
       </Space>
@@ -254,6 +280,38 @@ const LeadManagement = () => {
         <Col span={3}><Card size="small" className="border-red-200"><Statistic title="Hot Leads" value={stats.hotLeads || 0} valueStyle={{ color: '#dc2626' }} prefix={<FireOutlined />} /></Card></Col>
         <Col span={3}><Card size="small"><Statistic title="Today" value={stats.todayLeads || 0} valueStyle={{ color: '#2563eb' }} /></Card></Col>
       </Row>
+
+      {/* Last Closed Lead Banner */}
+      {lastClosed && (
+        <div className={`flex items-start gap-3 rounded-lg border p-3 mb-4 ${
+          lastClosed.status === 'won'
+            ? 'bg-green-50 border-green-200'
+            : lastClosed.status === 'lost'
+            ? 'bg-red-50 border-red-200'
+            : 'bg-orange-50 border-orange-200'
+        }`}>
+          <span className="text-lg">{lastClosed.status === 'won' ? '🏆' : lastClosed.status === 'lost' ? '❌' : '⏸'}</span>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold text-gray-800">
+              Last closed lead — {lastClosed.leadNumber || lastClosed._id}
+              <Tag color={STATUS_COLORS[lastClosed.status]} className="ml-2 text-[10px]">{lastClosed.status}</Tag>
+            </div>
+            <div className="text-xs text-gray-600 mt-0.5">
+              {lastClosed.name && <span className="mr-2 font-medium">{lastClosed.name}</span>}
+              {lastClosed.lostReason && <span className="mr-2">Reason: {lastClosed.lostReason}</span>}
+              {lastClosed.closingRemarks && <span className="italic">"{lastClosed.closingRemarks}"</span>}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {lastClosed.updatedAt ? dayjs(lastClosed.updatedAt).format('DD MMM YYYY, hh:mm A') : 'just now'}
+            </div>
+          </div>
+          <button
+            type="button"
+            className="text-gray-400 hover:text-gray-700 text-xs shrink-0"
+            onClick={() => setLastClosed(null)}
+          >✕</button>
+        </div>
+      )}
 
       {/* SE Availability Panel */}
       {canAssign && <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
@@ -343,7 +401,10 @@ const LeadManagement = () => {
         <Modal title={null} open onCancel={() => setViewLead(null)} width={800}
           footer={
             <div className="flex justify-between items-center">
-              <div className="text-xs text-gray-400">Created {dayjs(viewLead.createdAt).format('DD MMM YYYY, hh:mm A')} by {viewLead.createdByName || '—'}</div>
+              <div className="text-xs text-gray-400">
+                Created {dayjs(viewLead.createdAt).format('DD MMM YYYY, hh:mm A')} by {viewLead.createdByName || '—'}
+                {viewLead.status === 'draft' && <Tag color="default" className="ml-2">DRAFT</Tag>}
+              </div>
               <Button onClick={() => setViewLead(null)}>Close</Button>
             </div>
           }>
@@ -478,22 +539,54 @@ const LeadManagement = () => {
               </div>
             )}
 
+            {/* Closing Remarks — shown when lead is won / lost / on_hold */}
+            {(viewLead.status === 'lost' || viewLead.status === 'won' || viewLead.status === 'on_hold') &&
+             (viewLead.lostReason || viewLead.closingRemarks) ? (
+              <div className={`rounded-xl p-4 border ${
+                viewLead.status === 'won' ? 'bg-green-50 border-green-200'
+                : viewLead.status === 'lost' ? 'bg-red-50 border-red-200'
+                : 'bg-orange-50 border-orange-200'
+              }`}>
+                <div className="text-xs font-semibold text-gray-700 uppercase mb-2">
+                  {viewLead.status === 'won' ? '🏆 Won Details'
+                   : viewLead.status === 'lost' ? '❌ Lost Details'
+                   : '⏸ On Hold Details'}
+                </div>
+                {viewLead.lostReason && (
+                  <div className="text-sm mb-1">
+                    <span className="text-gray-500 mr-1">Reason:</span>
+                    <span className="font-medium">{viewLead.lostReason}</span>
+                  </div>
+                )}
+                {viewLead.closingRemarks && (
+                  <div className="text-sm italic text-gray-600">
+                    "{viewLead.closingRemarks}"
+                  </div>
+                )}
+              </div>
+            ) : null}
+
             {/* Key Dates */}
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-gray-50 rounded-lg p-3 text-center border">
                 <HiOutlineCalendar className="text-lg text-gray-400 mx-auto" />
                 <div className="text-[10px] text-gray-400 mt-1">Created</div>
                 <div className="text-xs font-medium">{dayjs(viewLead.createdAt).format('DD MMM YY')}</div>
+                <div className="text-[9px] text-gray-400">{dayjs(viewLead.createdAt).format('hh:mm A')}</div>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center border">
                 <HiOutlineClock className="text-lg text-gray-400 mx-auto" />
                 <div className="text-[10px] text-gray-400 mt-1">Last Contact</div>
                 <div className="text-xs font-medium">{viewLead.lastContactDate ? dayjs(viewLead.lastContactDate).format('DD MMM YY') : '—'}</div>
               </div>
-              <div className="bg-gray-50 rounded-lg p-3 text-center border">
-                <FiTrendingUp className="text-lg text-gray-400 mx-auto" />
+              <div className={`rounded-lg p-3 text-center border ${viewLead.nextFollowupDate && dayjs(viewLead.nextFollowupDate).isBefore(dayjs()) ? 'bg-red-50 border-red-200' : 'bg-gray-50'}`}>
+                <HiOutlineCalendar className={`text-lg mx-auto ${viewLead.nextFollowupDate && dayjs(viewLead.nextFollowupDate).isBefore(dayjs()) ? 'text-red-400' : 'text-gray-400'}`} />
                 <div className="text-[10px] text-gray-400 mt-1">Next Follow-up</div>
                 <div className="text-xs font-medium">{viewLead.nextFollowupDate ? dayjs(viewLead.nextFollowupDate).format('DD MMM YY') : '—'}</div>
+                {viewLead.nextFollowupDate && <div className="text-[9px] text-gray-400">{dayjs(viewLead.nextFollowupDate).format('hh:mm A')}</div>}
+                {viewLead.nextFollowupDate && dayjs(viewLead.nextFollowupDate).isBefore(dayjs()) && (
+                  <div className="text-[9px] text-red-500 font-semibold">OVERDUE</div>
+                )}
               </div>
             </div>
           </div>
@@ -509,15 +602,36 @@ const LeadManagement = () => {
 const CreateLeadModal = ({ open, onClose, onSuccess }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [salesExecs, setSalesExecs] = useState([]);
 
-  const handleSubmit = async () => {
+  useEffect(() => {
+    if (open) {
+      crmService.getSEStatus()
+        .then((res) => setSalesExecs(res?.data || []))
+        .catch(() => {});
+    }
+  }, [open]);
+
+  const handleSubmit = async (asDraft = false) => {
     try {
       const values = await form.validateFields();
       if (values.nextFollowupDate) values.nextFollowupDate = values.nextFollowupDate.format('YYYY-MM-DD');
-      setLoading(true);
+      if (asDraft) {
+        setDraftLoading(true);
+        values.status = 'draft';
+        delete values.assignOnCreate;
+        delete values.assignedTo;
+      } else {
+        setLoading(true);
+        // If a specific SE was selected, use assignOnCreate flow
+        if (values.assignedTo) {
+          values.assignOnCreate = true;
+        }
+      }
       const res = await crmService.createLead(values);
       if (res.success) {
-        message.success(res.message || 'Lead created!');
+        message.success(res.message || (asDraft ? 'Lead saved as draft!' : 'Lead created!'));
         form.resetFields();
         onSuccess?.();
         onClose();
@@ -525,11 +639,35 @@ const CreateLeadModal = ({ open, onClose, onSuccess }) => {
     } catch (err) {
       if (err.errorFields) return;
       message.error(err.message || 'Failed');
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setDraftLoading(false); }
   };
 
   return (
-    <Modal title="New Lead" open={open} onCancel={onClose} width={900} footer={null} destroyOnHidden>
+    <Modal title="New Lead" open={open} onCancel={onClose} width={900} destroyOnHidden
+      footer={
+        <div className="flex justify-between items-center pt-2">
+          <Button onClick={onClose}>Cancel</Button>
+          <Space>
+            <Button
+              onClick={() => handleSubmit(true)}
+              loading={draftLoading}
+              disabled={loading}
+              icon={<span>📋</span>}
+            >
+              Save as Draft
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => handleSubmit(false)}
+              loading={loading}
+              disabled={draftLoading}
+            >
+              Create Lead
+            </Button>
+          </Space>
+        </div>
+      }
+    >
       <Form form={form} layout="vertical" className="mt-4">
         <Row gutter={16}>
           <Col span={8}><Form.Item name="name" label="Customer Name" rules={[{ required: true }]}><Input placeholder="Full name" /></Form.Item></Col>
@@ -548,27 +686,46 @@ const CreateLeadModal = ({ open, onClose, onSuccess }) => {
             <Select options={[{ value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' }, { value: 'high', label: 'High' }, { value: 'hot', label: '🔥 Hot' }]} />
           </Form.Item></Col>
           <Col span={6}><Form.Item name="projectType" label="Project Type" initialValue="residential">
-            <Select options={[{ value: 'residential', label: 'Residential' }, { value: 'commercial', label: 'Commercial' }, { value: 'hospitality', label: 'Hospitality' }, { value: 'renovation', label: 'Renovation' }, { value: 'other', label: 'Other' }]} />
+            <Select options={[{ value: 'residential', label: '🏠 Residential' }, { value: 'commercial', label: '🏢 Commercial' }, { value: 'hospitality', label: '🏨 Hospitality' }, { value: 'industrial', label: '🏭 Industrial' }, { value: 'renovation', label: '🔧 Renovation' }, { value: 'other', label: 'Other' }]} />
           </Form.Item></Col>
-          <Col span={6}><Form.Item name="estimatedValue" label="Est. Value ₹"><InputNumber min={0} className="w-full" prefix="₹" /></Form.Item></Col>
+          <Col span={6}><Form.Item name="estimatedValue" label="Est. Value ₹"><InputNumber min={0} className="w-full" /></Form.Item></Col>
           <Col span={6}><Form.Item name="estimatedArea" label="Area (sqft)"><InputNumber min={0} className="w-full" /></Form.Item></Col>
         </Row>
         <Row gutter={16}>
-          <Col span={6}><Form.Item name="leadSource" label="Source"><Input placeholder="Referral, campaign, organic..." /></Form.Item></Col>
+          <Col span={6}><Form.Item name="leadSource" label="Source"><Input placeholder="Referral, campaign..." /></Form.Item></Col>
           <Col span={6}><Form.Item name="leadChannel" label="Channel"><Select allowClear options={['store_visit', 'phone', 'whatsapp', 'online', 'referral', 'exhibition', 'social', 'other'].map(value => ({ value, label: value.replace(/_/g, ' ') }))} /></Form.Item></Col>
           <Col span={6}><Form.Item name="leadType" label="Lead Type"><Input placeholder="Retail, project, trade..." /></Form.Item></Col>
           <Col span={6}><Form.Item name="campaign" label="Campaign"><Input placeholder="Campaign name/code" /></Form.Item></Col>
         </Row>
         <Row gutter={16}>
           <Col span={12}><Form.Item name="referredBy" label="Referred By"><Input placeholder="Referral name (if any)" /></Form.Item></Col>
-          <Col span={12}><Form.Item name="nextFollowupDate" label="Next Follow-up"><DatePicker className="w-full" format="DD/MM/YYYY" /></Form.Item></Col>
+          <Col span={12}><Form.Item name="nextFollowupDate" label="Next Follow-up Date & Time"><DatePicker showTime className="w-full" format="DD/MM/YYYY HH:mm" /></Form.Item></Col>
         </Row>
-        <Form.Item name="remarks" label="Remarks / Interest"><Input.TextArea rows={2} placeholder="What are they looking for? Any specific products/brands?" /></Form.Item>
 
-        <div className="flex justify-end gap-2 pt-3 border-t">
-          <Button onClick={onClose}>Cancel</Button>
-          <Button type="primary" onClick={handleSubmit} loading={loading}>Create Lead</Button>
+        {/* ── Assign to SE at creation time ── */}
+        <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4">
+          <div className="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+            <UserAddOutlined /> Assign to Sales Executive (optional)
+          </div>
+          <Form.Item name="assignedTo" className="mb-0">
+            <Select
+              showSearch
+              allowClear
+              placeholder="Leave blank to send to assignment queue, or pick an SE to assign immediately"
+              optionFilterProp="label"
+              options={salesExecs.map((se) => ({
+                value: se._id,
+                label: `${se.name} · ${se.availability || 'offline'} · ${se.activeLeads ?? 0}/${se.workloadLimit ?? '—'} active`,
+                disabled: !se.canAssign,
+              }))}
+            />
+          </Form.Item>
+          <div className="text-[10px] text-blue-500 mt-1">
+            Greyed-out executives are unavailable or at their workload limit.
+          </div>
         </div>
+
+        <Form.Item name="remarks" label="Remarks / Interest"><Input.TextArea rows={2} placeholder="What are they looking for?" /></Form.Item>
       </Form>
     </Modal>
   );

@@ -1285,6 +1285,15 @@ const menuConfig = {
         permission: 'se.attendance.view',
       },
       {
+        id: 'se-activity-history',
+        title: 'Activity & History',
+        icon: History,
+        path: '/se-app/activity-history',
+        // Same permission as Live Tracking — it reads the same monitoring endpoints
+        // plus the activity log, which any se.attendance.view holder can read.
+        permission: 'se.attendance.view',
+      },
+      {
         id: 'se-dealer-visits',
         title: 'Dealer Visits',
         icon: MapPinCheck,

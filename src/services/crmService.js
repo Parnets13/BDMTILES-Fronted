@@ -24,6 +24,7 @@ const crmService = {
   addFollowup: (id, data) => api.patch(`/leads/${id}/followup`, data),
   updateLeadStatus: (id, data) => api.patch(`/leads/${id}/status`, data),
   convertLead: (id, data) => api.patch(`/leads/${id}/convert`, data),
+  publishDraft: (id) => api.patch(`/leads/${id}/status`, { status: 'new' }),
 
   // Complaints
   getComplaints: (params) => api.get('/complaints', { params }),

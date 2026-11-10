@@ -186,6 +186,7 @@ import SECollections from './pages/se-app/SECollections.jsx';
 import SETargetManagement from './pages/se-app/SETargetManagement.jsx';
 import SEExpenseViewer from './pages/se-app/SEExpenseViewer.jsx';
 import SELiveTracking from './pages/se-app/SELiveTracking.jsx';
+import SEActivityHistory from './pages/se-app/SEActivityHistory.jsx';
 
 // DE App Admin Views
 import DEAssignment from './pages/de-app/DEAssignment.jsx';
@@ -661,6 +662,7 @@ const App = () => {
         {/* Sales Executive App */}
         <Route path="/se-app/attendance" element={<ProtectedRoute requiredPermission="attendance.master"><SEAttendanceViewer /></ProtectedRoute>} />
         <Route path="/se-app/live-tracking" element={<ProtectedRoute requiredPermission="se.attendance.view"><SELiveTracking /></ProtectedRoute>} />
+        <Route path="/se-app/activity-history" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEActivityHistory /></ProtectedRoute>} />
         <Route path="/se-app/dealer-visits" element={<ProtectedRoute requiredPermission="se.attendance.view"><SEDealerVisits /></ProtectedRoute>} />
         {/* Reads the dealer list (dealer.master) and writes assignments
             (dealer.assignment.manage) — any-of, matching the two endpoints it calls. */}

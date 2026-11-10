@@ -66,26 +66,33 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
   const selectedType = dealerTypes.find((type) => type._id === dealerType);
   const targetReady = scope === 'walk_in' ? Boolean(customer.name.trim()) : Boolean(selectedDealer?._id);
   const target = useMemo(() => {
-    const base = { scope };
-    
     if (selectedDealer?._id) {
       // Check if selected is a customer (has _isCustomer flag) or a dealer
       if (selectedDealer._isCustomer) {
-        // For customers, use walk_in scope for pricing
-        base.scope = 'walk_in';
-        base.customerType = selectedDealer._customerType || 'retail';
-        // Don't pass dealerType or dealer field for customers
+        // For customers, ONLY return walk_in scope and customerType
+        return {
+          scope: 'walk_in',
+          customerType: selectedDealer._customerType || 'retail',
+        };
       } else {
-        // For dealers, pass dealer ID and dealerType
-        if (dealerType) base.dealerType = dealerType;
-        base.dealer = selectedDealer._id;
+        // For dealers, return dealer scope with dealer ID and optional dealerType
+        const dealerTarget = {
+          scope: 'dealer',
+          dealer: selectedDealer._id,
+        };
+        if (dealerType) dealerTarget.dealerType = dealerType;
+        return dealerTarget;
       }
     } else if (scope === 'dealer' && dealerType) {
       // If no dealer selected yet but dealer type is selected
-      base.dealerType = dealerType;
+      return {
+        scope: 'dealer',
+        dealerType: dealerType,
+      };
     }
     
-    return base;
+    // Default: use current scope state
+    return { scope };
   }, [scope, dealerType, selectedDealer]);
   const pricingLabel = scope === 'walk_in'
     ? `Walk-in retail · ${customer.name || 'customer name required'}`
