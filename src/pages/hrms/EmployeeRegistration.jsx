@@ -37,6 +37,7 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import hrmsService from '../../services/hrmsService.js';
 import userService from '../../services/userService.js';
 import LinkRecordModal from '../../components/LinkRecordModal.jsx';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
 const DESIGNATIONS = ['Driver', 'Helper', 'Accountant', 'Office Assistant', 'Intern'];
@@ -432,7 +433,14 @@ const EmployeeRegistration = () => {
                 </Row>
                 <Row gutter={16}>
                   <Col xs={24} md={6}><Form.Item name="email" label="Email"><Input type="email" /></Form.Item></Col>
-                  <Col xs={24} md={12}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
+                  <Col xs={24} md={12}>
+                    <Form.Item name="address" label="Address">
+                      <GoogleAddressInput
+                        singleLine
+                        placeholder="Start typing address..."
+                      />
+                    </Form.Item>
+                  </Col>
                   <Col xs={24} md={6}><Form.Item name="emergencyContact" label="Emergency Contact"><Input /></Form.Item></Col>
                 </Row>
 

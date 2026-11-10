@@ -10,6 +10,7 @@ import {
   EyeOutlined, FileAddOutlined, FileDoneOutlined, LockOutlined, PlusOutlined, ReloadOutlined,
   SearchOutlined, ShoppingOutlined, ThunderboltOutlined, TruckOutlined,
 } from '@ant-design/icons';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 import salesService from '../../services/salesService.js';
 import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -1327,7 +1328,12 @@ const EditRequestModal = ({ request, onClose, onSaved }) => {
         <Row gutter={12}>
           <Col span={14}>
             <div className="mb-1 text-xs text-gray-500">Deliver to</div>
-            <Input.TextArea rows={2} maxLength={500} value={deliveryAddress} onChange={event => setDeliveryAddress(event.target.value)} placeholder="Blank uses the dealer's default address" />
+            <GoogleAddressInput
+              value={deliveryAddress}
+              onChange={(e) => setDeliveryAddress(e.target.value)}
+              placeholder="Blank uses the dealer's default address"
+              rows={2}
+            />
           </Col>
           <Col span={10}>
             <div className="mb-1 text-xs text-gray-500">Preferred delivery date</div>

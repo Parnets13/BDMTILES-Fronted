@@ -1,16 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   Alert, Button, Card, Col, Form, Input, InputNumber, Modal, Popconfirm, Row, Select,
-  Space, Statistic, Table, Tag, Tooltip, message,
+  Space, Statistic, Table, Tag, Tooltip, message, Divider, Checkbox,
 } from 'antd';
 import {
   BankOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined,
   ReloadOutlined, SearchOutlined,
 } from '@ant-design/icons';
 import RecordDetailModal from '../../components/RecordDetailModal.jsx';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 import masterService from '../../services/masterService.js';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
+import { validateBranchSelected } from '../../utils/branchValidation.js';
+
+const { Option } = Select;
 
 const STATES = [
   ['29', 'Karnataka'], ['27', 'Maharashtra'], ['24', 'Gujarat'], ['33', 'Tamil Nadu'],
@@ -26,10 +30,16 @@ const initialValues = {
   reorderFallbackLevel: 10,
   minStockFallbackLevel: 5,
   minimumReorderQuantity: 10,
+  googleReviewIncentive: {
+    enabled: false,
+    amount: 50,
+    currency: 'INR',
+    description: 'Incentive for collecting Google reviews',
+  },
 };
 
 const BranchPage = () => {
-  const { refreshUser } = useAuth();
+  const { refreshUser, activeBranch } = useAuth();
   const [form] = Form.useForm();
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -88,12 +98,22 @@ const BranchPage = () => {
   useEffect(() => { load(1, pagination.pageSize); }, [load]);
 
   const showCreate = () => {
+    // Validate branch selection before opening modal
+    if (!validateBranchSelected(activeBranch, 'create branches')) {
+      return;
+    }
+
     setEditing(null);
     form.setFieldsValue(initialValues);
     setOpen(true);
   };
 
   const showEdit = async (record) => {
+    // Validate branch selection before opening modal
+    if (!validateBranchSelected(activeBranch, 'edit branches')) {
+      return;
+    }
+
     setEditing(record);
     try {
       const response = await masterService.getBranch(record._id);
@@ -357,7 +377,17 @@ const BranchPage = () => {
               )}
             />
           </Form.Item>
-          <Form.Item name="address" label="Address"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="address" label="Address">
+            <GoogleAddressInput
+              placeholder="Start typing address for suggestions..."
+              onPlaceSelected={(place) => {
+                // Auto-fill city, state, pinCode if available
+                if (place.city) form.setFieldsValue({ city: place.city });
+                if (place.state) form.setFieldsValue({ state: place.state });
+                if (place.pinCode) form.setFieldsValue({ pinCode: place.pinCode });
+              }}
+            />
+          </Form.Item>
           <Row gutter={16}>
             <Col span={8}><Form.Item name="city" label="City"><Input /></Form.Item></Col>
             <Col span={10}><Form.Item name="state" label="State"><Select showSearch allowClear options={STATES.map(([code, name]) => ({ value: name, label: name }))} onChange={(value) => form.setFieldValue('stateCode', STATES.find(([, name]) => name === value)?.[0] || '')} /></Form.Item></Col>
@@ -368,6 +398,85 @@ const BranchPage = () => {
             <Col span={8}><Form.Item name="phone" label="Phone"><Input /></Form.Item></Col>
             <Col span={8}><Form.Item name="email" label="Email" rules={[{ type: 'email' }]}><Input /></Form.Item></Col>
           </Row>
+          
+          {/* Google Review Link & Incentive Section */}
+          <Card size="small" className="mb-4" title={<span className="text-sm font-medium flex items-center gap-2">⭐ Google Review & Incentive Setup</span>}>
+            <Form.Item 
+              name="googleReviewLink" 
+              label="Google Review Link" 
+              tooltip="Direct link for customers to leave a review for this branch"
+              extra="Get this link from Google My Business. Example: https://g.page/r/YOUR_PLACE_ID/review"
+            >
+              <Input placeholder="https://g.page/r/YOUR_PLACE_ID/review" />
+            </Form.Item>
+
+            <Divider className="my-3" />
+
+            <Form.Item 
+              name={['googleReviewIncentive', 'enabled']} 
+              valuePropName="checked"
+              className="mb-2"
+            >
+              <Checkbox>
+                <span className="font-medium">Enable Review Collection Incentive</span>
+              </Checkbox>
+            </Form.Item>
+
+            <Form.Item noStyle shouldUpdate={(prev, curr) => prev.googleReviewIncentive?.enabled !== curr.googleReviewIncentive?.enabled}>
+              {({ getFieldValue }) => 
+                getFieldValue(['googleReviewIncentive', 'enabled']) ? (
+                  <>
+                    <Row gutter={16}>
+                      <Col span={12}>
+                        <Form.Item 
+                          name={['googleReviewIncentive', 'amount']} 
+                          label="Incentive Amount"
+                          rules={[{ required: true, message: 'Enter amount' }]}
+                        >
+                          <InputNumber 
+                            min={0} 
+                            className="w-full" 
+                            prefix="₹"
+                            placeholder="e.g., 50"
+                          />
+                        </Form.Item>
+                      </Col>
+                      <Col span={12}>
+                        <Form.Item 
+                          name={['googleReviewIncentive', 'currency']} 
+                          label="Currency"
+                          initialValue="INR"
+                        >
+                          <Select>
+                            <Option value="INR">INR (₹)</Option>
+                            <Option value="USD">USD ($)</Option>
+                            <Option value="EUR">EUR (€)</Option>
+                          </Select>
+                        </Form.Item>
+                      </Col>
+                    </Row>
+                    <Form.Item 
+                      name={['googleReviewIncentive', 'description']} 
+                      label="Description"
+                    >
+                      <Input.TextArea 
+                        rows={2} 
+                        placeholder="e.g., Incentive for sales executives who collect verified Google reviews"
+                      />
+                    </Form.Item>
+                    <Alert 
+                      type="info" 
+                      showIcon
+                      message="How it works"
+                      description="When a customer submits a Google review, the staff/SE who collected it will receive this incentive amount. Mark reviews as complete in Customer Master."
+                      className="text-xs"
+                    />
+                  </>
+                ) : null
+              }
+            </Form.Item>
+          </Card>
+
           <Row gutter={16}>
             <Col xs={24} md={12}><Form.Item name="fiscalYearStartMonth" label="Fiscal Year Start"><Select options={[{ value: 4, label: 'April' }, { value: 1, label: 'January' }]} /></Form.Item></Col>
             <Col xs={24} md={12}><Form.Item name="timezone" label="Timezone"><Input /></Form.Item></Col>

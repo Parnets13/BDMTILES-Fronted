@@ -8,6 +8,7 @@ import {
   CheckOutlined, DeleteOutlined, EditOutlined, EyeOutlined,
   PrinterOutlined, ReloadOutlined, SearchOutlined, SendOutlined, ShopOutlined,
 } from '@ant-design/icons';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 import purchaseService from '../../services/purchaseService.js';
 import masterService from '../../services/masterService.js';
 import productService from '../../services/productService.js';
@@ -487,7 +488,15 @@ const PurchaseOrderEditor = ({ po, onClose, onSuccess }) => {
           <Col span={4}><div className="bg-orange-50 border rounded p-2 text-right"><div className="text-xs text-gray-500">Estimated Grand Total</div><b className="text-[#FF5F03]">₹{money(estimates.total + Number(form.freight || 0) + Number(form.loading || 0) + Number(form.insurance || 0))}</b></div></Col>
         </Row>
         <Row gutter={12}>
-          <Col span={12}><label className="text-xs text-gray-500 block mb-1">Delivery Address</label><Input.TextArea rows={2} value={form.deliveryAddress} onChange={event => setForm(prev => ({ ...prev, deliveryAddress: event.target.value }))} /></Col>
+          <Col span={12}>
+            <label className="text-xs text-gray-500 block mb-1">Delivery Address</label>
+            <GoogleAddressInput
+              value={form.deliveryAddress}
+              onChange={(e) => setForm(prev => ({ ...prev, deliveryAddress: e.target.value }))}
+              placeholder="Start typing address for suggestions..."
+              rows={2}
+            />
+          </Col>
           <Col span={12}><label className="text-xs text-gray-500 block mb-1">Remarks</label><Input.TextArea rows={2} value={form.remarks} onChange={event => setForm(prev => ({ ...prev, remarks: event.target.value }))} /></Col>
         </Row>
         <div><label className="text-xs text-gray-500 block mb-1">Amendment Reason *</label><Input.TextArea rows={2} value={form.amendmentReason} onChange={event => setForm(prev => ({ ...prev, amendmentReason: event.target.value }))} placeholder="Explain why this draft is being amended" /></div>

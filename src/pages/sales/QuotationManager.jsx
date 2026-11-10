@@ -1001,13 +1001,9 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
 
   useEffect(() => {
     if (open) {
-      // Map customerType to pricingTier for filtering dealers
-      const TIER_MAP = {
-        dealer: 'dealerRate', wholesaler: 'wholesaleRate', retail: 'retailRate',
-        distributor: 'distributorRate', builder: 'builderRate',
-      };
-      const pricingTier = TIER_MAP[form.customerType] || 'dealerRate';
-      masterService.getDealers({ limit: 200, status: 'active', pricingTier }).then(r => {
+      // Show ALL active dealers regardless of pricing tier
+      // This ensures walk-in customers and dealers without types also appear
+      masterService.getDealers({ limit: 200, status: 'active' }).then(r => {
         if (r.success) setDealers(r.data);
       }).catch(() => {});
     }

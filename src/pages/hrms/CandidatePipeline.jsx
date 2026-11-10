@@ -12,6 +12,7 @@ import {
 import dayjs from 'dayjs';
 import { useAuth } from '../../context/AuthContext.jsx';
 import recruitmentService from '../../services/recruitmentService.js';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 
 const DEPARTMENTS = ['Sales', 'Marketing', 'Accounts', 'Warehouse', 'Delivery', 'HR', 'IT', 'Admin', 'Production'];
 const EMPLOYMENT_TYPES = ['Full Time', 'Part Time', 'Contract', 'Daily Wage'];
@@ -501,7 +502,17 @@ const CandidatePipeline = () => {
           <Row gutter={16}>
             <Col xs={24} md={8}><Form.Item name="city" label="City"><Input /></Form.Item></Col>
             <Col xs={24} md={8}><Form.Item name="state" label="State"><Input /></Form.Item></Col>
-            <Col xs={24} md={8}><Form.Item name="address" label="Address"><Input /></Form.Item></Col>
+            <Col xs={24} md={8}>
+              <Form.Item name="address" label="Address">
+                <GoogleAddressInput
+                  singleLine
+                  onPlaceSelected={(place) => {
+                    if (place.city) form.setFieldValue('city', place.city);
+                    if (place.state) form.setFieldValue('state', place.state);
+                  }}
+                />
+              </Form.Item>
+            </Col>
           </Row>
           <Form.Item name="tags" label="Tags / Skills"><Select mode="tags" placeholder="Type and press enter to add keywords" /></Form.Item>
           <Form.Item name="notes" label="Notes"><Input.TextArea rows={3} maxLength={1000} showCount /></Form.Item>

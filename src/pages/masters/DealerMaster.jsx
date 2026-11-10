@@ -6,6 +6,7 @@ import dealerEmployeeTargetService from '../../services/dealerEmployeeTargetServ
 import { useAuth } from '../../context/AuthContext.jsx';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
 import { gstinFormRule, normalizeGstinInput } from '../../utils/gstin.js';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 
 const DealerMaster = () => {
   const { hasPermission } = useAuth();
@@ -341,8 +342,28 @@ const DealerMaster = () => {
 
                 <Divider orientation="left" plain>Address</Divider>
                 <Row gutter={16}>
-                  <Col span={12}><Form.Item name="address" label="Address"><Input.TextArea rows={2} placeholder="Full address" /></Form.Item></Col>
-                  <Col span={12}><Form.Item name="deliveryAddress" label="Delivery Address"><Input.TextArea rows={2} placeholder="If different" /></Form.Item></Col>
+                  <Col span={12}>
+                    <Form.Item name="address" label="Address">
+                      <GoogleAddressInput
+                        placeholder="Start typing address for suggestions..."
+                        onPlaceSelected={(place) => {
+                          if (place.city) form.setFieldsValue({ city: place.city });
+                          if (place.state) form.setFieldsValue({ state: place.state });
+                          if (place.pinCode) form.setFieldsValue({ pinCode: place.pinCode });
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="deliveryAddress" label="Delivery Address">
+                      <GoogleAddressInput
+                        placeholder="If different from billing..."
+                        onPlaceSelected={(place) => {
+                          // Optionally auto-fill if needed
+                        }}
+                      />
+                    </Form.Item>
+                  </Col>
                 </Row>
                 <Row gutter={16}>
                   <Col span={8}><Form.Item name="city" label="City"><Input placeholder="City" /></Form.Item></Col>

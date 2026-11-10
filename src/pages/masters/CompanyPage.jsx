@@ -8,6 +8,7 @@ import {
   ReloadOutlined, SearchOutlined, StarFilled,
 } from '@ant-design/icons';
 import RecordDetailModal from '../../components/RecordDetailModal.jsx';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 import masterService from '../../services/masterService.js';
 import { GST_STATES, normalizeGstin } from '../../utils/gstin.js';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -396,7 +397,16 @@ const CompanyPage = () => {
           </Row>
 
           <div className="text-sm font-semibold text-gray-700 mb-2">Address & contact (optional)</div>
-          <Form.Item name="address" label="Registered Address"><Input.TextArea rows={2} /></Form.Item>
+          <Form.Item name="address" label="Registered Address">
+            <GoogleAddressInput
+              placeholder="Start typing address for suggestions..."
+              onPlaceSelected={(place) => {
+                if (place.city) form.setFieldsValue({ city: place.city });
+                if (place.state) form.setFieldsValue({ state: place.state });
+                if (place.pinCode) form.setFieldsValue({ pinCode: place.pinCode });
+              }}
+            />
+          </Form.Item>
           {/* Four short fields share one row so the form stays short enough to sit
               clear of the modal footer on laptop heights. */}
           <Row gutter={16}>

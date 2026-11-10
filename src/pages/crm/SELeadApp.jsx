@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import crmService from '../../services/crmService.js';
 import { subscribeToLeadEvents } from '../../services/leadEventStream.js';
 import { useAuth } from '../../context/AuthContext.jsx';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 
 const availabilityOptions = ['available', 'busy', 'attending', 'travelling', 'on_break', 'offline']
   .map((value) => ({ value, label: value.replace('_', ' ') }));
@@ -239,7 +240,17 @@ const SELeadApp = () => {
         <Form form={followupForm} layout="vertical"><Form.Item name="outcome" label="Outcome" rules={[{ required: true }]}><Select options={['interested', 'not_interested', 'callback', ...(canConvert ? ['converted'] : []), 'no_response', 'visit_scheduled', 'quotation_sent'].map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></Form.Item><Form.Item name="notes" label="Notes"><Input.TextArea /></Form.Item><Form.Item name="nextFollowupDate" label="Next follow-up"><DatePicker showTime className="w-full" /></Form.Item></Form>
       </Modal>
       <Modal open={!!visitLead} title="Schedule visit" onCancel={() => setVisitLead(null)} onOk={saveVisit} width={580}>
-        <Form form={visitForm} layout="vertical"><Form.Item name="scheduledAt" label="Schedule" rules={[{ required: true }]}><DatePicker showTime className="w-full" /></Form.Item><Form.Item name="address" label="Location"><Input /></Form.Item><Form.Item name="remarks" label="Remarks"><Input.TextArea /></Form.Item></Form>
+        <Form form={visitForm} layout="vertical">
+          <Form.Item name="scheduledAt" label="Schedule" rules={[{ required: true }]}>
+            <DatePicker showTime className="w-full" />
+          </Form.Item>
+          <Form.Item name="address" label="Location">
+            <GoogleAddressInput singleLine />
+          </Form.Item>
+          <Form.Item name="remarks" label="Remarks">
+            <Input.TextArea />
+          </Form.Item>
+        </Form>
       </Modal>
     </div>
   );

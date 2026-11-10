@@ -5,10 +5,12 @@ import {
   SafetyCertificateOutlined, ShopOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import api from '../../config/api.js';
 import masterService from '../../services/masterService.js';
 import salesService from '../../services/salesService.js';
 import { ProductImage } from '../../components/ImageLightbox.jsx';
 import QuotationProductBrowser from '../../components/sales/QuotationProductBrowser.jsx';
+import GoogleAddressInput from '../../components/GoogleAddressInput.jsx';
 
 const activeType = (item) => item?.isActive !== false && item?.status !== 'inactive';
 const finiteNumber = (value) => {
@@ -63,11 +65,28 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
 
   const selectedType = dealerTypes.find((type) => type._id === dealerType);
   const targetReady = scope === 'walk_in' ? Boolean(customer.name.trim()) : Boolean(selectedDealer?._id);
-  const target = useMemo(() => ({
-    scope,
-    ...(dealerType ? { dealerType } : {}),
-    ...(selectedDealer?._id ? { dealer: selectedDealer._id } : {}),
-  }), [scope, dealerType, selectedDealer]);
+  const target = useMemo(() => {
+    const base = { scope };
+    
+    if (selectedDealer?._id) {
+      // Check if selected is a customer (has _isCustomer flag) or a dealer
+      if (selectedDealer._isCustomer) {
+        // For customers, use walk_in scope for pricing
+        base.scope = 'walk_in';
+        base.customerType = selectedDealer._customerType || 'retail';
+        // Don't pass dealerType or dealer field for customers
+      } else {
+        // For dealers, pass dealer ID and dealerType
+        if (dealerType) base.dealerType = dealerType;
+        base.dealer = selectedDealer._id;
+      }
+    } else if (scope === 'dealer' && dealerType) {
+      // If no dealer selected yet but dealer type is selected
+      base.dealerType = dealerType;
+    }
+    
+    return base;
+  }, [scope, dealerType, selectedDealer]);
   const pricingLabel = scope === 'walk_in'
     ? `Walk-in retail · ${customer.name || 'customer name required'}`
     : selectedDealer
@@ -156,23 +175,84 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
   }, [open, dealerOrderRequestId]);
 
   useEffect(() => {
-    if (!open || scope !== 'dealer' || !dealerType) { setDealers([]); return undefined; }
+    if (!open || scope !== 'dealer') { setDealers([]); return undefined; }
     const timer = setTimeout(async () => {
       setDealerLoading(true);
       try {
-        const response = await salesService.searchDealers({
-          q: dealerSearch || '', page: 1, limit: 50, dealerType,
-          pricingTier: selectedType?.pricingTier,
-        });
-        if (response.success) {
-          const result = response.data || [];
-          setDealers(result.filter((dealer) => (dealer.dealerType?._id || dealer.dealerType) === dealerType));
+        // Determine customer type filter based on dealer type name
+        const selectedTypeName = (selectedType?.name || '').toLowerCase();
+        const customerTypeMap = {
+          'retail': 'retail',
+          'builder': 'builder', 
+          'architect': 'architect',
+          'contractor': 'contractor',
+        };
+        
+        let customerTypeFilter = null;
+        for (const [keyword, custType] of Object.entries(customerTypeMap)) {
+          if (selectedTypeName.includes(keyword)) {
+            customerTypeFilter = custType;
+            break;
+          }
         }
-      } catch (error) { message.error(error.message || 'Dealer search failed'); }
+        
+        // Load both Dealers and Customers
+        const [dealersResponse, customersResponse] = await Promise.all([
+          masterService.getDealers({
+            search: dealerSearch || '', page: 1, limit: 100, status: 'active',
+          }).catch(() => ({ success: false, data: [] })),
+          
+          // Load customers with optional type filter
+          api.get('/customers', {
+            params: { 
+              search: dealerSearch || '', 
+              page: 1, 
+              limit: 100, 
+              status: 'active',
+              customerType: customerTypeFilter || undefined,
+            }
+          }).catch(() => ({ success: false, data: [] })),
+        ]);
+        
+        const dealersList = dealersResponse.success ? (dealersResponse.data || []) : [];
+        const customersList = customersResponse.success ? (customersResponse.data || []) : [];
+        
+        // Convert customers to dealer-like format
+        const formattedCustomers = customersList.map(customer => ({
+          _id: customer._id,
+          businessName: `${customer.name}${customer.customerType ? ` [${customer.customerType}]` : ''}`,
+          dealerCode: customer.customerCode || '',
+          mobile: customer.contactNumber,
+          gstin: customer.gstin || '',
+          address: customer.billingAddress || customer.deliveryAddress || '',
+          city: customer.city || '',
+          state: customer.state || '',
+          dealerType: null,
+          _isCustomer: true,
+          _customerType: customer.customerType,
+        }));
+        
+        // Combine lists
+        let allParties = [...dealersList, ...formattedCustomers];
+        
+        // Filter by dealer type if selected
+        if (dealerType) {
+          allParties = allParties.filter(party => {
+            if (party._isCustomer) {
+              // Show customers only if their type matches or no specific filter
+              return !customerTypeFilter || party._customerType === customerTypeFilter;
+            }
+            // Filter dealers by dealerType
+            return (party.dealerType?._id || party.dealerType) === dealerType;
+          });
+        }
+        
+        setDealers(allParties);
+      } catch (error) { message.error(error.message || 'Failed to load dealers and customers'); }
       finally { setDealerLoading(false); }
     }, dealerSearch ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [open, scope, dealerType, selectedType?.pricingTier, dealerSearch]);
+  }, [open, scope, dealerType, selectedType, dealerSearch]);
 
   const minimalItems = (source) => source.map((item) => ({
     product: productIdOf(item),
@@ -211,18 +291,35 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
       setItems((current) => current.map((item) => ({ ...item, pricingPending: true })));
     }
     try {
-      const response = await salesService.previewQuotationPricing({
+      // Build pricing request - use target.scope (not scope state) to check if walk_in
+      const isWalkIn = target.scope === 'walk_in';
+      
+      const pricingRequest = {
         ...target,
-        customerName: scope === 'walk_in' ? customer.name || undefined : undefined,
-        customerPhone: scope === 'walk_in' ? customer.phone || undefined : undefined,
-        customerAddress: scope === 'walk_in' ? customer.address || undefined : undefined,
+        customerName: isWalkIn ? (customer.name || selectedDealer?.businessName || undefined) : undefined,
+        customerPhone: isWalkIn ? (customer.phone || selectedDealer?.mobile || undefined) : undefined,
+        customerAddress: isWalkIn ? (customer.address || selectedDealer?.address || undefined) : undefined,
         quotationDate: form.quotationDate,
         freightCharges: Number(form.freightCharges || 0),
         loadingCharges: Number(form.loadingCharges || 0),
         installationCharges: Number(form.installationCharges || 0),
         otherCharges: Number(form.otherCharges || 0),
         items: minimalItems(source),
+      };
+      
+      console.log('[Price Preview] Request:', {
+        target,
+        isWalkIn,
+        selectedDealer: selectedDealer ? {
+          _id: selectedDealer._id,
+          _isCustomer: selectedDealer._isCustomer,
+          _customerType: selectedDealer._customerType,
+          businessName: selectedDealer.businessName
+        } : null,
+        pricingRequest
       });
+      
+      const response = await salesService.previewQuotationPricing(pricingRequest);
       if (!response.success) throw new Error(response.message || 'Pricing preview failed');
       const merged = mergePreview(source, response);
       if (requestId !== previewRequest.current) return source;
@@ -236,7 +333,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
       }
       throw error;
     } finally { if (requestId === previewRequest.current) setPricing(false); }
-  }, [target, scope, customer.name, customer.phone, customer.address, form.quotationDate, form.freightCharges, form.loadingCharges, form.installationCharges, form.otherCharges]);
+  }, [target, selectedDealer, customer.name, customer.phone, customer.address, form.quotationDate, form.freightCharges, form.loadingCharges, form.installationCharges, form.otherCharges]);
 
   useEffect(() => {
     if (!prefillNeedsPreview || !targetReady || !items.length) return;
@@ -578,7 +675,17 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
                   <Row gutter={[12, 8]}>
                     <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Customer name *</label><Input value={customer.name} onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))} placeholder="Enter customer name" /></Col>
                     <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Phone</label><Input value={customer.phone} onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))} placeholder="Optional" /></Col>
-                    <Col xs={24} md={8}><label className="mb-1 block text-xs text-gray-500">Address</label><Input value={customer.address} onChange={(e) => setCustomer((c) => ({ ...c, address: e.target.value }))} placeholder="Optional" /></Col>
+                    <Col xs={24} md={8}>
+                      <label className="mb-1 block text-xs text-gray-500">Address</label>
+                      <GoogleAddressInput
+                        value={customer.address}
+                        onChange={(e) => setCustomer((c) => ({ ...c, address: e.target.value }))}
+                        singleLine
+                        onPlaceSelected={(place) => {
+                          setCustomer((c) => ({ ...c, address: place.address }));
+                        }}
+                      />
+                    </Col>
                   </Row>
 
                   {/* Alias Name — mandatory, same as dealer scope */}
