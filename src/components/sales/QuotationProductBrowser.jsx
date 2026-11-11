@@ -284,9 +284,19 @@ const QuotationProductBrowser = ({
                         </div>
                         <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
                           <div>
-                            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Resolved selling rate</div>
+                            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Selling rate</div>
                             <div className="text-lg font-extrabold text-orange-600">{money(product.effectiveRate)} <span className="text-[10px] font-normal text-slate-400">/ {product.unit || 'unit'}</span></div>
                             <div className="max-w-72 truncate text-[10px] text-slate-500">{product.sourceName || product.source || 'Product tier'}{product.fallbackApplied ? ' · fallback applied' : ''}</div>
+                            {product.mrp > 0 && (
+                              <div className="mt-0.5 text-[10px] text-slate-400">
+                                MRP: <span className="font-semibold text-slate-600">{money(product.mrp)}</span>
+                                {product.mrp > product.effectiveRate && (
+                                  <span className="ml-1.5 rounded bg-green-100 px-1.5 py-0.5 text-[9px] font-bold text-green-700">
+                                    {Math.round(((product.mrp - product.effectiveRate) / product.mrp) * 100)}% below MRP
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                           <div className="text-right">
                             <Tag color={unavailable ? 'volcano' : stock <= 10 ? 'gold' : 'green'} className="m-0 font-semibold">

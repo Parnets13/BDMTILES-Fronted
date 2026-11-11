@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Card, Col, DatePicker, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, message } from 'antd';
+import { Alert, Button, Card, Checkbox, Col, DatePicker, Input, InputNumber, Modal, Row, Select, Space, Switch, Table, Tag, Tooltip, message } from 'antd';
 import {
   AppstoreAddOutlined, CheckCircleOutlined, DeleteOutlined, PlusOutlined, ReloadOutlined,
-  SafetyCertificateOutlined, ShopOutlined, WarningOutlined,
+  SafetyCertificateOutlined, ShopOutlined, WarningOutlined, PercentageOutlined, UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import api from '../../config/api.js';
@@ -44,6 +44,8 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
   const [aliasName, setAliasName] = useState('');
   const [browserOpen, setBrowserOpen] = useState(false);
   const [items, setItems] = useState([]);
+  const [discountEnabled, setDiscountEnabled] = useState(false);
+  const [discountPct, setDiscountPct] = useState(0);
   const [summary, setSummary] = useState({});
   const [pricing, setPricing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -266,7 +268,11 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     unit: item.unit,
     quantity: Number(item.quantity || 1),
     sqft: item.sqft || undefined,
-    ...(item.manualRate != null ? { manualRate: Number(item.manualRate) } : {}),
+    // Pass discount percentage as a line-level field if enabled
+    ...(discountEnabled && (item.discountPct ?? discountPct) > 0
+      ? { discountPct: Number(item.discountPct ?? discountPct) }
+      : {}),
+    // manualRate removed — rate override replaced by discount%
   }));
 
   const mergePreview = (source, response) => {
@@ -408,6 +414,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
       stockAvailable: Number(product.stock?.availableQty ?? product.stockAvailable ?? 0),
       stockUnit: product.stock?.displayUnit || product.unit || 'units',
       manualRate: null,
+      mrp: Number(product.mrp || 0),
       baseRate: Number(product.baseRate || 0),
       effectiveRate: Number(product.effectiveRate || 0),
       minimumSellingRate: Number(product.minimumSellingRate || 0),
@@ -453,6 +460,8 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     setBrowserOpen(false);
     setItems([]);
     setSummary({});
+    setDiscountEnabled(false);
+    setDiscountPct(0);
     setForm({
       quotationDate: dayjs().format('YYYY-MM-DD'), validUntil: dayjs().add(30, 'day').format('YYYY-MM-DD'),
       freightCharges: 0, loadingCharges: 0, installationCharges: 0, otherCharges: 0,
@@ -523,57 +532,117 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     },
     {
       title: 'Quantity / UOM',
-      width: 180,
+      width: 130,
       render: (_, item) => (
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <div className="text-[9px] text-gray-500 font-medium mb-1">Quantity ({item.unit || 'Unit'})</div>
-            <InputNumber
-              min={0.01}
-              step={1}
-              value={item.quantity}
-              disabled={requestMode}
-              onChange={(value) => {
-                const qty = value || 1;
-                const sqft = /box/i.test(item.unit || '') && item.sqftPerBox
-                  ? Math.round(qty * item.sqftPerBox * 100) / 100
-                  : undefined;
-                updateItem(item.key, { quantity: qty, ...(sqft !== undefined ? { sqft } : {}) });
-              }}
-              className="w-full"
-            />
-          </div>
-          {/box/i.test(item.unit || '') && item.sqftPerBox ? (
-            <div className="flex-1">
-              <div className="text-[9px] text-emerald-600 font-medium mb-1">Sqft ({item.sqftPerBox}/box)</div>
-              <InputNumber
-                min={0.01}
-                step={0.5}
-                value={item.sqft ?? Math.round(item.quantity * item.sqftPerBox * 100) / 100}
-                disabled={requestMode}
-                onChange={(value) => {
-                  const sqft = value || 0;
-                  updateItem(item.key, { sqft, quantity: Math.ceil(sqft / item.sqftPerBox) });
-                }}
-                className="w-full"
-                placeholder="enter sqft"
-              />
-            </div>
-          ) : null}
+        <div>
+          <div className="text-[9px] text-gray-500 font-medium mb-1">Quantity ({item.unit || 'Unit'})</div>
+          <InputNumber
+            min={0.01}
+            step={1}
+            value={item.quantity}
+            disabled={requestMode}
+            onChange={(value) => {
+              const qty = value || 1;
+              const sqft = /box/i.test(item.unit || '') && item.sqftPerBox
+                ? Math.round(qty * item.sqftPerBox * 100) / 100
+                : undefined;
+              updateItem(item.key, { quantity: qty, ...(sqft !== undefined ? { sqft } : {}) });
+            }}
+            className="w-full"
+          />
         </div>
       ),
     },
     {
-      title: 'Selling rate', width: 190,
-      render: (_, item) => <div><strong className="text-emerald-700">{item.pricingPending ? 'Resolving…' : money(item.effectiveRate)}</strong><div className="max-w-44 truncate text-[10px] text-slate-400">Base {money(item.baseRate)} · {item.source}</div></div>,
+      title: 'Price / MRP', width: 200,
+      render: (_, item) => (
+        <div>
+          <div className="text-sm font-bold text-emerald-700">
+            {item.pricingPending ? 'Resolving…' : money(item.effectiveRate)}
+            <span className="ml-1 text-[10px] font-normal text-slate-400">/ {item.unit || 'unit'}</span>
+          </div>
+          {item.mrp > 0 && (
+            <div className="text-[10px] text-slate-400">
+              MRP: <span className="font-semibold text-slate-600">{money(item.mrp)}</span>
+              {item.mrp > item.effectiveRate && (
+                <span className="ml-1 rounded bg-green-100 px-1 py-0.5 text-[9px] font-bold text-green-700">
+                  {Math.round(((item.mrp - item.effectiveRate) / item.mrp) * 100)}% below MRP
+                </span>
+              )}
+            </div>
+          )}
+          <div className="max-w-44 truncate text-[10px] text-slate-400">
+            Base {money(item.baseRate)} · {item.source}
+          </div>
+          {item.belowMinimum && (
+            <Tag color="red" className="mt-1 text-[9px]"><WarningOutlined /> Below minimum · Approval needed</Tag>
+          )}
+        </div>
+      ),
     },
     {
-      title: 'Override rate', width: 180,
-      render: (_, item) => <Space.Compact className="w-full"><InputNumber min={0} value={item.manualRate} placeholder={String(item.effectiveRate || 0)} onChange={(value) => updateItem(item.key, { manualRate: value })} prefix="₹" className="w-full" /><Button icon={<ReloadOutlined />} title="Restore server rate" onClick={() => updateItem(item.key, { manualRate: null })} /></Space.Compact>,
+      title: <div className="text-emerald-700">Sq. ft</div>,
+      width: 140,
+      render: (_, item) => {
+        const hasBox = /box/i.test(item.unit || '') && item.sqftPerBox;
+        return (
+          <div>
+            <div className="text-[9px] text-emerald-600 font-medium mb-1">
+              {hasBox ? `${item.sqftPerBox} sqft / box` : 'N/A for this unit'}
+            </div>
+            <InputNumber
+              min={0.01}
+              step={0.5}
+              disabled={requestMode || !hasBox}
+              value={
+                hasBox
+                  ? (item.sqft ?? Math.round(item.quantity * item.sqftPerBox * 100) / 100)
+                  : undefined
+              }
+              onChange={(value) => {
+                if (!hasBox) return;
+                const sqft = value || 0;
+                updateItem(item.key, { sqft, quantity: Math.ceil(sqft / item.sqftPerBox) });
+              }}
+              className="w-full"
+              placeholder={hasBox ? 'enter sqft' : '—'}
+              suffix={hasBox ? 'sqft' : undefined}
+            />
+          </div>
+        );
+      },
     },
     {
-      title: 'Rate control', width: 170,
-      render: (_, item) => <div><div className="text-xs">Minimum {money(item.minimumSellingRate)}</div><div className="mt-1">{item.belowMinimum ? <Tag color="red"><WarningOutlined /> Approval required</Tag> : <Tag color="green"><CheckCircleOutlined /> Valid</Tag>}</div>{item.pricingMessage && <div className="text-[10px] text-slate-500">{item.pricingMessage}</div>}</div>,
+      title: (
+        <div className="flex items-center gap-1.5">
+          <span>Discount</span>
+          <Checkbox
+            checked={discountEnabled}
+            onChange={(e) => setDiscountEnabled(e.target.checked)}
+          />
+        </div>
+      ),      width: 160,
+      render: (_, item) => (
+        discountEnabled ? (
+          <Space.Compact className="w-full">
+            <InputNumber
+              min={0} max={100} step={0.5}
+              value={item.discountPct ?? discountPct}
+              onChange={(value) => updateItem(item.key, { discountPct: value ?? 0 })}
+              suffix="%"
+              className="w-full"
+              placeholder={String(discountPct || 0)}
+            />
+            {(item.discountPct ?? discountPct) > 0 && (
+              <Tooltip title="Remove discount">
+                <Button icon={<ReloadOutlined />} onClick={() => updateItem(item.key, { discountPct: 0 })} />
+              </Tooltip>
+            )}
+          </Space.Compact>
+        ) : (
+          <span className="text-xs text-slate-400">Enable above</span>
+        )
+      ),
     },
     {
       title: 'Line total', width: 135,
@@ -588,9 +657,22 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
     <>
       <Modal
         title={(
-          <div>
-            <div className="text-base font-semibold text-gray-800">{requestMode ? `Create Quotation from ${sourceRequestNumber || 'Order Request'}` : 'Create Quotation'}</div>
-            <div className="mt-0.5 text-xs font-normal text-gray-500">{requestMode ? 'Dealer and requested quantities are locked to the approved request.' : 'Prepare a customer quotation using live branch stock and configured pricing.'}</div>
+          <div className="flex items-center justify-between pr-8">
+            <div>
+              <div className="text-base font-semibold text-gray-800">
+                {requestMode ? `Create Quotation from ${sourceRequestNumber || 'Order Request'}` : 'Create Quotation'}
+              </div>
+              <div className="mt-0.5 text-xs font-normal text-gray-500">
+                {requestMode
+                  ? 'Dealer and requested quantities are locked to the approved request.'
+                  : 'Prepare a customer quotation using live branch stock and configured pricing.'}
+              </div>
+            </div>
+            {/* Created-by info — shows the logged-in user creating this quotation */}
+            <div className="flex items-center gap-2 rounded-lg bg-gray-50 border border-gray-100 px-3 py-1.5 text-xs text-gray-600 mr-4">
+              <UserOutlined className="text-gray-400" />
+              <span>Creating as: <strong className="text-gray-800">{window.__bdmCurrentUser?.name || 'You'}</strong></span>
+            </div>
           </div>
         )}
         open={open}
@@ -719,22 +801,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
               )}
             </Card>
 
-            {/* Quotation items */}
-            <Card size="small" styles={{ body: { padding: 0 } }} title="Quotation items" extra={(
-              <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady || requestMode} onClick={() => setBrowserOpen(true)}>
-                {requestMode ? `Approved Products (${items.length})` : `Browse Products${items.length ? ` (${items.length})` : ''}`}
-              </Button>
-            )}>
-              <div className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
-                {targetReady ? pricingLabel : 'Select the customer and pricing audience before adding products.'}
-              </div>
-              <Table rowKey="key" columns={columns} dataSource={items} pagination={false} loading={pricing}
-                size="small" scroll={{ x: 1160 }}
-                locale={{ emptyText: targetReady ? 'No items added. Use Browse Products to select from live branch inventory.' : 'Complete the customer section first.' }}
-              />
-            </Card>
-
-            {/* Quotation details */}
+            {/* Quotation details — dates, charges, remarks */}
             <Card size="small" title="Quotation details">
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
@@ -786,6 +853,21 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
               </div>
             </Card>
 
+            {/* Quotation items */}
+            <Card size="small" styles={{ body: { padding: 0 } }} title="Quotation items" extra={(
+              <Button type="primary" icon={<AppstoreAddOutlined />} disabled={!targetReady || requestMode} onClick={() => setBrowserOpen(true)}>
+                {requestMode ? `Approved Products (${items.length})` : `Browse Products${items.length ? ` (${items.length})` : ''}`}
+              </Button>
+            )}>
+              <div className="border-b border-gray-100 bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
+                {targetReady ? pricingLabel : 'Select the customer and pricing audience before adding products.'}
+              </div>
+              <Table rowKey="key" columns={columns} dataSource={items} pagination={false} loading={pricing}
+                size="small" scroll={{ x: 1300 }}
+                locale={{ emptyText: targetReady ? 'No items added. Use Browse Products to select from live branch inventory.' : 'Complete the customer section first.' }}
+              />
+            </Card>
+
             <Alert type="warning" showIcon
               message="Stock shown during selection is a branch-wide snapshot. A quotation does not reserve a warehouse, shade or batch." />
 
@@ -802,8 +884,7 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
                 <span>Discount</span><span style={{ fontWeight: 600, color: '#111' }}>{money(summary.discountAmount ?? summary.totalDiscount)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
+              </div>              <div style={{ display: 'flex', justifyContent: 'space-between', color: '#6b7280' }}>
                 <span>Tax (GST)</span><span style={{ fontWeight: 600, color: '#111' }}>{money(summary.taxAmount ?? summary.totalTax)}</span>
               </div>
               {(Number(form.freightCharges) + Number(form.loadingCharges) + Number(form.installationCharges) + Number(form.otherCharges)) > 0 && (
@@ -823,6 +904,42 @@ const AuthoritativeQuotationModal = ({ open, onClose, onSuccess, dealerOrderRequ
             </p>
 
             <div style={{ flex: 1 }} />
+
+            {/* ── Global discount control ── */}
+            <div className="rounded-lg border border-orange-100 bg-orange-50 p-3 mb-2">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-700 flex items-center gap-1">
+                  <PercentageOutlined /> Apply discount to all lines
+                </span>
+                <Checkbox
+                  checked={discountEnabled}
+                  onChange={(e) => setDiscountEnabled(e.target.checked)}
+                >
+                  Enable
+                </Checkbox>
+              </div>
+              {discountEnabled && (
+                <div className="flex items-center gap-2">
+                  <InputNumber
+                    min={0} max={100} step={0.5}
+                    value={discountPct}
+                    onChange={(value) => {
+                      const pct = value ?? 0;
+                      setDiscountPct(pct);
+                      // Apply to all lines that haven't been individually set
+                      setItems((current) =>
+                        current.map((item) => ({ ...item, discountPct: pct }))
+                      );
+                      queuePreview(items);
+                    }}
+                    suffix="%"
+                    className="w-24"
+                    placeholder="0"
+                  />
+                  <span className="text-xs text-gray-500">applied to all products</span>
+                </div>
+              )}
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <Button type="primary" icon={<PlusOutlined />} size="large" block

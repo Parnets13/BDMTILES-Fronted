@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Table, Button, Input, Select, Tag, Space, message,
   Row, Col, Card, Statistic, Modal, InputNumber, Divider, Tooltip, Alert,
-  Collapse, DatePicker, Empty
+  Collapse, DatePicker, Empty, Dropdown,
 } from 'antd';
 import {
   PlusOutlined, SearchOutlined, ReloadOutlined, EyeOutlined,
@@ -11,7 +11,7 @@ import {
   SwapOutlined, DeleteOutlined, PrinterOutlined, FileTextOutlined,
   SyncOutlined, WarningOutlined, StopOutlined, FilterOutlined, CalendarOutlined,
   HistoryOutlined, AuditOutlined, ShopOutlined, SafetyCertificateOutlined, UserOutlined,
-  LockOutlined, UnlockOutlined
+  LockOutlined, UnlockOutlined, MoreOutlined, CopyOutlined, DownloadOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import salesService from '../../services/salesService.js';
@@ -1061,6 +1061,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
       product: prod._id, productName: prod.itemName, productCode: prod.productCode,
       productImage: prod.images?.[0] || '',
       sqftPerBox: prod.sqftPerBox || null,
+      mrp: prod.mrp || 0,
       rate: baseRate, unit: prod.unit || 'Box', gstPercentage: prod.gst || 18,
       discount, discountType, discountRuleName,
     });
@@ -1224,7 +1225,7 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
               <table className="w-full text-xs">
                 <thead className="bg-blue-50">
                   <tr>
-                    {['Product', 'Shade', 'Batch', 'Boxes / Qty', 'Sqft', 'Unit', 'Rate', 'Disc', 'GST%', 'Total', ''].map(h => (
+                    {['Product', 'Shade', 'Batch', 'Boxes / Qty', 'Sqft', 'Unit', 'Rate / MRP', 'Disc', 'GST%', 'Total', ''].map(h => (
                       <th key={h} className="px-2 py-2 text-left font-semibold text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -1270,7 +1271,12 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
                                             <div className="text-[9px] text-green-600 font-medium">{p.discount.discountPercentage}% off</div>
                                           </>
                                         ) : (
-                                          <div className="text-xs font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}</div>
+                                          <div>
+                                            <div className="text-xs font-bold text-[#FF5F03]">₹{p.dealerRate || p.mrp || 0}</div>
+                                            {p.mrp > 0 && (p.dealerRate || 0) < p.mrp && (
+                                              <div className="text-[9px] text-gray-400">MRP ₹{p.mrp}</div>
+                                            )}
+                                          </div>
                                         )}
                                         <div className={`text-[9px] ${(p.stockAvailable || 0) > 0 ? 'text-green-600' : 'text-red-500'}`}>Stock: {p.stockAvailable || 0}</div>
                                       </div>
@@ -1324,7 +1330,19 @@ export const LegacyCreateQuotationModal = ({ open, onClose, onSuccess }) => {
                           options={[{ value: 'Box', label: 'Box' }, { value: 'Pcs', label: 'Pcs' }, { value: 'Sqft', label: 'Sqft' }]} />
                       </td>
                       <td className="px-2 py-1.5">
-                        <InputNumber min={0} value={item.rate} onChange={v => updateItem(idx, { rate: v || 0 })} prefix="₹" className="w-24" />
+                        <div>
+                          <InputNumber min={0} value={item.rate} onChange={v => updateItem(idx, { rate: v || 0 })} prefix="₹" className="w-24" />
+                          {item.mrp > 0 && (
+                            <div className="text-[9px] text-gray-400 mt-0.5">
+                              MRP: <span className="font-semibold">₹{item.mrp}</span>
+                              {item.mrp > item.rate && (
+                                <span className="ml-1 text-green-600 font-semibold">
+                                  {Math.round(((item.mrp - item.rate) / item.mrp) * 100)}% ↓
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td className="px-2 py-1.5">
                         <InputNumber min={0} value={item.discount} onChange={v => updateItem(idx, { discount: v || 0 })} className="w-16" />
@@ -1638,7 +1656,13 @@ const ViewQuotationModal = ({ quotationId, refreshVersion = 0, onClose, onConver
                 {q.conversionState === 'full' && <Tag color="green" className="px-2 py-0.5 text-xs font-semibold rounded-md m-0">Fully Converted</Tag>}
               </div>
               <div className="text-xs text-gray-400 font-normal mt-0.5">
-                Quotation Date: {formatCalendarDate(q.quotationDate)} {q.createdBy?.name ? `• Created by ${q.createdBy.name}` : ''}
+                Quotation Date: {formatCalendarDate(q.quotationDate)}
+                {q.createdBy?.name && (
+                  <span className="ml-2 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 border border-blue-100">
+                    <UserOutlined className="text-[9px]" /> Created by {q.createdBy.name}
+                    {q.createdAt ? ` · ${formatDate(q.createdAt, true)}` : ''}
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1663,6 +1687,46 @@ const ViewQuotationModal = ({ quotationId, refreshVersion = 0, onClose, onConver
           <Space wrap size="small">
             <Button icon={<PrinterOutlined />} onClick={handlePrint}>Print PDF</Button>
             {canEditValidity && <Button icon={<CalendarOutlined />} onClick={openValidityEditor}>Edit Validity</Button>}
+
+            {/* More actions dropdown */}
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'duplicate',
+                    icon: <CopyOutlined />,
+                    label: 'Duplicate quotation',
+                    onClick: async () => {
+                      try {
+                        const res = await salesService.duplicateQuotation?.(q._id);
+                        if (res?.success) {
+                          message.success(`Duplicate ${res.data?.quotationNumber} created`);
+                          fetchQuotations(); loadStats();
+                          onClose();
+                        }
+                      } catch { message.info('Duplicate: use "New Quotation" and copy the items manually.'); }
+                    },
+                  },
+                  {
+                    key: 'download',
+                    icon: <DownloadOutlined />,
+                    label: 'Download PDF',
+                    onClick: handlePrint,
+                  },
+                  { type: 'divider' },
+                  !['converted', 'cancelled'].includes(q.status) && {
+                    key: 'cancel',
+                    icon: <CloseCircleOutlined />,
+                    label: 'Cancel quotation',
+                    danger: true,
+                    onClick: () => onStatusChange(q._id, 'cancelled'),
+                  },
+                ].filter(Boolean),
+              }}
+            >
+              <Button icon={<MoreOutlined />}>More</Button>
+            </Dropdown>
 
             {/* draft → Send */}
             {q.status === 'draft' && (
