@@ -16,6 +16,14 @@ const productService = {
     return api.post('/products/upload-images', formData);
   },
 
+  // Two-step import. parse: file -> rows (nothing saved). save: edited rows -> products.
+  parseImportFile: (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post('/products/import/parse', formData, { timeout: 300000 });
+  },
+  saveImportRows: (payload) => api.post('/products/import/save', payload, { timeout: 600000 }),
+
   // Bulk price update — brand/category/product-wise
   bulkPriceUpdate: (data) => api.post('/products/bulk-price-update', data),
 };

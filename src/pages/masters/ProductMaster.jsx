@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Table, Button, Input, Select, Tag, Space, Form, InputNumber, Switch, message, Popconfirm, Tooltip, Row, Col, Divider, Card, Statistic, Modal } from 'antd';
+import { FileExcelOutlined, FilePdfOutlined } from '@ant-design/icons';
+import ProductImportModal from '../../components/ProductImportModal.jsx';
 import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined, EyeOutlined, ReloadOutlined, ShopOutlined } from '@ant-design/icons';
 import productService from '../../services/productService.js';
 import ModuleRecycleBin from '../../components/ModuleRecycleBin.jsx';
@@ -69,6 +71,7 @@ const ProductMaster = () => {
   const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, draft: 0 });
 
   // Drawer
+  const [importMode, setImportMode] = useState(null); // 'excel' | 'pdf' | null
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [form] = Form.useForm();
@@ -384,10 +387,26 @@ const ProductMaster = () => {
         </div>
         <Space>
           <ModuleRecycleBin module="product" title="Deleted Products" onRestore={fetchProducts} />
+          <Button icon={<FileExcelOutlined />} onClick={() => setImportMode('excel')} size="large">
+            Add Product via Excel
+          </Button>
+          <Button icon={<FilePdfOutlined />} onClick={() => setImportMode('pdf')} size="large">
+            Add Product via PDF
+          </Button>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openDrawer()} size="large">
             Add New Product
           </Button>
         </Space>
+        <ProductImportModal
+          open={!!importMode}
+          mode={importMode}
+          categories={filterOptions.categories}
+          onClose={() => setImportMode(null)}
+          onImported={() => {
+            fetchProducts();
+            productService.getStats().then(r => { if (r.success) setStats(r.data); }).catch(() => {});
+          }}
+        />
       </div>
 
       {/* Stats */}
